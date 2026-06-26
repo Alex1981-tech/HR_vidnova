@@ -3904,9 +3904,9 @@ function AttendanceView({
         </div>
       </header>
 
-      <div className="attendance-search-row">
+      <div className="attendance-search-row attendance-controls-row">
         <label className="wide-search">
-          <Search size={19} />
+          <Search size={18} />
           <input
             type="search"
             placeholder={copyValue(copy.attendance.searchPlaceholder, "Пошук за ім'ям...")}
@@ -3915,13 +3915,9 @@ function AttendanceView({
           />
         </label>
         <button type="button" className="toolbar-button">
-          <Filter size={18} />
+          <Filter size={16} />
           {copy.common.filter}
-          <ChevronRight size={15} />
         </button>
-      </div>
-
-      <div className="attendance-toolbar company">
         <div className="month-controls">
           <button type="button" className="toolbar-button strong" onClick={() => setMonth(getInitialMonth())}>
             {copyValue(copy.attendance.currentMonth, 'Поточний місяць')}
@@ -3932,7 +3928,7 @@ function AttendanceView({
             onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
             aria-label={copyValue(copy.attendance.previousMonth, 'Попередній місяць')}
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
           </button>
           <button
             type="button"
@@ -3940,16 +3936,14 @@ function AttendanceView({
             onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
             aria-label={copyValue(copy.attendance.nextMonth, 'Наступний місяць')}
           >
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
           <span>{formatMonthTitle(month, copy)}</span>
         </div>
-        <div className="attendance-reminder">
-          <button type="button" className="secondary-action">
-            <Bell size={18} />
-            {copyValue(copy.attendance.sendReminder, 'Надіслати нагадування')}
-          </button>
-        </div>
+        <button type="button" className="secondary-action attendance-reminder-btn">
+          <Bell size={16} />
+          {copyValue(copy.attendance.sendReminder, 'Надіслати нагадування')}
+        </button>
       </div>
 
       <div className="result-meta attendance-meta">
