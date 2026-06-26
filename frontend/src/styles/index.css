@@ -12786,7 +12786,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   padding-bottom: 8px;
 }
 .attendance-company-page .page-header h1 {
-  font-size: 22px;
+  font-size: var(--font-h1);
 }
 .attendance-company-page .section-tabs {
   margin-top: 8px;
