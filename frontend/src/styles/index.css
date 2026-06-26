@@ -12328,3 +12328,19 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 .attendance-controls-row .attendance-reminder-btn {
   margin-left: auto;
 }
+
+/* ---- Attendance controls row: consistent solid buttons (were too faint/"transparent") ---- */
+.attendance-controls-row .toolbar-button,
+.attendance-controls-row .toolbar-button.strong,
+.attendance-controls-row .toolbar-icon,
+.attendance-controls-row .secondary-action {
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--text);
+}
+.attendance-controls-row .toolbar-button:hover,
+.attendance-controls-row .toolbar-icon:hover,
+.attendance-controls-row .secondary-action:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--line-strong));
+  background: var(--panel-soft);
+}
