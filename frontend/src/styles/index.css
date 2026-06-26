@@ -1724,13 +1724,15 @@ a {
 
 .nav-button.active,
 .settings-link.active {
-  background: var(--primary);
+  background: var(--primary-strong);
   color: #fff;
-  box-shadow: 0 9px 20px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+  box-shadow: 0 9px 20px -8px color-mix(in srgb, var(--primary-strong) 75%, transparent);
 }
 
-.nav-button.active svg:first-child,
-.settings-link.active svg:first-child {
+.nav-button.active span,
+.settings-link.active span,
+.nav-button.active svg,
+.settings-link.active svg {
   color: #fff;
 }
 
@@ -4520,17 +4522,35 @@ button:disabled {
 
 .attendance-summary-table {
   width: 100%;
-  min-width: 1320px;
+  min-width: 0;
   border-collapse: collapse;
   background: var(--panel);
+  font-size: 13px;
 }
 
 .attendance-summary-table th,
 .attendance-summary-table td {
-  height: 56px;
+  height: 46px;
   border-top: 1px solid var(--line);
-  padding: 0 16px;
+  padding: 0 11px;
   text-align: left;
+  white-space: nowrap;
+}
+
+.attendance-summary-table .name-cell {
+  min-width: 200px;
+}
+
+.attendance-summary-table .person-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attendance-summary-table .person-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -11995,9 +12015,10 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   padding: 3px 8px;
   font-size: 11px;
   font-weight: 700;
-  background: rgba(255, 255, 255, 0.92);
+  background: #ffffff;
   color: #1f2937;
-  box-shadow: 0 2px 8px rgba(16, 32, 59, 0.14);
+  border: 1px solid rgba(16, 32, 59, 0.12);
+  box-shadow: 0 2px 8px rgba(16, 32, 59, 0.22);
 }
 
 .asset-status-ok {

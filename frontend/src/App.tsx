@@ -207,6 +207,7 @@ type LeaveBand = {
 
 type AttendanceSummaryRow = {
   id: number;
+  employeeId: number;
   fullName: string;
   expected: string;
   worked: string;
@@ -824,6 +825,7 @@ function compactLocationName(value: string): string {
 function attendanceSummaryToRow(row: CompanyAttendanceSummary): AttendanceSummaryRow {
   return {
     id: row.id,
+    employeeId: row.employee,
     fullName: row.employee_name,
     expected: minutesToText(row.planned_minutes),
     worked: minutesToText(row.actual_minutes),
@@ -3771,14 +3773,37 @@ function AttendanceCalendar({ workdays, copy }: { workdays: WorkDaySummary[]; co
   );
 }
 
-function AttendanceView({ copy }: { copy: AppCopy }) {
+function AttendanceView({
+  copy,
+  brandingSettings,
+  employeeCovers,
+}: {
+  copy: AppCopy;
+  brandingSettings: BrandingSettings;
+  employeeCovers: EmployeeCoverMap;
+}) {
+  const navigate = useNavigate();
   const [month, setMonth] = useState(getInitialMonth);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [rows, setRows] = useState<CompanyAttendanceSummary[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [employeeById, setEmployeeById] = useState<Map<number, EmployeeListItem>>(new Map());
   const range = useMemo(() => getMonthRange(month), [month]);
   const visibleRows = useMemo(() => rows.map(attendanceSummaryToRow), [rows]);
+  const pageSize = 25;
+
+  useEffect(() => {
+    api
+      .employees({ status: 'active', page_size: 500 })
+      .then((result) => setEmployeeById(new Map(result.items.map((emp) => [emp.id, emp]))))
+      .catch(() => setEmployeeById(new Map()));
+  }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [range.from, range.to, search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3791,7 +3816,8 @@ function AttendanceView({ copy }: { copy: AppCopy }) {
           to: range.to,
           q: search,
           employee_status: 'active',
-          page_size: 50,
+          page,
+          page_size: pageSize,
         });
         if (cancelled) return;
         setRows(result.items);
@@ -3809,7 +3835,9 @@ function AttendanceView({ copy }: { copy: AppCopy }) {
     return () => {
       cancelled = true;
     };
-  }, [range.from, range.to, search]);
+  }, [range.from, range.to, search, page]);
+
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
 
   return (
     <main className="workspace attendance-page attendance-company-page">
@@ -3894,15 +3922,69 @@ function AttendanceView({ copy }: { copy: AppCopy }) {
       </div>
 
       <div className="result-meta attendance-meta">
-        <span>{loadState === 'loading' ? copy.common.loading : resultMetaLabel(visibleRows.length, totalRows, copy)}</span>
+        <span>
+          {loadState === 'loading'
+            ? copy.common.loading
+            : totalRows === 0
+              ? resultMetaLabel(0, 0, copy)
+              : `${(page - 1) * pageSize + 1}-${(page - 1) * pageSize + visibleRows.length} / ${totalRows}`}
+        </span>
+        {totalRows > pageSize ? (
+          <div className="pagination">
+            <button type="button" aria-label={copy.common.previous} disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+              <ChevronLeft size={16} />
+            </button>
+            {buildPageItems(page, totalPages).map((item, index) =>
+              item === 'gap' ? (
+                <span key={`gap-${index}`} className="page-gap">
+                  …
+                </span>
+              ) : (
+                <button type="button" key={item} className={item === page ? 'active' : ''} onClick={() => setPage(item)}>
+                  {item}
+                </button>
+              ),
+            )}
+            <button type="button" aria-label={copy.common.next} disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <AttendanceSummaryTable rows={visibleRows} loadState={loadState} copy={copy} />
+      <AttendanceSummaryTable
+        rows={visibleRows}
+        loadState={loadState}
+        copy={copy}
+        employeeById={employeeById}
+        brandingSettings={brandingSettings}
+        employeeCovers={employeeCovers}
+        onOpenProfile={(employeeId) => navigate(peopleEmployeePath(employeeId))}
+        onOpenOrg={() => navigate('/people/org')}
+      />
     </main>
   );
 }
 
-function AttendanceSummaryTable({ rows, loadState, copy }: { rows: AttendanceSummaryRow[]; loadState: LoadState; copy: AppCopy }) {
+function AttendanceSummaryTable({
+  rows,
+  loadState,
+  copy,
+  employeeById,
+  brandingSettings,
+  employeeCovers,
+  onOpenProfile,
+  onOpenOrg,
+}: {
+  rows: AttendanceSummaryRow[];
+  loadState: LoadState;
+  copy: AppCopy;
+  employeeById: Map<number, EmployeeListItem>;
+  brandingSettings: BrandingSettings;
+  employeeCovers: EmployeeCoverMap;
+  onOpenProfile: (employeeId: number) => void;
+  onOpenOrg: () => void;
+}) {
   const emptyTitle =
     loadState === 'loading'
       ? copyValue(copy.attendance.emptyLoading, 'Завантаження присутності')
@@ -3940,9 +4022,30 @@ function AttendanceSummaryTable({ rows, loadState, copy }: { rows: AttendanceSum
         </thead>
         <tbody>
           {rows.length ? (
-            rows.map((row) => (
+            rows.map((row, index) => {
+              const employee = employeeById.get(row.employeeId);
+              const person = employee ? employeeToPerson(employee, index, copy) : null;
+              return (
               <tr key={row.id}>
-                <td>{row.fullName}</td>
+                <td className="name-cell">
+                  {employee && person ? (
+                    <ProfileHoverCard
+                      className="person-name"
+                      person={person}
+                      coverUrl={resolveEmployeeCoverUrl(employee.id, brandingSettings, employeeCovers)}
+                      onOpenProfile={() => onOpenProfile(employee.id)}
+                      onOpenOrg={onOpenOrg}
+                    >
+                      <Avatar name={person.fullName} src={person.avatarUrl} accent={person.accent} size="sm" />
+                      <span>{row.fullName}</span>
+                    </ProfileHoverCard>
+                  ) : (
+                    <div className="person-name">
+                      <Avatar name={row.fullName} src="" accent="slate" size="sm" />
+                      <span>{row.fullName}</span>
+                    </div>
+                  )}
+                </td>
                 <td>{row.expected}</td>
                 <td>{row.worked}</td>
                 <td>{row.overtime}</td>
@@ -3957,7 +4060,8 @@ function AttendanceSummaryTable({ rows, loadState, copy }: { rows: AttendanceSum
                   </button>
                 </td>
               </tr>
-            ))
+              );
+            })
           ) : (
             <tr>
               <td colSpan={10}>
@@ -13486,7 +13590,7 @@ export function App() {
     notifications: <NotificationsView />,
     people: <PeopleView brandingSettings={brandingSettings} employeeCovers={employeeCovers} onEmployeeCoverChange={updateEmployeeCover} copy={copy} />,
     calendar: <CompanyCalendarView copy={copy} />,
-    attendance: <AttendanceView copy={copy} />,
+    attendance: <AttendanceView copy={copy} brandingSettings={brandingSettings} employeeCovers={employeeCovers} />,
     requests: <RequestsView leave={leave} leaveForm={leaveForm} setLeaveForm={setLeaveForm} onSubmitLeave={handleLeaveSubmit} copy={copy} />,
     knowledge: <KnowledgeView knowledge={knowledge} resetToken={knowledgeResetToken} copy={copy} />,
     assets: <AssetsView copy={copy} />,

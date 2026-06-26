@@ -13,7 +13,7 @@ from apps.employees.models import Employee
 from .cmms_client import CmmsError, cmms_client
 
 # Single-value and multi-value (repeatable) filter params forwarded to CMMS.
-_PASSTHROUGH_SINGLE = ("page", "page_size", "search", "status", "asset_type_id", "tags")
+_PASSTHROUGH_SINGLE = ("search", "status", "asset_type_id", "tags")
 _PASSTHROUGH_MULTI = ("location_ids", "department_ids", "category_ids", "responsible_ids", "engineer_ids")
 
 # Asset statuses CMMS uses (for the status filter dropdown).
@@ -80,8 +80,14 @@ class AssetListView(APIView):
             values = [v for v in request.query_params.getlist(key) if v not in ("", "all")]
             if values:
                 params[key] = values
-        params.setdefault("page", 1)
-        params.setdefault("page_size", 30)
+        # CMMS /api/assets/list paginates with skip/limit, not page/page_size.
+        try:
+            page = max(1, int(request.query_params.get("page", 1) or 1))
+            page_size = max(1, min(200, int(request.query_params.get("page_size", 30) or 30)))
+        except (TypeError, ValueError):
+            page, page_size = 1, 30
+        params["skip"] = (page - 1) * page_size
+        params["limit"] = page_size
 
         try:
             data = cmms_client.list_assets(params)
