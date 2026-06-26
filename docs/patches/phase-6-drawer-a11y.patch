@@ -1,0 +1,40 @@
+# Phase 6 (#6) — drawer a11y: Escape-to-close + body scroll-lock for drawers.
+# Apply to frontend/src/App.tsx when it is free of parallel uncommitted work
+# (this was clobbered once by a parallel commit in the shared working tree —
+#  coordinate / use a git worktree before re-applying).
+#
+# Status: data-density="compact" on .app-shell ALREADY landed (rides Alex's commit).
+#         The hook below is NOT yet applied.
+#
+# ---- 1) Add shared hook just before `function MobileMenu({` ----
+#
+# // Shared overlay dismissal: Escape-to-close + body scroll-lock while open.
+# // onClose is read via ref so the effect only re-runs when `open` changes.
+# function useOverlayDismiss(open: boolean, onClose: () => void) {
+#   const onCloseRef = useRef(onClose);
+#   onCloseRef.current = onClose;
+#   useEffect(() => {
+#     if (!open) return;
+#     const onKey = (event: KeyboardEvent) => {
+#       if (event.key === 'Escape') onCloseRef.current();
+#     };
+#     document.addEventListener('keydown', onKey);
+#     const prevOverflow = document.body.style.overflow;
+#     document.body.style.overflow = 'hidden';
+#     return () => {
+#       document.removeEventListener('keydown', onKey);
+#       document.body.style.overflow = prevOverflow;
+#     };
+#   }, [open]);
+# }
+#
+# ---- 2) MobileMenu: call BEFORE the `if (!isOpen) return null;` line ----
+#   useOverlayDismiss(isOpen, onClose);
+#
+# ---- 3) PeopleFilterDrawer: first statement in the body (has props `open`, `onClose`) ----
+#   useOverlayDismiss(open, onClose);
+#
+# ---- 4) TeamsPanel: right after `const [selectedTeam, setSelectedTeam] = useState(...)` ----
+#   useOverlayDismiss(Boolean(selectedTeam), () => setSelectedTeam(null));
+#
+# Note: useEffect/useRef already imported. tsc + vite build verified clean when applied.
