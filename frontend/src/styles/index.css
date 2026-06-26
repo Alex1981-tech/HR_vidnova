@@ -12151,3 +12151,30 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
 }
+
+/* ---- Attendance: fixed page, only the table scrolls (like People) ---- */
+.attendance-page {
+  height: calc(100vh - 56px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.attendance-page .page-header,
+.attendance-page .attendance-search-row,
+.attendance-page .attendance-toolbar,
+.attendance-page .attendance-reminder,
+.attendance-page .result-meta {
+  flex: 0 0 auto;
+}
+.attendance-page .attendance-table-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.attendance-summary-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel-soft);
+}
