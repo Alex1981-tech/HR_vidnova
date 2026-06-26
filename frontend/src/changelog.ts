@@ -10,6 +10,13 @@ export type ChangelogEntry = {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '1.0.05',
+    date: '26.06.2026',
+    changes: [
+      'Присутності: виправлено прокрутку таблиці детального табеля співробітника у режимі списку днів.',
+    ],
+  },
+  {
     version: '1.0.04',
     date: '26.06.2026',
     changes: [
