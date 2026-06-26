@@ -14089,3 +14089,106 @@ textarea:focus-visible {
   margin-right: auto;
   margin-left: auto;
 }
+
+/* ===== Report analytics page (headcount, turnover, …) ===== */
+.report-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.report-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  padding: 0;
+}
+.report-back:hover { color: var(--text); }
+
+.report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.report-head h1 {
+  margin: 0;
+  font-size: var(--font-h1);
+  line-height: var(--lh-h1);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.report-head p {
+  margin: 2px 0 0;
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+
+.report-toolbar {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.report-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow-xs);
+  padding: var(--space-4) var(--space-5);
+}
+.report-card-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-h3);
+  line-height: var(--lh-h3);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.report-empty-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-sm);
+}
+
+.report-grid-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-4);
+}
+
+.report-metrics-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.report-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.report-metric strong {
+  font-size: var(--font-h1);
+  line-height: var(--lh-h1);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+.report-metric span {
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+
+.report-grid-pies {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 1024px) {
+  .report-grid-main { grid-template-columns: minmax(0, 1fr); }
+  .report-grid-pies { grid-template-columns: minmax(0, 1fr); }
+}

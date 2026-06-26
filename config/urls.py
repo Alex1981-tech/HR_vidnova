@@ -53,6 +53,7 @@ urlpatterns = [
     path("api/auth/", include("apps.access.auth_urls")),
     path("api/bot/", include("apps.access.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),
+    path("api/reports/", include("apps.dashboard.reports_urls")),
     path("api/me/", include("apps.selfservice.urls")),
     path("api/employees/", include("apps.employees.urls")),
     path("api/assets/", include("apps.assets.urls")),
