@@ -12863,3 +12863,34 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   border-color: color-mix(in srgb, var(--primary) 45%, var(--line-strong));
   background: var(--panel-soft);
 }
+
+/* ===== Design Phase 5: mobile polish (touch targets + iOS anti-zoom) ===== */
+@media (max-width: 640px) {
+  /* iOS не зумить при фокусі, якщо font-size >= 16px */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* тач-таргети: на телефоні кнопки знову >= 40px (десктоп 32px замалий для пальця) */
+  .primary-action,
+  .secondary-action,
+  .toolbar-button,
+  .quick-add {
+    min-height: 40px;
+  }
+
+  .icon-button,
+  .toolbar-icon,
+  .mobile-menu-button {
+    width: 40px;
+    min-height: 40px;
+  }
+
+  /* первинний CTA на всю ширину — зручніше великим пальцем */
+  .request-form .primary-action,
+  .form-actions .primary-action {
+    width: 100%;
+  }
+}
