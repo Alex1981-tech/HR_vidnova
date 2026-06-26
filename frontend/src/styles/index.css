@@ -13996,21 +13996,29 @@ textarea:focus-visible {
 }
 
 /* ===== Reports index page ===== */
+.reports-page .page-header {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
 .reports-tabs {
   margin-top: 0;
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--line);
 }
 
 .reports-groups {
+  width: min(980px, 100%);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
+  margin: 0 auto;
 }
 
 .reports-group-title {
   margin: 0 0 var(--space-2);
-  font-size: var(--font-h2);
-  line-height: var(--lh-h2);
+  font-size: var(--font-h3);
+  line-height: var(--lh-h3);
   font-weight: var(--fw-semibold);
   color: var(--text);
 }
@@ -14030,7 +14038,7 @@ textarea:focus-visible {
   border: 0;
   border-top: 1px solid var(--border-subtle);
   background: transparent;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   transition: background 0.14s ease;
 }
@@ -14045,17 +14053,17 @@ textarea:focus-visible {
 
 .reports-row-title {
   display: block;
-  font-size: var(--font-h3);
-  line-height: var(--lh-h3);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
   font-weight: var(--fw-semibold);
   color: var(--text);
 }
 
 .reports-row-desc {
   display: block;
-  margin-top: 2px;
-  font-size: var(--font-sm);
-  line-height: var(--lh-sm);
+  margin-top: 1px;
+  font-size: var(--font-caption);
+  line-height: var(--lh-caption);
   color: var(--muted);
 }
 
@@ -14072,8 +14080,12 @@ textarea:focus-visible {
 
 /* contain reports content width (PeopleForce-style right gutter, left-aligned) */
 .reports-page .page-header,
-.reports-page .reports-tabs,
-.reports-page .reports-groups,
+.reports-page .reports-tabs {
+  max-width: none;
+}
+
 .reports-page .reports-empty {
-  max-width: 1480px;
+  width: min(980px, 100%);
+  margin-right: auto;
+  margin-left: auto;
 }
