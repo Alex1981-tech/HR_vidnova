@@ -20,6 +20,37 @@
   --red: #ef4b4b;
   --red-soft: #ffe9e9;
   --shadow: 0 8px 24px rgba(31, 52, 84, 0.07);
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --font-h1: 20px;
+  --lh-h1: 26px;
+  --font-h2: 16px;
+  --lh-h2: 22px;
+  --font-h3: 14px;
+  --lh-h3: 20px;
+  --font-body: 13px;
+  --lh-body: 18px;
+  --font-sm: 12px;
+  --lh-sm: 16px;
+  --font-caption: 11px;
+  --lh-caption: 14px;
+  --font-micro: 10px;
+  --lh-micro: 14px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--primary-strong) 30%, transparent);
+  --shadow-lg: 0 12px 24px -6px rgba(16, 24, 40, 0.12), 0 4px 8px -4px rgba(16, 24, 40, 0.06);
+  --topbar-h: 52px;
 }
 
 * {
@@ -184,7 +215,7 @@ a {
   align-items: center;
   gap: 12px;
   color: var(--auth-navy);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .auth-logo .brand-mark {
@@ -210,7 +241,7 @@ a {
 
 .auth-header strong {
   color: var(--auth-navy);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .auth-layout {
@@ -275,7 +306,7 @@ a {
   background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .auth-hero-copy {
@@ -415,7 +446,7 @@ a {
   background: transparent;
   color: var(--auth-teal-strong);
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .auth-resend:not(:disabled):hover {
@@ -482,7 +513,7 @@ a {
 .auth-telegram-copy > span {
   color: var(--auth-navy);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .auth-telegram-copy p {
@@ -500,7 +531,7 @@ a {
 
 .auth-field > span {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .auth-field > div {
@@ -1608,7 +1639,7 @@ a {
   align-items: center;
   gap: 10px;
   color: var(--primary-strong);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .brand-mark span {
@@ -1715,7 +1746,7 @@ a {
   background: transparent;
   color: var(--muted);
   padding: 0 11px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
   transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
@@ -1938,7 +1969,7 @@ a {
   background: #25344c;
   color: white;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .avatar img {
@@ -2002,13 +2033,13 @@ a {
 }
 
 .page-header {
-  min-height: 66px;
+  min-height: 56px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 18px;
+  gap: var(--space-4);
   border-bottom: 1px solid var(--line);
-  margin-bottom: 18px;
+  margin-bottom: var(--space-3);
 }
 
 .page-header.compact {
@@ -2019,8 +2050,8 @@ a {
 .profile-header h1,
 .home-welcome h1 {
   margin: 0;
-  font-size: 24px;
-  line-height: 1.15;
+  font-size: var(--font-h1);
+  line-height: var(--lh-h1);
   letter-spacing: 0;
 }
 
@@ -2098,7 +2129,7 @@ a {
   border-radius: 6px;
   padding: 0 8px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -2162,7 +2193,7 @@ button:disabled {
   margin: 0;
   color: var(--text);
   font-size: 24px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -2187,7 +2218,7 @@ button:disabled {
   color: var(--text);
   padding: 0 13px;
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .notifications-tabs button span {
@@ -2221,7 +2252,7 @@ button:disabled {
   margin: 12px 0 0;
   color: var(--text);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -2530,7 +2561,7 @@ button:disabled {
   place-items: center;
   border-radius: 7px;
   color: #59738e;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .week-strip span.active {
@@ -2988,7 +3019,7 @@ button:disabled {
 }
 
 .result-meta > span {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -3025,7 +3056,7 @@ button:disabled {
   background: color-mix(in srgb, var(--primary) 16%, var(--panel));
   border-color: color-mix(in srgb, var(--primary) 55%, var(--line));
   color: var(--primary-strong);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .result-meta .pagination button:disabled {
@@ -3124,7 +3155,7 @@ button:disabled {
   background: var(--panel-soft);
   color: var(--text);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .people-table td {
@@ -3388,7 +3419,7 @@ button:disabled {
   display: block;
   margin-top: 3px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .profile-popover ul {
@@ -3607,7 +3638,7 @@ button:disabled {
   margin: 0;
   color: var(--text);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3626,7 +3657,7 @@ button:disabled {
   margin-bottom: 8px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .team-lead-button,
@@ -3706,7 +3737,7 @@ button:disabled {
   color: var(--accent-strong);
   font-size: 12px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .team-drawer {
@@ -3783,7 +3814,7 @@ button:disabled {
 .team-drawer-meta {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .team-drawer-members table {
@@ -3947,7 +3978,7 @@ button:disabled {
   min-width: 50px;
   color: #315a83;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   pointer-events: none;
 }
 
@@ -4100,7 +4131,7 @@ button:disabled {
   min-width: 0;
   overflow: hidden;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -4593,6 +4624,20 @@ button:disabled {
   color: #061a36;
 }
 
+.attendance-summary-table .clickable-row {
+  cursor: pointer;
+}
+
+.attendance-summary-table .clickable-row:hover td,
+.attendance-summary-table .clickable-row:focus-visible td {
+  background: var(--panel-soft);
+}
+
+.attendance-summary-table .clickable-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 .row-action {
   width: 32px;
   height: 28px;
@@ -4634,9 +4679,24 @@ button:disabled {
   gap: 10px;
 }
 
+.profile-person > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.profile-person strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .profile-person span {
   color: var(--muted);
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .view-switch select {
@@ -4686,6 +4746,439 @@ button:disabled {
   color: #ff694d;
 }
 
+.attendance-detail-header {
+  min-height: calc(var(--space-8) + var(--space-8) + var(--space-2));
+  align-items: flex-end;
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
+.attendance-detail-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.attendance-detail-toolbar .month-controls,
+.attendance-detail-view-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attendance-detail-toolbar .month-controls span {
+  color: var(--muted);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+  font-weight: 500;
+}
+
+.attendance-detail-view-actions select {
+  min-width: 260px;
+  height: var(--space-8);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--muted);
+  padding: 0 var(--space-3);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+}
+
+.attendance-detail-metrics {
+  flex: 0 0 auto;
+}
+
+.attendance-detail-body {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.employee-attendance-calendar {
+  min-width: 980px;
+}
+
+.employee-day-cell {
+  cursor: pointer;
+  outline: none;
+}
+
+.employee-day-cell:hover,
+.employee-day-cell:focus-visible,
+.employee-day-cell.selected {
+  background: var(--panel-soft);
+  box-shadow: var(--shadow-focus);
+}
+
+.attendance-detail-page {
+  height: auto;
+  min-height: calc(100vh - 56px);
+  overflow: visible;
+}
+
+.attendance-detail-page .attendance-table-shell {
+  flex: 0 0 auto;
+}
+
+.attendance-detail-page .attendance-calendar {
+  overflow: visible;
+}
+
+.attendance-day-drawer {
+  --attendance-drawer-width: 390px;
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  z-index: 35;
+  width: min(var(--attendance-drawer-width), calc(100vw - var(--space-5)));
+  height: calc(100vh - var(--topbar-h));
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.attendance-day-drawer-header {
+  min-height: var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  padding: 0 var(--space-3);
+}
+
+.attendance-day-drawer-header strong {
+  color: var(--text);
+  font-size: var(--font-h3);
+  line-height: var(--lh-h3);
+  font-weight: 600;
+}
+
+.attendance-day-drawer-header .toolbar-icon {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.attendance-day-drawer-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-3);
+}
+
+.attendance-day-drawer-stats span {
+  display: grid;
+  gap: var(--space-1);
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  text-align: center;
+}
+
+.attendance-day-drawer-stats span:last-child {
+  border-right: 0;
+}
+
+.attendance-day-drawer-stats strong {
+  color: var(--text);
+  font-size: var(--font-h3);
+  line-height: var(--lh-h3);
+  font-weight: 600;
+}
+
+.attendance-day-records {
+  display: grid;
+  gap: var(--space-2);
+  overflow: auto;
+  padding: var(--space-3);
+}
+
+.attendance-record-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel-soft);
+}
+
+.attendance-record-card.editing {
+  border-color: color-mix(in srgb, var(--primary) 54%, var(--line));
+  box-shadow: var(--shadow-focus);
+}
+
+.attendance-record-head {
+  min-height: var(--space-7);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--muted);
+  padding: 0 var(--space-2);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+}
+
+.attendance-record-head span,
+.attendance-record-head div {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attendance-record-head button {
+  width: var(--space-7);
+  height: var(--space-7);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+}
+
+.attendance-record-head button:hover {
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+.attendance-record-body {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  margin: 0 var(--space-2) var(--space-2);
+  padding: var(--space-3);
+}
+
+.attendance-record-body div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.attendance-record-body strong {
+  color: var(--text);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+}
+
+.attendance-record-body time {
+  color: var(--text);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-weight: 600;
+}
+
+.attendance-record-body em {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--green-soft);
+  color: var(--green);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--green);
+}
+
+.attendance-record-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+}
+
+.attendance-new-period {
+  align-self: flex-start;
+  margin: var(--space-3) var(--space-3) var(--space-5);
+  background: var(--blue-soft);
+}
+
+.attendance-period-form {
+  display: grid;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+  padding: var(--space-3);
+}
+
+.attendance-period-form label {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.attendance-period-form label > span {
+  color: var(--muted);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+}
+
+.attendance-period-form select,
+.attendance-period-form textarea,
+.time-field {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.attendance-period-form select {
+  height: var(--space-8);
+  padding: 0 var(--space-3);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+}
+
+.attendance-period-form textarea {
+  resize: vertical;
+  min-height: calc(var(--space-8) + var(--space-7));
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-body);
+  line-height: var(--lh-body);
+}
+
+.attendance-period-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+.time-field {
+  min-height: var(--space-8);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.time-field svg {
+  color: var(--muted);
+}
+
+.time-field input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.attendance-period-form-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.attendance-period-form-actions button {
+  min-width: calc(var(--space-8) * 3);
+}
+
+.attendance-drawer-error {
+  margin: 0;
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+}
+
+.today-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: calc(var(--space-5) + var(--space-1));
+  border-radius: var(--radius-full);
+  background: var(--blue-soft);
+  color: var(--blue);
+  padding: 0 var(--space-2);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+}
+
+.employee-attendance-list-shell {
+  min-height: 100%;
+}
+
+.employee-attendance-list {
+  min-width: 1180px;
+}
+
+.employee-attendance-list td {
+  height: auto;
+  min-height: 56px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  vertical-align: top;
+}
+
+.employee-attendance-list .date-cell {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.period-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.period-list span {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--font-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+}
+
+.period-list svg {
+  border-radius: var(--radius-xs);
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: var(--space-1);
+}
+
+.period-list .muted-period {
+  color: var(--muted);
+}
+
+.positive-diff {
+  color: var(--green) !important;
+  font-weight: 600;
+}
+
+.negative-diff {
+  color: var(--red) !important;
+  font-weight: 600;
+}
+
 .attendance-calendar {
   display: grid;
   grid-template-columns: repeat(7, minmax(134px, 1fr));
@@ -4708,7 +5201,7 @@ button:disabled {
   padding: 0 12px;
   background: var(--panel-soft);
   color: var(--muted-2);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .day-cell {
@@ -4760,7 +5253,7 @@ button:disabled {
   color: var(--muted);
   background: #eef3f7;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .delta-bar.positive {
@@ -4890,7 +5383,7 @@ button:disabled {
 .leave-balance-table th {
   background: var(--panel-soft);
   color: #23415f;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .leave-balance-table td {
@@ -4951,7 +5444,7 @@ button:disabled {
   justify-content: start;
   color: #355977;
   padding: 0 6px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .knowledge-side-search {
@@ -5096,7 +5589,7 @@ button:disabled {
 
 .knowledge-create-menu strong {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .knowledge-create-menu em {
@@ -5271,7 +5764,7 @@ button:disabled {
   margin: 0 0 4px;
   color: #061c3d;
   font-size: 23px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .knowledge-home-header p {
@@ -5292,7 +5785,7 @@ button:disabled {
   margin: 0;
   color: #061c3d;
   font-size: 23px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -5492,7 +5985,7 @@ button:disabled {
 
 .knowledge-manager-row > div strong {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 500;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5591,7 +6084,7 @@ button:disabled {
 
 .knowledge-list strong {
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .knowledge-list span {
@@ -6436,7 +6929,7 @@ button.knowledge-document-views {
   color: #061c3d;
   font-size: 24px;
   line-height: 1.08;
-  font-weight: 700;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
   margin: 0;
@@ -6552,7 +7045,7 @@ button.knowledge-document-views {
 
 .knowledge-tool-text {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .knowledge-tool-menu-wrap {
@@ -6841,7 +7334,7 @@ button.knowledge-editor-cover.empty {
   background: var(--panel-soft);
   color: #173b66;
   padding: 0 10px;
-  font-weight: 650;
+  font-weight: 600;
   text-decoration: none;
 }
 
@@ -6939,7 +7432,7 @@ button.knowledge-editor-cover.empty {
 .org-actions span {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -6972,7 +7465,7 @@ button.knowledge-editor-cover.empty {
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7079,7 +7572,7 @@ button.knowledge-editor-cover.empty {
   overflow: hidden;
   color: var(--text);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7097,7 +7590,7 @@ button.knowledge-editor-cover.empty {
   justify-content: flex-start;
   color: var(--accent-strong);
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .org-department-icon.small {
@@ -7136,7 +7629,7 @@ button.knowledge-editor-cover.empty {
   margin: 0;
   color: var(--text);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .org-settings-group p {
@@ -7382,7 +7875,7 @@ button.knowledge-editor-cover.empty {
   min-height: 30px;
   color: var(--text);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
   line-height: 1.22;
   white-space: normal;
   display: -webkit-box;
@@ -7419,7 +7912,7 @@ button.knowledge-editor-cover.empty {
   color: white;
   font-size: 10px;
   font-style: normal;
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .org-graph-canvas .org-graph-card {
@@ -7507,7 +8000,7 @@ button.org-graph-card-body {
   background: #f28c00;
   color: #fff;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
   box-shadow: 0 7px 16px rgba(242, 140, 0, 0.26);
   cursor: pointer;
@@ -7684,7 +8177,7 @@ button.org-graph-card-body {
   background: #14223a;
   color: #fff;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
@@ -8445,7 +8938,7 @@ button.org-graph-card-body {
 }
 
 .settings-holiday-meta > span {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .settings-holiday-year-nav {
@@ -8469,7 +8962,7 @@ button.org-graph-card-body {
   background: transparent;
   color: #315a83;
   padding: 0 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .settings-holiday-year-nav button:first-child {
@@ -8531,7 +9024,7 @@ button.org-graph-card-body {
   place-items: center;
   color: #6a84a0;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .settings-holiday-days .empty,
@@ -8563,7 +9056,7 @@ button.org-graph-card-body {
 }
 
 .settings-holiday-day.marked {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .settings-holiday-day.marked.non-working {
@@ -8619,7 +9112,7 @@ button.org-graph-card-body {
   box-shadow: 0 18px 36px rgba(18, 37, 62, 0.18);
   padding: 8px 10px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   text-align: left;
   white-space: pre-line;
@@ -8742,7 +9235,7 @@ button.org-graph-card-body {
 .settings-holiday-event strong {
   color: #557392;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -8845,7 +9338,7 @@ button.org-graph-card-body {
   overflow: hidden;
   color: #17324d;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8859,7 +9352,7 @@ button.org-graph-card-body {
   padding: 0;
   font-size: 11px;
   font-style: normal;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
   white-space: normal;
 }
@@ -8891,7 +9384,7 @@ button.org-graph-card-body {
   display: block;
   color: inherit;
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 600;
   line-height: 1.2;
 }
 
@@ -8899,7 +9392,7 @@ button.org-graph-card-body {
   display: block;
   color: color-mix(in srgb, currentColor 78%, #17324d);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
   margin-top: 2px;
 }
@@ -8946,7 +9439,7 @@ button.org-graph-card-body {
   gap: 7px;
   color: #315a83;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .settings-holiday-legend span::before {
@@ -9721,7 +10214,7 @@ button.org-graph-card-body {
   padding: 0 8px;
   pointer-events: none;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   transition: opacity 0.14s ease, background 0.14s ease;
   white-space: nowrap;
 }
@@ -9769,7 +10262,7 @@ button.org-graph-card-body {
   color: #123a61;
   padding: 4px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -9815,7 +10308,7 @@ button.org-graph-card-body {
   align-items: center;
   gap: 10px;
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 10px;
 }
@@ -9838,7 +10331,7 @@ button.org-graph-card-body {
 .settings-working-total-row td {
   background: var(--panel-soft);
   color: #365b7d;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .settings-working-default,
@@ -9877,7 +10370,7 @@ button.org-graph-card-body {
   border-radius: 6px;
   background: #d92d3c;
   color: #ffffff;
-  font-weight: 700;
+  font-weight: 600;
   padding: 0 16px;
   box-shadow: 0 12px 26px rgba(217, 45, 60, 0.18);
 }
@@ -10154,7 +10647,7 @@ button.org-graph-card-body {
 .settings-file-field > span {
   color: #061c3d;
   font-size: 11px;
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .settings-field input,
@@ -10408,7 +10901,7 @@ button.org-graph-card-body {
   color: #061c3d;
   padding: 0 8px;
   font-size: 11px;
-  font-weight: 550;
+  font-weight: 500;
   box-shadow: 0 2px 8px rgba(18, 32, 54, 0.12);
 }
 
@@ -10718,7 +11211,7 @@ td {
 .summary-field strong,
 .document-strip strong,
 .knowledge-card h2 {
-  font-weight: 550;
+  font-weight: 500;
 }
 
 .nav-button:hover,
@@ -11139,7 +11632,7 @@ td {
   .home-welcome h1,
   .page-header h1,
   .profile-header h1 {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .welcome-person {
@@ -12042,7 +12535,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   background: #ffffff;
   color: #1f2937;
   border: 1px solid rgba(16, 32, 59, 0.12);
@@ -12088,7 +12581,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 }
 
 .asset-card-inv {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -12129,8 +12622,8 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   color: var(--muted);
 }
 .sidebar-version-num {
-  font-size: 12.5px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--primary-strong);
 }
 
@@ -12155,7 +12648,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   color: var(--text);
 }
 .changelog-entry-head span {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
 }
 .changelog-entry ul {
@@ -12166,7 +12659,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   gap: 5px;
 }
 .changelog-entry li {
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text);
   line-height: 1.42;
 }
@@ -12221,7 +12714,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   gap: 4px;
 }
 .asset-filter > label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--muted);
 }
@@ -12327,6 +12820,22 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 }
 .attendance-controls-row .attendance-reminder-btn {
   margin-left: auto;
+}
+
+@media (max-width: 960px) {
+  .attendance-detail-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .attendance-detail-view-actions {
+    justify-content: flex-start;
+  }
+
+  .attendance-detail-view-actions select {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
 }
 
 /* ---- Attendance controls row: consistent solid buttons (were too faint/"transparent") ---- */
