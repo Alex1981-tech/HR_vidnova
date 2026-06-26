@@ -43,6 +43,11 @@ employees 167 · departments 26 · clinics 7 · positions 80 · leave_req 218 ·
 
 ## Сесії
 
+### 2026-06-26 (пізно) — Звіти + «Дані про людей»
+- **Звіти** (на проді 1.0.08): головна `/reports` (групи Основні/CoreHR, компактні картки) + 3 аналітичні сторінки `headcount`/`turnover`/`tenure` на **recharts**. Backend `/api/reports/*` рахує з Employee. Переви­користовувані чарти у `frontend/src/views/reports/shared.tsx`. Цифри на барах/лінії (`LabelList`).
+- **«Дані про людей»** `/settings/people-data` (закомічено, **НЕ запушено/деплоєно**): backend моделі `EmployeeFieldGroup`/`EmployeeField`/`EmployeeFieldTable` + `Employee.custom_fields` (міграції 0019/0020 seed). API `field-groups`/`fields`/`field-tables`. Сторінка `views/settings/PeopleDataSettingsView.tsx` (вкладки, перемикачі видимості, add/delete кастомних полів, drag-reorder груп, summary-chips). **Профіль** `EmployeeAdminProfileView` тепер рендерить панелі з конфігу (увімкнені поля, порядок груп) + custom_fields у серіалізаторі.
+- **Лишилось завтра (фаза 2):** введення/редагування **значень** кастомних полів на профілі (зараз `-`), редагування кастом-поля (олівець-заглушка), таблиці (+Таблиця), summary-edit, кнопки шапки Нове поле/Нова таблиця. + відкладений **робочий фільтр headcount** (date-range + Рівень/Департамент/Локація). Push+deploy people-data — коли скажеш.
+
 ### 2026-06-26 — Оргграф `/people/org` (PeopleForce-стиль)
 Усе у `frontend/src/App.tsx` (`OrgView` / `OrgGraphCanvasView` / `composeOrgRows`) + `styles/index.css`. Граф на `@gravity-ui/graph`.
 - **Гібридний вертикальний layout**: листкові групи підлеглих стекуються вертикальною колонкою (`composeOrgColumn`), хребет керівників — горизонтально. Правило перемикання — **частка листків ≥ 0.8** (`leafShare`), щоб «майже-все-листя» (напр. Квакуша з 1 під-керівником) теж було вертикальним, а CEO/Нагорний лишались горизонтальними. `parentX` у `OrgRowsLayout`.
