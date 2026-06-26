@@ -4430,7 +4430,7 @@ function EmployeeAttendanceDetailView({
             onOpenDay={openDayDrawer}
           />
         ) : (
-          <EmployeeAttendanceList days={detail?.days ?? []} copy={copy} loadState={loadState} />
+          <EmployeeAttendanceList days={detail?.days ?? []} copy={copy} loadState={loadState} onOpenDay={openDayDrawer} />
         )}
       </div>
 
@@ -4556,10 +4556,12 @@ function EmployeeAttendanceList({
   days,
   copy,
   loadState,
+  onOpenDay,
 }: {
   days: EmployeeAttendanceDay[];
   copy: AppCopy;
   loadState: LoadState;
+  onOpenDay: (day: EmployeeAttendanceDay) => void;
 }) {
   if (loadState === 'loading' && !days.length) {
     return <EmptyState title={copy.common.loading} text="Формується список днів за вибраний місяць." />;
@@ -4584,7 +4586,18 @@ function EmployeeAttendanceList({
         <tbody>
           {days.length ? (
             days.map((day) => (
-              <tr key={day.date}>
+              <tr
+                key={day.date}
+                className="clickable-row"
+                tabIndex={0}
+                onClick={() => onOpenDay(day)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpenDay(day);
+                  }
+                }}
+              >
                 <td className="date-cell">{formatAttendanceListDate(day.date, copy)}</td>
                 <td>{minutesToText(day.planned_minutes)}</td>
                 <td>{minutesToText(day.actual_minutes)}</td>

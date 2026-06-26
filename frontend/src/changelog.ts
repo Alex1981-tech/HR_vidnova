@@ -10,6 +10,13 @@ export type ChangelogEntry = {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '1.0.06',
+    date: '26.06.2026',
+    changes: [
+      'Присутності: у детальному табелі в режимі списку клік по рядку дня відкриває бокову панель записів цього дня.',
+    ],
+  },
+  {
     version: '1.0.05',
     date: '26.06.2026',
     changes: [
