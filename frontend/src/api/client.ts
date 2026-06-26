@@ -228,6 +228,31 @@ export type TeamPayload = {
   is_active?: boolean;
 };
 
+export type EmployeeHirePayload = {
+  first_name: string;
+  last_name: string;
+  middle_name?: string;
+  email?: string;
+  personal_email?: string;
+  phone?: string;
+  phone2?: string;
+  birth_date?: string | null;
+  gender?: string;
+  status?: string;
+  hired_on?: string | null;
+  notes?: string;
+  clinic?: number | null;
+  department?: number | null;
+  position?: number | null;
+  division?: number | null;
+  employment_type?: number | null;
+  job_level?: number | null;
+  medical_specialties?: number[];
+  manager?: number | null;
+  working_pattern?: number | null;
+  probation_policy?: number | null;
+};
+
 function buildQuery(params: Record<string, QueryValue>): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -389,6 +414,11 @@ export const api = {
     request<ApiList<EmployeeListItem> | EmployeeListItem[]>(`/api/employees/employees/${buildQuery(params)}`).then(
       normalizeList,
     ),
+  hireEmployee: (payload: EmployeeHirePayload) =>
+    request<EmployeeListItem>('/api/employees/employees/hire/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   jobLevels: (params: { q?: string; is_active?: boolean; page?: number; page_size?: number } = {}) =>
     request<ApiList<JobLevel> | JobLevel[]>(`/api/employees/job-levels/${buildQuery(params)}`).then(normalizeList),
   createJobLevel: (payload: JobLevelPayload) =>

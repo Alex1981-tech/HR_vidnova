@@ -38,6 +38,7 @@ from .serializers import (
     EmployeeDocumentFolderSerializer,
     EmployeeDocumentSerializer,
     EmployeeCompactSerializer,
+    EmployeeHireSerializer,
     EmployeeSerializer,
     EmploymentTypeSerializer,
     GenderSerializer,
@@ -676,6 +677,14 @@ class EmployeeViewSet(EmployeeApiViewSet):
         elif gender:
             qs = qs.filter(gender=gender)
         return qs
+
+    @action(detail=False, methods=["post"], url_path="hire")
+    def hire(self, request):
+        serializer = EmployeeHireSerializer(data=request.data, context=self.get_serializer_context())
+        serializer.is_valid(raise_exception=True)
+        employee = serializer.save()
+        output = EmployeeSerializer(employee, context=self.get_serializer_context())
+        return Response(output.data, status=status.HTTP_201_CREATED)
 
 
 class ManagerAssignmentViewSet(EmployeeApiViewSet):

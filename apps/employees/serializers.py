@@ -1,6 +1,7 @@
-from rest_framework import serializers
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
+from rest_framework import serializers
 
 from .models import (
     Clinic,
@@ -10,6 +11,7 @@ from .models import (
     Employee,
     EmployeeDocument,
     EmployeeDocumentFolder,
+    EmployeeEmploymentStatus,
     EmploymentType,
     ExternalEmployeeLink,
     Gender,
@@ -531,6 +533,84 @@ class TeamSerializer(serializers.ModelSerializer):
         team = super().update(instance, validated_data)
         self._sync_members(team, member_ids)
         return team
+
+
+class EmployeeHireSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=120)
+    last_name = serializers.CharField(max_length=120)
+    middle_name = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    personal_email = serializers.EmailField(required=False, allow_blank=True)
+    phone = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    phone2 = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    birth_date = serializers.DateField(required=False, allow_null=True)
+    gender = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=Employee.Status.choices, default=Employee.Status.ACTIVE)
+    hired_on = serializers.DateField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    clinic = serializers.PrimaryKeyRelatedField(queryset=Clinic.objects.all(), required=False, allow_null=True)
+    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all(), required=False, allow_null=True)
+    position = serializers.PrimaryKeyRelatedField(queryset=Position.objects.all(), required=False, allow_null=True)
+    division = serializers.PrimaryKeyRelatedField(queryset=Division.objects.all(), required=False, allow_null=True)
+    employment_type = serializers.PrimaryKeyRelatedField(queryset=EmploymentType.objects.all(), required=False, allow_null=True)
+    job_level = serializers.PrimaryKeyRelatedField(queryset=JobLevel.objects.all(), required=False, allow_null=True)
+    medical_specialties = serializers.PrimaryKeyRelatedField(
+        queryset=MedicalSpecialty.objects.all(),
+        many=True,
+        required=False,
+    )
+    manager = serializers.PrimaryKeyRelatedField(
+        queryset=Employee.objects.filter(status=Employee.Status.ACTIVE),
+        required=False,
+        allow_null=True,
+    )
+    working_pattern = serializers.PrimaryKeyRelatedField(
+        queryset=WorkingPattern.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+    )
+    probation_policy = serializers.PrimaryKeyRelatedField(
+        queryset=ProbationPolicy.objects.filter(is_active=True),
+        required=False,
+        allow_null=True,
+    )
+
+    def validate(self, attrs):
+        hired_on = attrs.get("hired_on")
+        birth_date = attrs.get("birth_date")
+        if hired_on and birth_date and birth_date > hired_on:
+            raise serializers.ValidationError({"birth_date": "Birth date cannot be after hire date."})
+        return attrs
+
+    def create(self, validated_data):
+        manager = validated_data.pop("manager", None)
+        working_pattern = validated_data.pop("working_pattern", None)
+        probation_policy = validated_data.pop("probation_policy", None)
+        medical_specialties = validated_data.pop("medical_specialties", [])
+        valid_from = validated_data.get("hired_on") or timezone.localdate()
+
+        with transaction.atomic():
+            employee = Employee.objects.create(**validated_data)
+            if medical_specialties:
+                employee.medical_specialties.set(medical_specialties)
+            if manager and manager.pk != employee.pk:
+                ManagerAssignment.objects.update_or_create(
+                    employee=employee,
+                    manager=manager,
+                    valid_from=valid_from,
+                    defaults={"is_primary": True},
+                )
+            if employee.employment_type_id or working_pattern or probation_policy:
+                EmployeeEmploymentStatus.objects.create(
+                    employee=employee,
+                    effective_from=valid_from,
+                    employment_type=employee.employment_type,
+                    probation_policy=probation_policy,
+                    working_pattern_name=working_pattern.name if working_pattern else "",
+                    probation_policy_name=probation_policy.name if probation_policy else "",
+                    raw_payload={"source": "hr_vidnova_new_hire_form"},
+                )
+        return employee
 
 
 class EmployeeSerializer(serializers.ModelSerializer):

@@ -77,7 +77,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { ApiError, api } from './api/client';
+import { ApiError, api, type EmployeeHirePayload } from './api/client';
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
@@ -98,6 +98,7 @@ import type {
   EmployeeAttendancePeriod,
   EmployeeListItem,
   EmployeeProfile,
+  GenderOption,
   HolidayOption,
   HolidayPolicyOption,
   JobLevel,
@@ -107,9 +108,11 @@ import type {
   LeaveRequest,
   LeaveType,
   PositionOption,
+  ProbationPolicyOption,
   SelfAttendance,
   SelfKnowledge,
   SelfLeave,
+  SkillOption,
   TeamOption,
   TimeCorrectionRequest,
   WorkType,
@@ -180,6 +183,46 @@ type PeopleFilterOptions = {
   workTypes: PeopleFilterOption[];
 };
 
+type NewHireStep = 'details' | 'review';
+
+type NewHireFormState = {
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  personal_email: string;
+  email: string;
+  phone: string;
+  phone2: string;
+  birth_date: string;
+  gender: string;
+  hired_on: string;
+  employment_type: string;
+  working_pattern: string;
+  probation_policy: string;
+  position: string;
+  department: string;
+  division: string;
+  clinic: string;
+  manager: string;
+  job_level: string;
+  medical_specialties: string[];
+  notes: string;
+};
+
+type NewHireOptions = {
+  positions: PositionOption[];
+  departments: DepartmentOption[];
+  divisions: DivisionOption[];
+  locations: ClinicLocation[];
+  workTypes: WorkType[];
+  workingPatterns: WorkingPatternOption[];
+  probationPolicies: ProbationPolicyOption[];
+  jobLevels: JobLevel[];
+  genders: GenderOption[];
+  skills: SkillOption[];
+  managers: EmployeeListItem[];
+};
+
 const defaultPeopleFilters: PeopleFilterState = {
   status: 'active',
   position: [],
@@ -201,6 +244,20 @@ const emptyPeopleFilterOptions: PeopleFilterOptions = {
   teams: [],
   jobLevels: [],
   workTypes: [],
+};
+
+const emptyNewHireOptions: NewHireOptions = {
+  positions: [],
+  departments: [],
+  divisions: [],
+  locations: [],
+  workTypes: [],
+  workingPatterns: [],
+  probationPolicies: [],
+  jobLevels: [],
+  genders: [],
+  skills: [],
+  managers: [],
 };
 
 type LeaveBand = {
@@ -1727,6 +1784,467 @@ function MegaphoneIcon() {
   return <Sparkles size={17} />;
 }
 
+function optionalNumber(value: string): number | null {
+  return value ? Number(value) : null;
+}
+
+function emptyNewHireForm(search: string = ''): NewHireFormState {
+  const params = new URLSearchParams(search);
+  return {
+    first_name: '',
+    last_name: '',
+    middle_name: '',
+    personal_email: '',
+    email: '',
+    phone: '',
+    phone2: '',
+    birth_date: '',
+    gender: '',
+    hired_on: todayIsoDate(),
+    employment_type: params.get('work_type') || '',
+    working_pattern: params.get('working_pattern') || '',
+    probation_policy: '',
+    position: '',
+    department: '',
+    division: '',
+    clinic: params.get('location') || '',
+    manager: '',
+    job_level: '',
+    medical_specialties: [],
+    notes: '',
+  };
+}
+
+function buildNewHireChoices(options: PeopleFilterOptions): Array<{ id: string; label: string; workType: string; location: string }> {
+  const workTypes = options.workTypes.length ? options.workTypes : [{ value: '', label: 'Повна зайнятість' }];
+  const locations = options.locations.length ? options.locations : [{ value: '', label: 'Vidnova Clinic' }];
+  return workTypes.flatMap((workType) =>
+    locations.map((location) => ({
+      id: `${workType.value || 'work'}:${location.value || 'location'}`,
+      label: `${workType.label} ${location.label}`.trim(),
+      workType: workType.value,
+      location: location.value,
+    })),
+  );
+}
+
+function newHirePayloadFromForm(form: NewHireFormState): EmployeeHirePayload {
+  return {
+    first_name: form.first_name.trim(),
+    last_name: form.last_name.trim(),
+    middle_name: form.middle_name.trim(),
+    personal_email: form.personal_email.trim(),
+    email: form.email.trim(),
+    phone: form.phone.trim(),
+    phone2: form.phone2.trim(),
+    birth_date: form.birth_date || null,
+    gender: form.gender,
+    hired_on: form.hired_on || null,
+    status: 'active',
+    employment_type: optionalNumber(form.employment_type),
+    working_pattern: optionalNumber(form.working_pattern),
+    probation_policy: optionalNumber(form.probation_policy),
+    position: optionalNumber(form.position),
+    department: optionalNumber(form.department),
+    division: optionalNumber(form.division),
+    clinic: optionalNumber(form.clinic),
+    manager: optionalNumber(form.manager),
+    job_level: optionalNumber(form.job_level),
+    medical_specialties: form.medical_specialties.map(Number),
+    notes: form.notes.trim(),
+  };
+}
+
+function newHireOptionLabel<T extends { id: number; name: string }>(items: T[], value: string, fallback = '-'): string {
+  if (!value) return fallback;
+  return items.find((item) => String(item.id) === value)?.name ?? fallback;
+}
+
+function NewHireFormPicker({
+  open,
+  options,
+  optionsState,
+  onClose,
+  onContinue,
+}: {
+  open: boolean;
+  options: PeopleFilterOptions;
+  optionsState: LoadState;
+  onClose: () => void;
+  onContinue: (choice: { workType: string; location: string }) => void;
+}) {
+  const choices = useMemo(() => buildNewHireChoices(options), [options]);
+  const [selectedId, setSelectedId] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedId((current) => current || choices[0]?.id || '');
+  }, [choices, open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+  const selected = choices.find((choice) => choice.id === selectedId) ?? choices[0];
+  const loading = optionsState === 'loading';
+
+  return (
+    <div className="settings-option-modal-layer new-hire-picker-layer" role="dialog" aria-modal="true" aria-label="Додати новий найм">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="settings-option-modal new-hire-picker-modal">
+        <header>
+          <strong>Додайте новий найм до PeopleForce</strong>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </header>
+        <label>
+          <span>Форма</span>
+          <select value={selectedId} disabled={loading || !choices.length} onChange={(event) => setSelectedId(event.target.value)}>
+            {loading ? <option value="">Завантаження...</option> : null}
+            {!loading && !choices.length ? <option value="">Форми не знайдені</option> : null}
+            {choices.map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onClose}>
+            Скасувати
+          </button>
+          <button type="button" className="primary-action" disabled={!selected} onClick={() => selected && onContinue(selected)}>
+            Далі
+            <ChevronRight size={16} />
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function NewHireFlowView({
+  search,
+  onBack,
+  onCreated,
+}: {
+  search: string;
+  onBack: () => void;
+  onCreated: (employee: EmployeeListItem) => void;
+}) {
+  const [step, setStep] = useState<NewHireStep>('details');
+  const [form, setForm] = useState<NewHireFormState>(() => emptyNewHireForm(search));
+  const [options, setOptions] = useState<NewHireOptions>(emptyNewHireOptions);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [saveState, setSaveState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setForm(emptyNewHireForm(search));
+    setStep('details');
+    setError('');
+  }, [search]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOptions() {
+      setLoadState('loading');
+      try {
+        const [positions, departments, divisions, locations, workTypes, workingPatterns, probationPolicies, jobLevels, genders, skills, managers] = await Promise.all([
+          api.positions({ is_active: true, page_size: 500 }),
+          api.departments({ is_active: true, page_size: 500 }),
+          api.divisions({ is_active: true, page_size: 500 }),
+          api.locations({ is_active: true, page_size: 500 }),
+          api.workTypes({ is_active: true, page_size: 500 }),
+          api.workingPatterns({ is_active: true, page_size: 500 }),
+          api.probationPolicies({ is_active: true, page_size: 500 }),
+          api.jobLevels({ is_active: true, page_size: 500 }),
+          api.genders({ is_active: true, page_size: 500 }),
+          api.skills({ is_active: true, page_size: 500 }),
+          api.employees({ status: 'active', compact: true, page_size: 1000 }),
+        ]);
+        if (cancelled) return;
+        setOptions({
+          positions: positions.items,
+          departments: departments.items,
+          divisions: divisions.items,
+          locations: locations.items,
+          workTypes: workTypes.items,
+          workingPatterns: workingPatterns.items,
+          probationPolicies: probationPolicies.items,
+          jobLevels: jobLevels.items,
+          genders: genders.items,
+          skills: skills.items,
+          managers: managers.items,
+        });
+        setLoadState('ok');
+      } catch (loadError) {
+        if (cancelled) return;
+        setOptions(emptyNewHireOptions);
+        setError(loadError instanceof ApiError ? loadError.message : 'Не вдалося завантажити довідники.');
+        setLoadState('error');
+      }
+    }
+    void loadOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const detailsValid = Boolean(
+    form.last_name.trim() &&
+      form.first_name.trim() &&
+      form.personal_email.trim() &&
+      form.hired_on &&
+      form.employment_type &&
+      form.clinic &&
+      form.manager,
+  );
+  const titleParts = [
+    newHireOptionLabel(options.workTypes, form.employment_type, ''),
+    newHireOptionLabel(options.locations, form.clinic, ''),
+  ].filter(Boolean);
+  const pageTitle = titleParts.length ? titleParts.join(' ') : 'Новий найм';
+
+  function updateForm(patch: Partial<NewHireFormState>) {
+    setForm((current) => ({ ...current, ...patch }));
+    setError('');
+  }
+
+  function selectField<T extends { id: number; name: string }>(
+    label: string,
+    key: keyof NewHireFormState,
+    items: T[],
+    placeholder = '-- Немає --',
+    required = false,
+  ) {
+    return (
+      <label>
+        <span>
+          {label}
+          {required ? ' *' : ''}
+        </span>
+        <select value={String(form[key] ?? '')} onChange={(event) => updateForm({ [key]: event.target.value } as Partial<NewHireFormState>)}>
+          <option value="">{placeholder}</option>
+          {items.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  function managerField() {
+    return (
+      <label>
+        <span>Менеджер *</span>
+        <select value={form.manager} onChange={(event) => updateForm({ manager: event.target.value })}>
+          <option value="">-- Ніхто --</option>
+          {options.managers.map((manager) => (
+            <option key={manager.id} value={manager.id}>
+              {[manager.full_name, manager.position_name, manager.department_name].filter(Boolean).join(' · ')}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  function goReview() {
+    if (!detailsValid) {
+      setError("Заповніть обов'язкові поля: прізвище, ім'я, особиста пошта, дата прийому, тип роботи, локація і менеджер.");
+      return;
+    }
+    setStep('review');
+    setError('');
+  }
+
+  async function saveHire() {
+    if (!detailsValid || saveState === 'loading') {
+      goReview();
+      return;
+    }
+    setSaveState('loading');
+    setError('');
+    try {
+      const saved = await api.hireEmployee(newHirePayloadFromForm(form));
+      setSaveState('ok');
+      onCreated(saved);
+    } catch (saveError) {
+      setSaveState('error');
+      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося створити співробітника.');
+    }
+  }
+
+  return (
+    <main className="workspace new-hire-page">
+      <header className="new-hire-header">
+        <button type="button" onClick={onBack}>
+          <ChevronLeft size={16} />
+          Назад
+        </button>
+        <h1>{pageTitle}</h1>
+      </header>
+
+      <div className="new-hire-tabs">
+        <button type="button" className={step === 'details' ? 'active' : ''} onClick={() => setStep('details')}>
+          {step === 'review' ? <Check size={16} /> : null}
+          Деталі
+        </button>
+        <button type="button" className={step === 'review' ? 'active' : ''} onClick={goReview}>
+          Оцінка
+        </button>
+      </div>
+
+      {error ? <p className="error-text new-hire-error">{error}</p> : null}
+
+      {step === 'details' ? (
+        <div className="new-hire-layout">
+          <aside className="new-hire-nav">
+            <button type="button" className="active">
+              <FileText size={16} />
+              Основна інформація
+              <span>5</span>
+            </button>
+            <button type="button">
+              <BriefcaseBusiness size={16} />
+              Деталі роботи
+              <span>9</span>
+            </button>
+          </aside>
+          <section className="new-hire-form-card">
+            <div className="new-hire-section">
+              <h2>
+                <FileText size={18} />
+                Основна інформація
+              </h2>
+              <div className="new-hire-grid three">
+                <label>
+                  <span>Прізвище *</span>
+                  <input value={form.last_name} onChange={(event) => updateForm({ last_name: event.target.value })} autoFocus />
+                </label>
+                <label>
+                  <span>Ім'я *</span>
+                  <input value={form.first_name} onChange={(event) => updateForm({ first_name: event.target.value })} />
+                </label>
+                <label>
+                  <span>По-батькові</span>
+                  <input value={form.middle_name} onChange={(event) => updateForm({ middle_name: event.target.value })} />
+                </label>
+              </div>
+              <label>
+                <span>Особиста ел. пошта *</span>
+                <input type="email" value={form.personal_email} placeholder="eg. andrew@gmail.com" onChange={(event) => updateForm({ personal_email: event.target.value })} />
+              </label>
+              <label>
+                <span>Робоча ел. пошта</span>
+                <input type="email" value={form.email} placeholder="eg. andrew@microsoft.com" onChange={(event) => updateForm({ email: event.target.value })} />
+              </label>
+            </div>
+
+            <div className="new-hire-section">
+              <h2>
+                <BriefcaseBusiness size={18} />
+                Деталі роботи
+              </h2>
+              <label>
+                <span>Дата прийому *</span>
+                <input type="date" value={form.hired_on} onChange={(event) => updateForm({ hired_on: event.target.value })} />
+              </label>
+              <div className="new-hire-grid two">
+                {selectField('Тип роботи', 'employment_type', options.workTypes, '-- Немає --', true)}
+                {selectField('Графік роботи', 'working_pattern', options.workingPatterns)}
+              </div>
+              <div className="new-hire-grid two">
+                {selectField('Посада', 'position', options.positions)}
+                {selectField('Департамент', 'department', options.departments)}
+              </div>
+              <div className="new-hire-grid two">
+                {selectField('Підрозділ', 'division', options.divisions)}
+                {selectField('Локація', 'clinic', options.locations, '-- Немає локації --', true)}
+              </div>
+              <div className="new-hire-grid two">
+                {managerField()}
+                {selectField('Рівень', 'job_level', options.jobLevels)}
+              </div>
+              <div className="new-hire-grid two">
+                {selectField('Випробний термін', 'probation_policy', options.probationPolicies)}
+                <label>
+                  <span>Стать</span>
+                  <select value={form.gender} onChange={(event) => updateForm({ gender: event.target.value })}>
+                    <option value="">-- Немає --</option>
+                    {options.genders.map((gender) => (
+                      <option key={gender.id} value={gender.code}>
+                        {gender.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="new-hire-grid two">
+                <label>
+                  <span>Мобільний телефон *</span>
+                  <input value={form.phone} onChange={(event) => updateForm({ phone: event.target.value })} />
+                </label>
+                <label>
+                  <span>Робочий телефон</span>
+                  <input value={form.phone2} onChange={(event) => updateForm({ phone2: event.target.value })} />
+                </label>
+              </div>
+              <label>
+                <span>Коментар</span>
+                <textarea value={form.notes} onChange={(event) => updateForm({ notes: event.target.value })} />
+              </label>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <section className="new-hire-review">
+          <h2>
+            <Zap size={18} />
+            Заплановані воркфлоу
+          </h2>
+          <div className="new-hire-review-grid">
+            <span>Співробітник</span>
+            <strong>{[form.last_name, form.first_name, form.middle_name].filter(Boolean).join(' ') || '-'}</strong>
+            <span>Тип роботи</span>
+            <strong>{newHireOptionLabel(options.workTypes, form.employment_type)}</strong>
+            <span>Локація</span>
+            <strong>{newHireOptionLabel(options.locations, form.clinic)}</strong>
+            <span>Менеджер</span>
+            <strong>{options.managers.find((manager) => String(manager.id) === form.manager)?.full_name || '-- Ніхто --'}</strong>
+            <span>Графік роботи</span>
+            <strong>{newHireOptionLabel(options.workingPatterns, form.working_pattern)}</strong>
+          </div>
+          <label className="settings-option-checkbox new-hire-workflow-check">
+            <input type="checkbox" checked readOnly />
+            <span>Запустити воркфлоу</span>
+          </label>
+        </section>
+      )}
+
+      <footer className="new-hire-footer">
+        <button type="button" className="secondary-action" onClick={step === 'details' ? onBack : () => setStep('details')}>
+          {step === 'details' ? 'Скасувати' : 'Назад'}
+        </button>
+        <button type="button" className="primary-action" disabled={loadState === 'loading' || saveState === 'loading'} onClick={step === 'details' ? goReview : () => void saveHire()}>
+          {step === 'details' ? 'Далі' : saveState === 'loading' ? 'Збереження...' : 'Зберегти'}
+          {step === 'details' ? <ChevronRight size={16} /> : <Check size={16} />}
+        </button>
+      </footer>
+    </main>
+  );
+}
+
 function PeopleView({
   brandingSettings,
   employeeCovers,
@@ -1758,6 +2276,7 @@ function PeopleView({
     }
   }, [viewMode]);
   const [showNewProfile, setShowNewProfile] = useState(false);
+  const [hireFormPickerOpen, setHireFormPickerOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<EmployeeListItem | null>(null);
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [totalEmployees, setTotalEmployees] = useState(0);
@@ -1961,9 +2480,8 @@ function PeopleView({
   function openNewProfile() {
     setTab('people');
     setSelectedEmployee(null);
-    setShowNewProfile(true);
     setFiltersOpen(false);
-    navigate('/people/new');
+    setHireFormPickerOpen(true);
   }
 
   function backToPeopleList() {
@@ -1971,10 +2489,36 @@ function PeopleView({
     setSelectedEmployee(null);
     setTab('people');
     setFiltersOpen(false);
+    setHireFormPickerOpen(false);
     navigate('/people');
   }
 
-  if (showNewProfile || selectedEmployee) {
+  function startNewHire(choice: { workType: string; location: string }) {
+    const params = new URLSearchParams();
+    if (choice.workType) params.set('work_type', choice.workType);
+    if (choice.location) params.set('location', choice.location);
+    setTab('people');
+    setSelectedEmployee(null);
+    setShowNewProfile(true);
+    setFiltersOpen(false);
+    setHireFormPickerOpen(false);
+    navigate(`/people/new${params.toString() ? `?${params.toString()}` : ''}`);
+  }
+
+  function handleEmployeeCreated(employee: EmployeeListItem) {
+    setEmployees((current) => [employee, ...current.filter((item) => item.id !== employee.id)]);
+    setTotalEmployees((current) => current + 1);
+    setShowNewProfile(false);
+    setSelectedEmployee(employee);
+    setTab('people');
+    navigate(peopleEmployeePath(employee.id));
+  }
+
+  if (showNewProfile) {
+    return <NewHireFlowView search={location.search} onBack={backToPeopleList} onCreated={handleEmployeeCreated} />;
+  }
+
+  if (selectedEmployee) {
     return (
       <EmployeeAdminProfileView
         employee={selectedEmployee}
@@ -2142,6 +2686,13 @@ function PeopleView({
             onMultiChange={(key, value) => setPeopleFilters((current) => ({ ...current, [key]: value }))}
             onReset={() => setPeopleFilters(defaultPeopleFilters)}
             onClose={() => setFiltersOpen(false)}
+          />
+          <NewHireFormPicker
+            open={hireFormPickerOpen}
+            options={filterOptions}
+            optionsState={filterOptionsState}
+            onClose={() => setHireFormPickerOpen(false)}
+            onContinue={startNewHire}
           />
         </>
       )}
