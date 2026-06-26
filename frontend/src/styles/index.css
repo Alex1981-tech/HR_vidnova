@@ -118,10 +118,13 @@ a {
   --auth-muted: #657989;
   --auth-navy: #10293d;
   --auth-navy-strong: #0b1d2c;
-  --auth-teal: #0f8f89;
-  --auth-teal-strong: #087a7a;
+  --auth-accent: var(--brand-accent, #0f8f89);
+  --auth-accent-strong: color-mix(in srgb, var(--auth-accent) 76%, #10293d);
+  --auth-accent-soft: color-mix(in srgb, var(--auth-accent) 12%, #ffffff);
+  --auth-teal: var(--auth-accent);
+  --auth-teal-strong: var(--auth-accent-strong);
   background:
-    linear-gradient(120deg, rgba(15, 143, 137, 0.1), transparent 36%),
+    linear-gradient(120deg, color-mix(in srgb, var(--auth-accent) 11%, transparent), transparent 36%),
     linear-gradient(300deg, rgba(16, 41, 61, 0.08), transparent 42%),
     var(--auth-bg);
   color: var(--auth-text);
@@ -139,8 +142,11 @@ a {
   --auth-muted: #a7b7c7;
   --auth-navy: #dceaf4;
   --auth-navy-strong: #ffffff;
-  --auth-teal: #42d2c9;
-  --auth-teal-strong: #72e4dd;
+  --auth-accent: var(--brand-accent, #42d2c9);
+  --auth-accent-strong: color-mix(in srgb, var(--auth-accent) 70%, #ffffff);
+  --auth-accent-soft: color-mix(in srgb, var(--auth-accent) 18%, #132b35);
+  --auth-teal: var(--auth-accent-strong);
+  --auth-teal-strong: var(--auth-accent-strong);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -156,8 +162,11 @@ a {
     --auth-muted: #a7b7c7;
     --auth-navy: #dceaf4;
     --auth-navy-strong: #ffffff;
-    --auth-teal: #42d2c9;
-    --auth-teal-strong: #72e4dd;
+    --auth-accent: var(--brand-accent, #42d2c9);
+    --auth-accent-strong: color-mix(in srgb, var(--auth-accent) 70%, #ffffff);
+    --auth-accent-soft: color-mix(in srgb, var(--auth-accent) 18%, #132b35);
+    --auth-teal: var(--auth-accent-strong);
+    --auth-teal-strong: var(--auth-accent-strong);
   }
 }
 
@@ -227,7 +236,7 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(16, 41, 61, 0.96), rgba(8, 122, 122, 0.88)),
+    linear-gradient(135deg, rgba(16, 41, 61, 0.96), color-mix(in srgb, var(--auth-accent) 72%, #10293d)),
     #10293d;
   color: #ffffff;
   box-shadow: 0 24px 70px rgba(16, 41, 61, 0.18);
@@ -302,9 +311,9 @@ a {
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 12px;
   padding: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid color-mix(in srgb, var(--auth-accent) 38%, rgba(255, 255, 255, 0.16));
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.11);
+  background: color-mix(in srgb, var(--auth-accent) 18%, rgba(255, 255, 255, 0.11));
 }
 
 .auth-module > span {
@@ -313,7 +322,7 @@ a {
   display: grid;
   place-items: center;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.14);
+  background: color-mix(in srgb, var(--auth-accent) 26%, rgba(255, 255, 255, 0.14));
   color: #ffffff;
 }
 
@@ -336,10 +345,10 @@ a {
   display: grid;
   gap: 22px;
   padding: 30px;
-  border: 1px solid var(--auth-line);
+  border: 1px solid color-mix(in srgb, var(--auth-accent) 18%, var(--auth-line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--auth-card) 96%, transparent);
-  box-shadow: 0 24px 64px rgba(16, 41, 61, 0.12);
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--auth-accent) 10%, rgba(16, 41, 61, 0.12));
 }
 
 .auth-panel.loading {
@@ -378,7 +387,7 @@ a {
 
 .auth-status {
   border-color: color-mix(in srgb, var(--auth-teal) 28%, var(--auth-line));
-  background: var(--auth-soft);
+  background: var(--auth-accent-soft);
   color: var(--auth-teal-strong);
 }
 
@@ -401,9 +410,9 @@ a {
   align-items: center;
   gap: 16px;
   padding: 14px;
-  border: 1px solid var(--auth-line);
+  border: 1px solid color-mix(in srgb, var(--auth-accent) 14%, var(--auth-line));
   border-radius: 8px;
-  background: var(--auth-soft-2);
+  background: color-mix(in srgb, var(--auth-accent) 5%, var(--auth-soft-2));
 }
 
 .auth-qr-link {
@@ -429,6 +438,7 @@ a {
 .auth-submit:focus-visible,
 .auth-actions button:focus-visible {
   outline: 3px solid rgba(15, 143, 137, 0.22);
+  outline-color: color-mix(in srgb, var(--auth-accent) 22%, transparent);
   outline-offset: 2px;
 }
 
@@ -486,7 +496,7 @@ a {
 .auth-field:focus-within > div {
   border-color: var(--auth-teal);
   background: var(--auth-card);
-  box-shadow: 0 0 0 4px rgba(15, 143, 137, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--auth-accent) 14%, transparent);
 }
 
 .auth-field.invalid > div {
@@ -508,13 +518,13 @@ a {
   justify-content: center;
   gap: 8px;
   border-radius: 8px;
-  background: var(--auth-navy);
+  background: var(--auth-accent);
   color: #ffffff;
-  box-shadow: 0 16px 28px rgba(16, 41, 61, 0.2);
+  box-shadow: 0 16px 28px color-mix(in srgb, var(--auth-accent) 28%, transparent);
 }
 
 .auth-shell .auth-submit:hover:not(:disabled) {
-  background: var(--auth-navy-strong);
+  background: color-mix(in srgb, var(--auth-accent) 84%, #0b1d2c);
   transform: translateY(-1px);
 }
 
@@ -538,8 +548,8 @@ a {
 
 .auth-telegram-button:hover {
   transform: translateY(-1px);
-  border-color: rgba(15, 143, 137, 0.55);
-  box-shadow: 0 12px 24px rgba(16, 41, 61, 0.08);
+  border-color: color-mix(in srgb, var(--auth-accent) 55%, var(--auth-line));
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--auth-accent) 13%, transparent);
 }
 
 .auth-actions .secondary-action,
@@ -1687,19 +1697,27 @@ a {
 
 .nav-button,
 .settings-link {
-  min-height: 36px;
+  min-height: 38px;
   width: 100%;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto;
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 10px;
   background: transparent;
-  color: #607c99;
-  padding: 0 9px;
+  color: var(--muted);
+  padding: 0 11px;
+  font-size: 13.5px;
   font-weight: 500;
   text-align: left;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.nav-button svg:first-child,
+.settings-link svg:first-child {
+  width: 18px;
+  height: 18px;
 }
 
 .nav-button.group-start {
@@ -1720,16 +1738,21 @@ a {
 }
 
 .nav-button:hover,
-.nav-button.active,
-.settings-link:hover,
-.settings-link.active {
+.settings-link:hover {
   background: var(--panel-soft);
   color: var(--text);
 }
 
+.nav-button.active,
+.settings-link.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 9px 20px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+}
+
 .nav-button.active svg:first-child,
 .settings-link.active svg:first-child {
-  color: var(--primary);
+  color: #fff;
 }
 
 .nav-button em {
@@ -12048,4 +12071,83 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 .asset-card .asset-responsible-trigger svg:first-child {
   flex: 0 0 auto;
   color: var(--muted);
+}
+
+/* ---- sidebar version + changelog + logo animation ---- */
+.nav-button.active em {
+  background: rgba(255, 255, 255, 0.26);
+  color: #fff;
+}
+
+.sidebar-version {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  padding: 7px 4px;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+.sidebar-version:hover,
+.sidebar-version.active {
+  background: var(--panel-soft);
+}
+.sidebar-version-date {
+  font-size: 11px;
+  color: var(--muted);
+}
+.sidebar-version-num {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--primary-strong);
+}
+
+.changelog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 780px;
+}
+.changelog-entry {
+  padding: 16px 18px;
+  border-radius: 12px;
+}
+.changelog-entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.changelog-entry-head strong {
+  font-size: 16px;
+  color: var(--text);
+}
+.changelog-entry-head span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.changelog-entry li {
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.42;
+}
+
+.brand-mark img,
+.brand-mark svg {
+  animation: brandFloat 4.5s ease-in-out infinite;
+}
+@keyframes brandFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }

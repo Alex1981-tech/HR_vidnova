@@ -78,6 +78,7 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ApiError, api } from './api/client';
+import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
@@ -122,7 +123,8 @@ type Section =
   | 'assets'
   | 'reports'
   | 'org'
-  | 'settings';
+  | 'settings'
+  | 'changelog';
 
 type LoadState = 'idle' | 'loading' | 'ok' | 'error';
 
@@ -289,6 +291,7 @@ const sectionPaths: Record<Section, string> = {
   reports: '/reports',
   org: '/org',
   settings: '/settings',
+  changelog: '/changelog',
 };
 
 const pathSectionMap: Record<string, Section> = {
@@ -302,6 +305,7 @@ const pathSectionMap: Record<string, Section> = {
   reports: 'reports',
   org: 'org',
   settings: 'settings',
+  changelog: 'changelog',
 };
 
 const legacyHashPaths: Record<string, string> = {
@@ -411,6 +415,16 @@ const defaultBrandingSettings: BrandingSettings = {
   employeeCoverBytes: 0,
   employeeCoverUploadAllowed: false,
 };
+
+function brandingThemeStyle(settings: BrandingSettings): CSSProperties {
+  return {
+    '--brand-accent': settings.primaryColor,
+    '--settings-accent': settings.primaryColor,
+    '--primary': settings.primaryColor,
+    '--primary-strong': `color-mix(in srgb, ${settings.primaryColor} 84%, #111827)`,
+    '--primary-soft': `color-mix(in srgb, ${settings.primaryColor} 14%, #ffffff)`,
+  } as CSSProperties;
+}
 
 const settingsGroups: SettingsGroup[] = [
   {
@@ -1059,6 +1073,15 @@ function Sidebar({
         <span>{copy.common.settings}</span>
         <PanelLeftClose size={18} />
       </button>
+      <button
+        type="button"
+        className={`sidebar-version ${active === 'changelog' ? 'active' : ''}`}
+        onClick={() => onChange('changelog')}
+        title="Історія версій"
+      >
+        <span className="sidebar-version-date">{APP_VERSION_DATE}</span>
+        <strong className="sidebar-version-num">v{APP_VERSION}</strong>
+      </button>
     </aside>
   );
 }
@@ -1263,7 +1286,7 @@ function LoginView({
     : 'Введіть код із Telegram. QR нижче веде в єдиного бота Vidnova для HR і Clinical Photo.';
 
   return (
-    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
+    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)} style={brandingThemeStyle(brandingSettings)}>
       <header className="auth-header">
         <div className="auth-logo">
           <BrandMark brandingSettings={brandingSettings} />
@@ -1413,7 +1436,7 @@ function LoginView({
 
 function AuthLoadingView({ brandingSettings }: { brandingSettings: BrandingSettings }) {
   return (
-    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
+    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)} style={brandingThemeStyle(brandingSettings)}>
       <header className="auth-header">
         <div className="auth-logo">
           <BrandMark brandingSettings={brandingSettings} />
@@ -13199,6 +13222,37 @@ function assetStatusClass(status: string): string {
   return 'neutral';
 }
 
+function ChangelogView({ onBack }: { onBack: () => void }) {
+  return (
+    <main className="workspace changelog-page">
+      <header className="page-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} />
+            Назад
+          </button>
+          <h1>Історія версій</h1>
+        </div>
+      </header>
+      <div className="changelog-list">
+        {changelog.map((entry) => (
+          <article key={entry.version} className="changelog-entry panel">
+            <div className="changelog-entry-head">
+              <strong>v{entry.version}</strong>
+              <span>{entry.date}</span>
+            </div>
+            <ul>
+              {entry.changes.map((change, index) => (
+                <li key={index}>{change}</li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </main>
+  );
+}
+
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -13443,19 +13497,14 @@ export function App() {
     reports: <UtilityView section="reports" overview={overview} copy={copy} />,
     org: <OrgView copy={copy} themeMode={themeMode} />,
     settings: <SettingsView brandingSettings={brandingSettings} onBrandingChange={setBrandingSettings} copy={copy} />,
+    changelog: <ChangelogView onBack={() => changeSection('settings')} />,
   };
 
   const mobileNav = mobileItems.map((item) => sidebarItems.find((navItem) => navItem.section === item)).filter(Boolean) as Array<{
     section: Section;
     icon: LucideIcon;
   }>;
-  const appThemeStyle = {
-    '--brand-accent': brandingSettings.primaryColor,
-    '--settings-accent': brandingSettings.primaryColor,
-    '--primary': brandingSettings.primaryColor,
-    '--primary-strong': `color-mix(in srgb, ${brandingSettings.primaryColor} 84%, #111827)`,
-    '--primary-soft': `color-mix(in srgb, ${brandingSettings.primaryColor} 14%, #ffffff)`,
-  } as CSSProperties;
+  const appThemeStyle = brandingThemeStyle(brandingSettings);
 
   if (!authChecked) {
     return <AuthLoadingView brandingSettings={brandingSettings} />;

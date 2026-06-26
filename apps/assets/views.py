@@ -1,4 +1,8 @@
+from urllib.parse import quote
+
+import httpx
 from django.conf import settings
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -16,13 +20,49 @@ _PASSTHROUGH_MULTI = ("location_ids", "department_ids", "category_ids", "respons
 _ASSET_STATUSES = ["в експлуатації", "на складі", "у ремонті", "списаний", "резерв"]
 
 
-def _absolutize_photo(url: str | None) -> str | None:
-    if not url:
+def _proxy_photo(signed_path: str | None) -> str | None:
+    """Return a same-origin HR URL that proxies a CMMS signed /uploads link.
+
+    The browser hits hr.vidnova.app (no cross-domain / Cloudflare-Access issues);
+    HR fetches the bytes from CMMS internally using the embedded signed token.
+    """
+    if not signed_path or not signed_path.startswith("/uploads/"):
         return None
-    if url.startswith("http://") or url.startswith("https://"):
-        return url
-    base = (getattr(settings, "CMMS_PUBLIC_URL", "") or "").rstrip("/")
-    return f"{base}{url}" if url.startswith("/") else f"{base}/{url}"
+    return f"/api/assets/photo/?src={quote(signed_path, safe='')}"
+
+
+def _sniff_content_type(blob: bytes) -> str:
+    if blob.startswith(b"\x89PNG"):
+        return "image/png"
+    if blob.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+        return "image/webp"
+    if blob[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "application/octet-stream"
+
+
+class AssetPhotoProxyView(APIView):
+    """Stream a CMMS asset photo (signed /uploads link) through HR's own origin."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        src = request.query_params.get("src", "")
+        if not src.startswith("/uploads/"):
+            return Response({"detail": "Invalid src"}, status=status.HTTP_400_BAD_REQUEST)
+        base = (getattr(settings, "CMMS_API_BASE_URL", "") or "").rstrip("/")
+        try:
+            resp = httpx.get(f"{base}{src}", timeout=settings.CMMS_API_TIMEOUT)
+        except httpx.HTTPError:
+            return Response(status=status.HTTP_502_BAD_GATEWAY)
+        if resp.status_code != 200:
+            return Response(status=resp.status_code)
+        content = resp.content
+        http_resp = HttpResponse(content, content_type=_sniff_content_type(content))
+        http_resp["Cache-Control"] = "private, max-age=600"
+        return http_resp
 
 
 class AssetListView(APIView):
@@ -55,7 +95,7 @@ class AssetListView(APIView):
             item["responsible_person_name"] = name_by_id.get(item.get("responsible_person_id"))
             photos = item.get("photos") or []
             primary = photos[0] if photos else None
-            item["photo_url"] = _absolutize_photo((primary or {}).get("thumbnail_url") or (primary or {}).get("url"))
+            item["photo_url"] = _proxy_photo((primary or {}).get("thumbnail_url") or (primary or {}).get("url"))
             item.pop("photos", None)  # keep payload lean
         return Response(
             {
