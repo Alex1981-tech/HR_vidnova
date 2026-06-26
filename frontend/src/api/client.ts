@@ -10,6 +10,9 @@ import type {
   DivisionOption,
   EmployeeAttendanceDetail,
   EmployeeAttendancePeriod,
+  EmployeeFormTemplate,
+  EmployeeFormTemplateSummary,
+  EmployeeFormType,
   EmployeeListItem,
   EmployeeProfile,
   GenderOption,
@@ -116,6 +119,19 @@ export type TerminationTypePayload = {
 export type WorkTypePayload = {
   name: string;
   external_peopleforce_id?: string;
+  is_active?: boolean;
+};
+
+export type EmployeeFormTemplatePayload = {
+  form_type: EmployeeFormType;
+  name: string;
+  description?: string;
+  allow_employee_access?: boolean;
+  workflow_name?: string;
+  allow_requester_disable_workflow?: boolean;
+  preboarding_form?: number | null;
+  absence_policy_names?: string[];
+  sections?: unknown[];
   is_active?: boolean;
 };
 
@@ -507,6 +523,16 @@ export const api = {
   deleteWorkType: (id: number) =>
     request<void>(`/api/employees/employment-types/${id}/`, {
       method: 'DELETE',
+    }),
+  formTemplates: (
+    params: { q?: string; form_type?: EmployeeFormType; is_active?: boolean; page?: number; page_size?: number } = {},
+  ) => request<ApiList<EmployeeFormTemplate> | EmployeeFormTemplate[]>(`/api/employees/form-templates/${buildQuery(params)}`).then(normalizeList),
+  formTemplateSummary: (params: { is_active?: boolean } = {}) =>
+    request<EmployeeFormTemplateSummary[]>(`/api/employees/form-templates/summary/${buildQuery(params)}`),
+  createFormTemplate: (payload: EmployeeFormTemplatePayload) =>
+    request<EmployeeFormTemplate>('/api/employees/form-templates/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   probationPolicies: (params: { q?: string; is_active?: boolean; page?: number; page_size?: number } = {}) =>
     request<ApiList<ProbationPolicyOption> | ProbationPolicyOption[]>(

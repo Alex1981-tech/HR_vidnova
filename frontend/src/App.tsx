@@ -77,7 +77,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { ApiError, api, type EmployeeHirePayload } from './api/client';
+import { ApiError, api, type EmployeeFormTemplatePayload, type EmployeeHirePayload } from './api/client';
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { ReportsView } from './views/ReportsView';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
@@ -97,6 +97,10 @@ import type {
   EmployeeAttendanceDay,
   EmployeeAttendanceDetail,
   EmployeeAttendancePeriod,
+  EmployeeFormSection,
+  EmployeeFormTemplate,
+  EmployeeFormTemplateSummary,
+  EmployeeFormType,
   EmployeeListItem,
   EmployeeProfile,
   GenderOption,
@@ -1837,17 +1841,12 @@ function emptyNewHireForm(search: string = ''): NewHireFormState {
   };
 }
 
-function buildNewHireChoices(options: PeopleFilterOptions): Array<{ id: string; label: string; workType: string; location: string }> {
-  const workTypes = options.workTypes.length ? options.workTypes : [{ value: '', label: 'Повна зайнятість' }];
-  const locations = options.locations.length ? options.locations : [{ value: '', label: 'Vidnova Clinic' }];
-  return workTypes.flatMap((workType) =>
-    locations.map((location) => ({
-      id: `${workType.value || 'work'}:${location.value || 'location'}`,
-      label: `${workType.label} ${location.label}`.trim(),
-      workType: workType.value,
-      location: location.value,
-    })),
-  );
+function buildNewHireChoices(options: PeopleFilterOptions): Array<{ id: string; label: string; workType: string }> {
+  return options.workTypes.map((workType) => ({
+    id: workType.value || workType.label,
+    label: workType.label,
+    workType: workType.value,
+  }));
 }
 
 function newHirePayloadFromForm(form: NewHireFormState): EmployeeHirePayload {
@@ -1893,14 +1892,23 @@ function NewHireFormPicker({
   options: PeopleFilterOptions;
   optionsState: LoadState;
   onClose: () => void;
-  onContinue: (choice: { workType: string; location: string }) => void;
+  onContinue: (choice: { workType: string }) => void;
 }) {
   const choices = useMemo(() => buildNewHireChoices(options), [options]);
+  const [query, setQuery] = useState('');
+  const [choiceOpen, setChoiceOpen] = useState(false);
   const [selectedId, setSelectedId] = useState('');
+  const filteredChoices = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return choices;
+    return choices.filter((choice) => choice.label.toLowerCase().includes(normalized));
+  }, [choices, query]);
 
   useEffect(() => {
     if (!open) return;
-    setSelectedId((current) => current || choices[0]?.id || '');
+    setSelectedId((current) => (choices.some((choice) => choice.id === current) ? current : choices[0]?.id || ''));
+    setQuery('');
+    setChoiceOpen(false);
   }, [choices, open]);
 
   useEffect(() => {
@@ -1926,17 +1934,51 @@ function NewHireFormPicker({
             <X size={22} />
           </button>
         </header>
-        <label>
+        <label className="new-hire-picker-field">
           <span>Форма</span>
-          <select value={selectedId} disabled={loading || !choices.length} onChange={(event) => setSelectedId(event.target.value)}>
-            {loading ? <option value="">Завантаження...</option> : null}
-            {!loading && !choices.length ? <option value="">Форми не знайдені</option> : null}
-            {choices.map((choice) => (
-              <option key={choice.id} value={choice.id}>
-                {choice.label}
-              </option>
-            ))}
-          </select>
+          <div className={`new-hire-picker-select${choiceOpen ? ' open' : ''}`}>
+            <button
+              type="button"
+              className="new-hire-picker-trigger"
+              disabled={loading || !choices.length}
+              aria-expanded={choiceOpen}
+              aria-haspopup="listbox"
+              onClick={() => setChoiceOpen((current) => !current)}
+            >
+              <span>{loading ? 'Завантаження...' : selected?.label || 'Типи роботи не знайдені'}</span>
+              <ChevronDown size={17} />
+            </button>
+            {choiceOpen && !loading ? (
+              <div className="new-hire-picker-menu">
+                <div className="new-hire-picker-search">
+                  <Search size={16} />
+                  <input value={query} placeholder="Пошук..." onChange={(event) => setQuery(event.target.value)} autoFocus />
+                </div>
+                <div className="new-hire-picker-list" role="listbox" aria-label="Типи роботи">
+                  {filteredChoices.length ? (
+                    filteredChoices.map((choice) => (
+                      <button
+                        type="button"
+                        key={choice.id}
+                        className={choice.id === selected?.id ? 'active' : ''}
+                        role="option"
+                        aria-selected={choice.id === selected?.id}
+                        onClick={() => {
+                          setSelectedId(choice.id);
+                          setChoiceOpen(false);
+                          setQuery('');
+                        }}
+                      >
+                        {choice.label}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="new-hire-picker-empty">Нічого не знайдено</span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </label>
         <footer>
           <button type="button" className="secondary-action" onClick={onClose}>
@@ -2515,10 +2557,9 @@ function PeopleView({
     navigate('/people');
   }
 
-  function startNewHire(choice: { workType: string; location: string }) {
+  function startNewHire(choice: { workType: string }) {
     const params = new URLSearchParams();
     if (choice.workType) params.set('work_type', choice.workType);
-    if (choice.location) params.set('location', choice.location);
     setTab('people');
     setSelectedEmployee(null);
     setShowNewProfile(true);
@@ -14295,6 +14336,633 @@ function SettingsCoverCropModal({
   );
 }
 
+type SettingsFormsRoute = { mode: 'list' } | { mode: 'new'; formType: EmployeeFormType };
+type SettingsFormEditorStep = 'details' | 'sections';
+type SettingsFormDefinition = {
+  type: EmployeeFormType;
+  title: string;
+  description: string;
+  newTitle: string;
+  icon: LucideIcon;
+  sections: EmployeeFormSection[];
+};
+type SettingsFormDraft = {
+  form_type: EmployeeFormType;
+  name: string;
+  description: string;
+  allow_employee_access: boolean;
+  workflow_name: string;
+  allow_requester_disable_workflow: boolean;
+  preboarding_form: string;
+  absence_policy_names: string;
+  sections: EmployeeFormSection[];
+  activeSectionId: string;
+};
+
+const defaultNewHireSections: EmployeeFormSection[] = [
+  {
+    id: 'work_details',
+    name: 'Деталі роботи',
+    fields: [
+      { id: 'photo', name: 'Фото', field_type: 'photo', required: false },
+      { id: 'hired_on', name: 'Дата прийому на роботу', field_type: 'date', required: true },
+      { id: 'employment_history', name: 'Досвід до прийому на роботу', field_type: 'textarea', required: false },
+      { id: 'position', name: 'Посада', field_type: 'select', required: true },
+      { id: 'work', name: 'Робота', field_type: 'group', required: true },
+      { id: 'teams', name: 'Команди', field_type: 'multi_select', required: false },
+    ],
+  },
+];
+
+const defaultRequestSections: EmployeeFormSection[] = [
+  {
+    id: 'details',
+    name: 'Деталі запиту',
+    fields: [
+      { id: 'requester', name: 'Запитувач', field_type: 'employee', required: true },
+      { id: 'description', name: 'Опис', field_type: 'textarea', required: true },
+    ],
+  },
+];
+
+const settingsFormDefinitions: SettingsFormDefinition[] = [
+  {
+    type: 'new_hire',
+    title: 'Новий найм',
+    description: 'Оптимізуйте процес створення користувачів за допомогою нового майстра форм найняття.',
+    newTitle: 'Нова форма найму',
+    icon: Plus,
+    sections: defaultNewHireSections,
+  },
+  {
+    type: 'preboarding',
+    title: 'Пребординг',
+    description: 'Вітайте нових працівників за допомогою пребординг форм, щоб ефективно підготувати їх до першого дня роботи.',
+    newTitle: 'Нова форма пребордингу',
+    icon: Rocket,
+    sections: defaultRequestSections,
+  },
+  {
+    type: 'people_data_change',
+    title: 'Запит на зміну даних людей',
+    description: 'Створюйте процеси підтвердження, щоб оновлювати дані людей з профілю співробітника або каталогу працівників.',
+    newTitle: 'Нова форма зміни даних',
+    icon: Edit3,
+    sections: defaultRequestSections,
+  },
+  {
+    type: 'self_service',
+    title: 'Запит на самообслуговування',
+    description: 'Дозвольте людям самостійно оновлювати свої особисті дані.',
+    newTitle: 'Нова форма самообслуговування',
+    icon: Users,
+    sections: defaultRequestSections,
+  },
+  {
+    type: 'custom_request',
+    title: 'Кастомний запит',
+    description: 'Створюйте кастомні форми запиту, наприклад запит активів або відшкодування витрат.',
+    newTitle: 'Нова кастомна форма',
+    icon: ListChecks,
+    sections: defaultRequestSections,
+  },
+  {
+    type: 'termination',
+    title: 'Звільнення',
+    description: 'Керуйте запитами на звільнення співробітників за допомогою налаштованих полів та схвалень.',
+    newTitle: 'Нова форма звільнення',
+    icon: LogOut,
+    sections: defaultRequestSections,
+  },
+];
+
+const settingsFormDefinitionByType = new Map(settingsFormDefinitions.map((item) => [item.type, item]));
+
+function cloneFormSections(sections: EmployeeFormSection[]): EmployeeFormSection[] {
+  return sections.map((section) => ({
+    ...section,
+    fields: section.fields.map((field) => ({ ...field })),
+  }));
+}
+
+function normalizeEmployeeFormType(value: string | null): EmployeeFormType {
+  return settingsFormDefinitionByType.has(value as EmployeeFormType) ? (value as EmployeeFormType) : 'new_hire';
+}
+
+function settingsFormsRouteFromLocation(pathname: string, search: string): SettingsFormsRoute {
+  const [, slug, action] = pathname.split('/').filter(Boolean);
+  if (slug === 'forms' && action === 'new') {
+    return { mode: 'new', formType: normalizeEmployeeFormType(new URLSearchParams(search).get('type')) };
+  }
+  return { mode: 'list' };
+}
+
+function emptySettingsFormDraft(formType: EmployeeFormType): SettingsFormDraft {
+  const definition = settingsFormDefinitionByType.get(formType) ?? settingsFormDefinitions[0];
+  const sections = cloneFormSections(definition.sections);
+  return {
+    form_type: definition.type,
+    name: '',
+    description: '',
+    allow_employee_access: true,
+    workflow_name: '',
+    allow_requester_disable_workflow: false,
+    preboarding_form: '',
+    absence_policy_names: '',
+    sections,
+    activeSectionId: sections[0]?.id || '',
+  };
+}
+
+function formTemplatePayloadFromDraft(draft: SettingsFormDraft): EmployeeFormTemplatePayload {
+  return {
+    form_type: draft.form_type,
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    allow_employee_access: draft.allow_employee_access,
+    workflow_name: draft.workflow_name.trim(),
+    allow_requester_disable_workflow: draft.allow_requester_disable_workflow,
+    preboarding_form: optionalNumber(draft.preboarding_form),
+    absence_policy_names: draft.absence_policy_names
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+    sections: draft.sections,
+    is_active: true,
+  };
+}
+
+function countFormTemplates(summary: EmployeeFormTemplateSummary[], formType: EmployeeFormType): number {
+  return summary.find((item) => item.form_type === formType)?.count ?? 0;
+}
+
+function settingsFormMeta(count: number): string {
+  if (!count) return '0 форм';
+  if (count === 1) return '1 форма';
+  if (count > 1 && count < 5) return `${count} форми`;
+  return `${count} форм`;
+}
+
+function SettingsFormsView({ onBack }: { onBack: () => void }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const route = settingsFormsRouteFromLocation(location.pathname, location.search);
+
+  if (route.mode === 'new') {
+    return (
+      <SettingsFormEditorView
+        formType={route.formType}
+        onCancel={() => navigate('/settings/forms')}
+        onSaved={() => navigate('/settings/forms')}
+      />
+    );
+  }
+
+  return <SettingsFormsListView onBack={onBack} onCreate={(formType) => navigate(`/settings/forms/new?type=${formType}`)} />;
+}
+
+function SettingsFormsListView({
+  onBack,
+  onCreate,
+}: {
+  onBack: () => void;
+  onCreate: (formType: EmployeeFormType) => void;
+}) {
+  const [summary, setSummary] = useState<EmployeeFormTemplateSummary[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    setError('');
+    api
+      .formTemplateSummary({ is_active: true })
+      .then((data) => {
+        if (cancelled) return;
+        setSummary(data);
+        setLoadState('ok');
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setSummary([]);
+        setError(loadError instanceof ApiError ? loadError.message : 'Не вдалося завантажити форми.');
+        setLoadState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <main className="settings-page settings-forms-page">
+      <header className="settings-form-header">
+        <div>
+          <button type="button" className="toolbar-button" onClick={onBack}>
+            <ChevronLeft size={17} />
+            Назад
+          </button>
+          <h1>Форми</h1>
+        </div>
+        <div className="settings-form-add">
+          <button type="button" className="primary-action" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen}>
+            <Plus size={17} />
+            Форма
+          </button>
+          {menuOpen ? (
+            <div className="settings-form-add-menu">
+              {settingsFormDefinitions.map((definition) => (
+                <button
+                  type="button"
+                  key={definition.type}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onCreate(definition.type);
+                  }}
+                >
+                  {definition.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      {error ? <p className="error-text settings-form-error">{error}</p> : null}
+
+      <section className="settings-template-card-grid" aria-busy={loadState === 'loading'}>
+        {settingsFormDefinitions.map((definition) => {
+          const Icon = definition.icon;
+          const count = countFormTemplates(summary, definition.type);
+          return (
+            <button type="button" className="settings-template-card" key={definition.type} onClick={() => onCreate(definition.type)}>
+              <span className="settings-template-card-icon">
+                <Icon size={18} />
+              </span>
+              <span className="settings-template-card-body">
+                <strong>{definition.title}</strong>
+                <em>{definition.description}</em>
+              </span>
+              <span className="settings-template-card-count" aria-label={settingsFormMeta(count)}>
+                {loadState === 'loading' ? '...' : count}
+              </span>
+            </button>
+          );
+        })}
+      </section>
+    </main>
+  );
+}
+
+function SettingsFormEditorView({
+  formType,
+  onCancel,
+  onSaved,
+}: {
+  formType: EmployeeFormType;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const definition = settingsFormDefinitionByType.get(formType) ?? settingsFormDefinitions[0];
+  const [step, setStep] = useState<SettingsFormEditorStep>('details');
+  const [draft, setDraft] = useState<SettingsFormDraft>(() => emptySettingsFormDraft(formType));
+  const [preboardingForms, setPreboardingForms] = useState<EmployeeFormTemplate[]>([]);
+  const [saveState, setSaveState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setDraft(emptySettingsFormDraft(formType));
+    setStep('details');
+    setError('');
+  }, [formType]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .formTemplates({ form_type: 'preboarding', is_active: true, page_size: 100 })
+      .then((result) => {
+        if (!cancelled) setPreboardingForms(result.items);
+      })
+      .catch(() => {
+        if (!cancelled) setPreboardingForms([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const activeSection = draft.sections.find((section) => section.id === draft.activeSectionId) ?? draft.sections[0];
+  const fieldCount = draft.sections.reduce((sum, section) => sum + section.fields.length, 0);
+  const subtitle = `${draft.sections.length} ${draft.sections.length === 1 ? 'розділ' : 'розділи'} · ${fieldCount} полів`;
+
+  function updateDraft(patch: Partial<SettingsFormDraft>) {
+    setDraft((current) => ({ ...current, ...patch }));
+    setError('');
+  }
+
+  function updateActiveSectionName(name: string) {
+    if (!activeSection) return;
+    setDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) => (section.id === activeSection.id ? { ...section, name } : section)),
+    }));
+  }
+
+  function updateField(fieldId: string, patch: Partial<EmployeeFormSection['fields'][number]>) {
+    if (!activeSection) return;
+    setDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) =>
+        section.id === activeSection.id
+          ? {
+              ...section,
+              fields: section.fields.map((field) => (field.id === fieldId ? { ...field, ...patch } : field)),
+            }
+          : section,
+      ),
+    }));
+  }
+
+  function addField() {
+    if (!activeSection) return;
+    const id = `custom_${Date.now()}`;
+    setDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) =>
+        section.id === activeSection.id
+          ? {
+              ...section,
+              fields: [...section.fields, { id, name: 'Нове поле', field_type: 'text', required: false }],
+            }
+          : section,
+      ),
+    }));
+  }
+
+  function removeField(fieldId: string) {
+    if (!activeSection) return;
+    setDraft((current) => ({
+      ...current,
+      sections: current.sections.map((section) =>
+        section.id === activeSection.id ? { ...section, fields: section.fields.filter((field) => field.id !== fieldId) } : section,
+      ),
+    }));
+  }
+
+  function addSection() {
+    const id = `section_${Date.now()}`;
+    setDraft((current) => ({
+      ...current,
+      activeSectionId: id,
+      sections: [...current.sections, { id, name: 'Новий розділ', fields: [] }],
+    }));
+  }
+
+  function goSections() {
+    if (!draft.name.trim()) {
+      setError("Вкажіть назву форми.");
+      return;
+    }
+    setStep('sections');
+    setError('');
+  }
+
+  async function saveForm() {
+    if (!draft.name.trim()) {
+      setStep('details');
+      setError("Вкажіть назву форми.");
+      return;
+    }
+    setSaveState('loading');
+    setError('');
+    try {
+      await api.createFormTemplate(formTemplatePayloadFromDraft(draft));
+      setSaveState('ok');
+      onSaved();
+    } catch (saveError) {
+      setSaveState('error');
+      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося зберегти форму.');
+    }
+  }
+
+  return (
+    <main className="settings-page settings-form-editor-page">
+      <header className="settings-form-editor-header">
+        <button type="button" className="toolbar-button" onClick={onCancel}>
+          <ChevronLeft size={17} />
+          Назад
+        </button>
+        <h1>{definition.newTitle}</h1>
+        <span>{subtitle}</span>
+      </header>
+
+      <div className="settings-form-editor-tabs">
+        <button type="button" className={step === 'details' ? 'active' : ''} onClick={() => setStep('details')}>
+          {step === 'sections' ? <Check size={16} /> : null}
+          Деталі
+        </button>
+        <button type="button" className={step === 'sections' ? 'active' : ''} onClick={goSections}>
+          Розділи
+        </button>
+      </div>
+
+      {error ? <p className="error-text settings-form-error">{error}</p> : null}
+
+      {step === 'details' ? (
+        <section className="settings-form-editor-panel">
+          <label>
+            <span>Назва</span>
+            <input value={draft.name} onChange={(event) => updateDraft({ name: event.target.value })} autoFocus />
+          </label>
+          <label>
+            <span>
+              Опис <em>За бажанням</em>
+            </span>
+            <input value={draft.description} onChange={(event) => updateDraft({ description: event.target.value })} />
+          </label>
+
+          <div className="settings-form-editor-section">
+            <h2>Доступ</h2>
+            <label className="settings-option-checkbox settings-form-checkbox">
+              <input
+                type="checkbox"
+                checked={draft.allow_employee_access}
+                onChange={(event) => updateDraft({ allow_employee_access: event.target.checked })}
+              />
+              <span>
+                Дозволити працівнику мати доступ до системи
+                <small>Якщо вимкнено, люди зможуть увійти в PeopleForce.</small>
+              </span>
+            </label>
+          </div>
+
+          <div className="settings-form-editor-section">
+            <h2>Запустити воркфлоу</h2>
+            <p>Запускайте воркфлоу, коли нового співробітника додано в систему, щоб автоматизувати завдання.</p>
+            <label>
+              <span>
+                Воркфлоу <em>За бажанням</em>
+              </span>
+              <select value={draft.workflow_name} onChange={(event) => updateDraft({ workflow_name: event.target.value })}>
+                <option value="">-- Немає --</option>
+                <option value="Пребординг Запоріжжя">Пребординг Запоріжжя</option>
+                <option value="Пребординг Львів">Пребординг Львів</option>
+                <option value="Оновлення даних працівника">Оновлення даних працівника</option>
+              </select>
+            </label>
+            <label className="settings-option-checkbox settings-form-checkbox">
+              <input
+                type="checkbox"
+                checked={draft.allow_requester_disable_workflow}
+                onChange={(event) => updateDraft({ allow_requester_disable_workflow: event.target.checked })}
+              />
+              <span>Дозволити запитувачу вимикати воркфлоу</span>
+            </label>
+          </div>
+
+          <div className="settings-form-editor-section">
+            <h2>Запустити форму пребордингу співробітника</h2>
+            <p>Тут можна, за бажанням, запустити форму пребордингу, яка надсилатиметься щойно створеним співробітникам.</p>
+            <label>
+              <span>
+                Форма пребордингу <em>За бажанням</em>
+              </span>
+              <select value={draft.preboarding_form} onChange={(event) => updateDraft({ preboarding_form: event.target.value })}>
+                <option value="">-- Немає --</option>
+                {preboardingForms.map((form) => (
+                  <option key={form.id} value={form.id}>
+                    {form.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="settings-form-editor-section">
+            <h2>Призначити політики відсутності</h2>
+            <p>Виберіть кілька політик відпустки, які ви хочете автоматично призначити новому співробітнику.</p>
+            <label>
+              <span>
+                Політики відсутностей <em>За бажанням</em>
+              </span>
+              <input
+                value={draft.absence_policy_names}
+                placeholder="Наприклад: Основна, Лікарняні"
+                onChange={(event) => updateDraft({ absence_policy_names: event.target.value })}
+              />
+            </label>
+          </div>
+        </section>
+      ) : (
+        <section className="settings-form-sections-layout">
+          <aside className="settings-form-sections-nav">
+            <div>
+              <strong>Розділи</strong>
+              <button type="button" aria-label="Додати розділ" onClick={addSection}>
+                <Plus size={17} />
+              </button>
+            </div>
+            {draft.sections.map((section) => (
+              <button
+                type="button"
+                key={section.id}
+                className={section.id === activeSection?.id ? 'active' : ''}
+                onClick={() => updateDraft({ activeSectionId: section.id })}
+              >
+                <GripVertical size={15} />
+                <FileText size={16} />
+                <span>{section.name}</span>
+                <em>{section.fields.length}</em>
+              </button>
+            ))}
+          </aside>
+
+          <div className="settings-form-fields-panel">
+            <header>
+              <label>
+                <span>Назва розділу</span>
+                <input value={activeSection?.name || ''} onChange={(event) => updateActiveSectionName(event.target.value)} />
+              </label>
+              <button type="button" className="toolbar-button" aria-label="Налаштування">
+                <MoreHorizontal size={18} />
+              </button>
+            </header>
+            <div className="settings-form-fields-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Назва</th>
+                    <th>Тип</th>
+                    <th>Обов'язково</th>
+                    <th>Дії</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeSection?.fields.map((field) => (
+                    <tr key={field.id}>
+                      <td>
+                        <input value={field.name} onChange={(event) => updateField(field.id, { name: event.target.value })} />
+                      </td>
+                      <td>
+                        <select value={field.field_type || 'text'} onChange={(event) => updateField(field.id, { field_type: event.target.value })}>
+                          <option value="text">Текст</option>
+                          <option value="textarea">Довгий текст</option>
+                          <option value="date">Дата</option>
+                          <option value="select">Список</option>
+                          <option value="employee">Працівник</option>
+                          <option value="photo">Фото</option>
+                          <option value="group">Група</option>
+                          <option value="multi_select">Мультивибір</option>
+                        </select>
+                      </td>
+                      <td>
+                        <label className="settings-form-required">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(field.required)}
+                            onChange={(event) => updateField(field.id, { required: event.target.checked })}
+                          />
+                        </label>
+                      </td>
+                      <td>
+                        <button type="button" className="toolbar-icon danger" aria-label="Видалити поле" onClick={() => removeField(field.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!activeSection?.fields.length ? (
+                    <tr>
+                      <td colSpan={4}>
+                        <EmptyState title="Полів ще немає" text="Додайте перше поле для цього розділу." />
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="secondary-action settings-form-add-field" onClick={addField}>
+              <Plus size={17} />
+              Додати
+            </button>
+          </div>
+        </section>
+      )}
+
+      <footer className="settings-form-editor-footer">
+        <button type="button" className="secondary-action" onClick={step === 'details' ? onCancel : () => setStep('details')} disabled={saveState === 'loading'}>
+          {step === 'details' ? 'Скасувати' : 'Назад'}
+        </button>
+        <button type="button" className="primary-action" onClick={step === 'details' ? goSections : () => void saveForm()} disabled={saveState === 'loading'}>
+          {step === 'details' ? 'Далі' : saveState === 'loading' ? 'Збереження...' : 'Завершити'}
+          {step === 'details' ? <ChevronRight size={16} /> : <Check size={16} />}
+        </button>
+      </footer>
+    </main>
+  );
+}
+
 function SettingsView({
   brandingSettings,
   onBrandingChange,
@@ -14324,6 +14992,10 @@ function SettingsView({
 
   if (activeSlug === 'general') {
     return <SettingsGeneralView onBack={() => navigate('/settings')} brandingSettings={brandingSettings} onBrandingChange={onBrandingChange} />;
+  }
+
+  if (activeSlug === 'forms') {
+    return <SettingsFormsView onBack={() => navigate('/settings')} />;
   }
 
   if (

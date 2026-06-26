@@ -125,6 +125,51 @@ export type WorkType = {
   employee_count: number;
 };
 
+export type EmployeeFormType =
+  | 'new_hire'
+  | 'preboarding'
+  | 'people_data_change'
+  | 'self_service'
+  | 'custom_request'
+  | 'termination';
+
+export type EmployeeFormField = {
+  id: string;
+  name: string;
+  field_type?: string;
+  required?: boolean;
+};
+
+export type EmployeeFormSection = {
+  id: string;
+  name: string;
+  fields: EmployeeFormField[];
+};
+
+export type EmployeeFormTemplate = {
+  id: number;
+  form_type: EmployeeFormType;
+  form_type_label: string;
+  name: string;
+  description: string;
+  allow_employee_access: boolean;
+  workflow_name: string;
+  allow_requester_disable_workflow: boolean;
+  preboarding_form: number | null;
+  preboarding_form_name: string;
+  absence_policy_names: string[];
+  sections: EmployeeFormSection[];
+  section_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EmployeeFormTemplateSummary = {
+  form_type: EmployeeFormType;
+  count: number;
+};
+
 export type ProbationPolicyOption = {
   id: number;
   name: string;

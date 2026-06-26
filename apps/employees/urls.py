@@ -7,6 +7,7 @@ from .views import (
     DivisionViewSet,
     EmployeeDocumentFolderViewSet,
     EmployeeDocumentViewSet,
+    EmployeeFormTemplateViewSet,
     EmployeeViewSet,
     EmploymentTypeViewSet,
     GenderViewSet,
@@ -30,6 +31,7 @@ router.register("department-levels", DepartmentLevelViewSet, basename="departmen
 router.register("positions", PositionViewSet, basename="position")
 router.register("divisions", DivisionViewSet, basename="division")
 router.register("employment-types", EmploymentTypeViewSet, basename="employment-type")
+router.register("form-templates", EmployeeFormTemplateViewSet, basename="employee-form-template")
 router.register("holiday-policies", HolidayPolicyViewSet, basename="holiday-policy")
 router.register("holidays", HolidayViewSet, basename="holiday")
 router.register("working-patterns", WorkingPatternViewSet, basename="working-pattern")

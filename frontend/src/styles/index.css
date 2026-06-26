@@ -4581,8 +4581,110 @@ button:disabled {
   width: min(720px, calc(100vw - 40px));
 }
 
-.new-hire-picker-modal label {
-  padding-bottom: 28px;
+.new-hire-picker-field {
+  padding-bottom: 22px;
+}
+
+.new-hire-picker-select {
+  display: grid;
+  gap: 6px;
+}
+
+.new-hire-picker-trigger {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 10px 0 12px;
+  text-align: left;
+}
+
+.new-hire-picker-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-hire-picker-trigger svg {
+  flex: 0 0 auto;
+  color: #456587;
+}
+
+.new-hire-picker-select.open .new-hire-picker-trigger {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.new-hire-picker-trigger:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+}
+
+.new-hire-picker-menu {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 14px 34px rgba(18, 32, 54, 0.16);
+  overflow: hidden;
+}
+
+.new-hire-picker-search {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  color: #456587;
+}
+
+.new-hire-picker-search input {
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 0;
+  outline: 0;
+}
+
+.new-hire-picker-list {
+  max-height: 260px;
+  display: grid;
+  overflow: auto;
+}
+
+.new-hire-picker-list button,
+.new-hire-picker-empty {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: #456587;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.new-hire-picker-list button:last-child {
+  border-bottom: 0;
+}
+
+.new-hire-picker-list button:hover,
+.new-hire-picker-list button.active {
+  background: color-mix(in srgb, var(--primary) 11%, var(--panel));
+  color: var(--text);
+}
+
+.new-hire-picker-empty {
+  color: var(--muted);
 }
 
 .summary-field {
@@ -11232,6 +11334,557 @@ button.org-graph-card-body {
   line-height: 1.35;
 }
 
+.settings-forms-page,
+.settings-form-editor-page {
+  padding-bottom: 86px;
+}
+
+.settings-forms-page .settings-form-header,
+.settings-form-editor-header {
+  width: min(100%, calc(100% - 48px));
+  min-height: 92px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line-strong);
+  margin: 0 auto;
+  padding: 14px 12px 18px 20px;
+}
+
+.settings-forms-page .settings-form-header > div:first-child,
+.settings-form-editor-header {
+  min-width: 0;
+}
+
+.settings-forms-page .settings-form-header h1,
+.settings-form-editor-header h1 {
+  margin: 14px 0 0;
+  color: #061c3d;
+  font-size: var(--font-display);
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.settings-form-editor-header {
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.settings-form-editor-header span {
+  color: #557392;
+  font-size: 12px;
+}
+
+.settings-form-add {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+.settings-form-add-menu {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 244px;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 18px 38px rgba(31, 52, 84, 0.16);
+}
+
+.settings-form-add-menu button {
+  min-height: 38px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: #315a83;
+  padding: 0 16px;
+  text-align: left;
+}
+
+.settings-form-add-menu button:last-child {
+  border-bottom: 0;
+}
+
+.settings-form-add-menu button:hover {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.settings-form-error {
+  width: min(100%, calc(100% - 48px));
+  margin: 12px auto 0;
+}
+
+.settings-template-card-grid {
+  width: min(100%, calc(100% - 48px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 14px auto 0;
+}
+
+.settings-template-card {
+  position: relative;
+  min-height: 98px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(31, 52, 84, 0.08);
+  color: #061c3d;
+  padding: 14px 12px;
+  text-align: left;
+}
+
+.settings-template-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: 0 8px 20px rgba(31, 52, 84, 0.12);
+}
+
+.settings-template-card-icon,
+.settings-template-card-count {
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.settings-template-card-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.settings-template-card-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-template-card-body {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.settings-template-card-body strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.settings-template-card-body em {
+  color: #315a83;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.settings-form-editor-tabs {
+  width: min(100%, calc(100% - 48px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 3px 10px rgba(31, 52, 84, 0.08);
+  margin: 0 auto 14px;
+}
+
+.settings-form-editor-tabs button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: #8295aa;
+  padding: 0 16px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.settings-form-editor-tabs button:last-child {
+  border-right: 0;
+}
+
+.settings-form-editor-tabs button.active {
+  color: #061c3d;
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+
+.settings-form-editor-panel,
+.settings-form-sections-layout {
+  width: min(1090px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.settings-form-editor-panel {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(31, 52, 84, 0.08);
+}
+
+.settings-form-editor-panel label,
+.settings-form-fields-panel label {
+  display: grid;
+  gap: 6px;
+  color: #061c3d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-form-editor-panel > label,
+.settings-form-editor-section {
+  padding: 14px;
+}
+
+.settings-form-editor-section {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-form-editor-section h2,
+.settings-form-editor-section p {
+  margin: 0;
+}
+
+.settings-form-editor-section h2 {
+  color: #061c3d;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.settings-form-editor-section p {
+  color: #315a83;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-form-editor-panel label span,
+.settings-form-fields-panel label span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-form-editor-panel label em,
+.settings-form-fields-panel label em {
+  color: #8da1b6;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.settings-form-editor-panel input:not([type="checkbox"]),
+.settings-form-editor-panel select,
+.settings-form-fields-panel input,
+.settings-form-fields-panel select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 0 10px;
+  outline: 0;
+}
+
+.settings-form-checkbox {
+  width: auto !important;
+  min-height: 22px;
+  grid-template-columns: 18px minmax(0, 1fr) !important;
+  padding: 0 !important;
+}
+
+.settings-form-checkbox span {
+  display: grid !important;
+  gap: 3px !important;
+  justify-content: start !important;
+}
+
+.settings-form-checkbox small {
+  color: #557392;
+  font-weight: 500;
+}
+
+.settings-form-sections-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 22px;
+}
+
+.settings-form-sections-nav,
+.settings-form-fields-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 4px 14px rgba(31, 52, 84, 0.08);
+}
+
+.settings-form-sections-nav {
+  align-self: start;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.settings-form-sections-nav > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  color: #315a83;
+}
+
+.settings-form-sections-nav > div button {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #315a83;
+}
+
+.settings-form-sections-nav > div button:hover {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.settings-form-sections-nav > button {
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: 18px 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #315a83;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.settings-form-sections-nav > button.active {
+  background: var(--panel-soft);
+  color: #061c3d;
+  font-weight: 700;
+}
+
+.settings-form-sections-nav > button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-form-sections-nav > button em {
+  min-width: 22px;
+  border-radius: 5px;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 12px;
+  font-style: normal;
+  text-align: center;
+}
+
+.settings-form-fields-panel {
+  overflow: hidden;
+  padding: 14px;
+}
+
+.settings-form-fields-panel > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.settings-form-fields-table {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-form-fields-table table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.settings-form-fields-table th,
+.settings-form-fields-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.settings-form-fields-table th {
+  background: var(--panel-soft);
+  color: #557392;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-form-fields-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.settings-form-fields-table th:nth-child(3),
+.settings-form-fields-table td:nth-child(3),
+.settings-form-fields-table th:nth-child(4),
+.settings-form-fields-table td:nth-child(4) {
+  width: 86px;
+  text-align: center;
+}
+
+.settings-form-required {
+  display: inline-flex !important;
+  justify-content: center;
+}
+
+.settings-form-required input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+}
+
+.settings-form-add-field {
+  margin-top: 12px;
+}
+
+.settings-form-editor-footer {
+  position: fixed;
+  z-index: 25;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-width);
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(14px);
+  padding: 0 22px;
+}
+
+.sidebar-collapsed .settings-form-editor-footer {
+  left: var(--sidebar-collapsed-width);
+}
+
+.app-shell[data-theme="dark"] .settings-template-card,
+.app-shell[data-theme="dark"] .settings-form-add-menu,
+.app-shell[data-theme="dark"] .settings-form-editor-tabs,
+.app-shell[data-theme="dark"] .settings-form-editor-panel,
+.app-shell[data-theme="dark"] .settings-form-sections-nav,
+.app-shell[data-theme="dark"] .settings-form-fields-panel,
+.app-shell[data-theme="dark"] .settings-form-fields-table,
+.app-shell[data-theme="dark"] .settings-form-editor-footer {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(20, 31, 45, 0.96);
+}
+
+.app-shell[data-theme="dark"] .settings-forms-page .settings-form-header h1,
+.app-shell[data-theme="dark"] .settings-form-editor-header h1,
+.app-shell[data-theme="dark"] .settings-template-card,
+.app-shell[data-theme="dark"] .settings-template-card-body strong,
+.app-shell[data-theme="dark"] .settings-form-editor-tabs button.active,
+.app-shell[data-theme="dark"] .settings-form-editor-section h2,
+.app-shell[data-theme="dark"] .settings-form-editor-panel label,
+.app-shell[data-theme="dark"] .settings-form-fields-panel label,
+.app-shell[data-theme="dark"] .settings-form-sections-nav > button.active {
+  color: #f4f7fb;
+}
+
+.app-shell[data-theme="dark"] .settings-template-card-body em,
+.app-shell[data-theme="dark"] .settings-form-editor-header span,
+.app-shell[data-theme="dark"] .settings-form-editor-section p,
+.app-shell[data-theme="dark"] .settings-form-checkbox small,
+.app-shell[data-theme="dark"] .settings-form-fields-table th,
+.app-shell[data-theme="dark"] .settings-form-add-menu button {
+  color: #adc0d5;
+}
+
+.app-shell[data-theme="dark"] .settings-form-editor-tabs button,
+.app-shell[data-theme="dark"] .settings-form-sections-nav > div,
+.app-shell[data-theme="dark"] .settings-form-sections-nav > button {
+  color: #8ea4bb;
+}
+
+.app-shell[data-theme="dark"] .settings-form-fields-table th,
+.app-shell[data-theme="dark"] .settings-form-sections-nav > button.active {
+  background: rgba(31, 45, 63, 0.92);
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-shell[data-theme="auto"] .settings-template-card,
+  .app-shell[data-theme="auto"] .settings-form-add-menu,
+  .app-shell[data-theme="auto"] .settings-form-editor-tabs,
+  .app-shell[data-theme="auto"] .settings-form-editor-panel,
+  .app-shell[data-theme="auto"] .settings-form-sections-nav,
+  .app-shell[data-theme="auto"] .settings-form-fields-panel,
+  .app-shell[data-theme="auto"] .settings-form-fields-table,
+  .app-shell[data-theme="auto"] .settings-form-editor-footer {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(20, 31, 45, 0.96);
+  }
+
+  .app-shell[data-theme="auto"] .settings-forms-page .settings-form-header h1,
+  .app-shell[data-theme="auto"] .settings-form-editor-header h1,
+  .app-shell[data-theme="auto"] .settings-template-card,
+  .app-shell[data-theme="auto"] .settings-template-card-body strong,
+  .app-shell[data-theme="auto"] .settings-form-editor-tabs button.active,
+  .app-shell[data-theme="auto"] .settings-form-editor-section h2,
+  .app-shell[data-theme="auto"] .settings-form-editor-panel label,
+  .app-shell[data-theme="auto"] .settings-form-fields-panel label,
+  .app-shell[data-theme="auto"] .settings-form-sections-nav > button.active {
+    color: #f4f7fb;
+  }
+
+  .app-shell[data-theme="auto"] .settings-template-card-body em,
+  .app-shell[data-theme="auto"] .settings-form-editor-header span,
+  .app-shell[data-theme="auto"] .settings-form-editor-section p,
+  .app-shell[data-theme="auto"] .settings-form-checkbox small,
+  .app-shell[data-theme="auto"] .settings-form-fields-table th,
+  .app-shell[data-theme="auto"] .settings-form-add-menu button {
+    color: #adc0d5;
+  }
+
+  .app-shell[data-theme="auto"] .settings-form-editor-tabs button,
+  .app-shell[data-theme="auto"] .settings-form-sections-nav > div,
+  .app-shell[data-theme="auto"] .settings-form-sections-nav > button {
+    color: #8ea4bb;
+  }
+
+  .app-shell[data-theme="auto"] .settings-form-fields-table th,
+  .app-shell[data-theme="auto"] .settings-form-sections-nav > button.active {
+    background: rgba(31, 45, 63, 0.92);
+  }
+}
+
 .settings-cover-crop-modal {
   position: relative;
   z-index: 1;
@@ -11669,7 +12322,14 @@ td {
   .settings-groups,
   .settings-detail-header,
   .settings-detail-panel,
-  .settings-form-section {
+  .settings-form-section,
+  .settings-forms-page .settings-form-header,
+  .settings-form-editor-header,
+  .settings-template-card-grid,
+  .settings-form-editor-tabs,
+  .settings-form-editor-panel,
+  .settings-form-sections-layout,
+  .settings-form-error {
     width: auto;
     margin-left: 0;
     margin-right: 0;
@@ -11683,6 +12343,20 @@ td {
   .settings-grid {
     grid-template-columns: repeat(2, minmax(180px, 1fr));
     column-gap: 26px;
+  }
+
+  .settings-template-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-form-sections-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .settings-form-editor-footer {
+    left: 0;
+    padding: 0 12px calc(env(safe-area-inset-bottom) / 2);
   }
 
   .settings-option-header,
@@ -11930,6 +12604,42 @@ td {
 
   .settings-grid,
   .settings-detail-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-template-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-template-card {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    min-height: 92px;
+  }
+
+  .settings-forms-page .settings-form-header,
+  .settings-form-editor-header {
+    min-height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 0 0 12px;
+  }
+
+  .settings-form-add,
+  .settings-form-add .primary-action,
+  .settings-form-add-menu {
+    width: 100%;
+  }
+
+  .settings-form-add-menu {
+    position: static;
+    margin-top: 8px;
+  }
+
+  .settings-form-editor-tabs {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .settings-form-fields-panel > header {
     grid-template-columns: 1fr;
   }
 

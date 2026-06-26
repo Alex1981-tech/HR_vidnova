@@ -177,6 +177,47 @@ class EmploymentType(TimestampedModel):
         return self.name
 
 
+class EmployeeFormTemplate(TimestampedModel):
+    class FormType(models.TextChoices):
+        NEW_HIRE = "new_hire", "New hire"
+        PREBOARDING = "preboarding", "Preboarding"
+        PEOPLE_DATA_CHANGE = "people_data_change", "People data change"
+        SELF_SERVICE = "self_service", "Self service"
+        CUSTOM_REQUEST = "custom_request", "Custom request"
+        TERMINATION = "termination", "Termination"
+
+    form_type = models.CharField(max_length=40, choices=FormType.choices, db_index=True)
+    name = models.CharField(max_length=180)
+    description = models.TextField(blank=True)
+    allow_employee_access = models.BooleanField(default=True)
+    workflow_name = models.CharField(max_length=180, blank=True)
+    allow_requester_disable_workflow = models.BooleanField(default=False)
+    preboarding_form = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="hire_form_templates",
+    )
+    absence_policy_names = models.JSONField(default=list, blank=True)
+    sections = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["form_type", "name"]
+        indexes = [
+            models.Index(fields=["form_type", "is_active"], name="employee_form_type_active_idx"),
+            models.Index(fields=["is_active", "name"], name="employee_form_active_name_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def section_count(self) -> int:
+        return len(self.sections or [])
+
+
 class WorkingPattern(TimestampedModel):
     name = models.CharField(max_length=180, unique=True)
     external_peopleforce_id = models.CharField(max_length=120, blank=True, db_index=True)

@@ -15,6 +15,7 @@ from .models import (
     Employee,
     EmployeeDocument,
     EmployeeDocumentFolder,
+    EmployeeFormTemplate,
     EmploymentType,
     Gender,
     Holiday,
@@ -38,6 +39,7 @@ from .serializers import (
     EmployeeDocumentFolderSerializer,
     EmployeeDocumentSerializer,
     EmployeeCompactSerializer,
+    EmployeeFormTemplateSerializer,
     EmployeeHireSerializer,
     EmployeeSerializer,
     EmploymentTypeSerializer,
@@ -302,6 +304,35 @@ class EmploymentTypeViewSet(EmployeeApiViewSet):
             instance.save(update_fields=["is_active", "updated_at"])
             return
         instance.delete()
+
+
+class EmployeeFormTemplateViewSet(EmployeeApiViewSet):
+    serializer_class = EmployeeFormTemplateSerializer
+
+    def get_queryset(self):
+        qs = EmployeeFormTemplate.objects.select_related("preboarding_form").order_by("form_type", "name")
+        form_type = self.request.query_params.get("form_type", "").strip()
+        if form_type:
+            qs = qs.filter(form_type=form_type)
+        search = self.request.query_params.get("q", "").strip()
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
+        is_active = self.request.query_params.get("is_active", "true")
+        if is_active in {"true", "1"}:
+            qs = qs.filter(is_active=True)
+        elif is_active in {"false", "0"}:
+            qs = qs.filter(is_active=False)
+        return qs
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        queryset = self.get_queryset()
+        rows = queryset.values("form_type").annotate(count=Count("id")).order_by("form_type")
+        return Response(list(rows))
 
 
 class WorkingPatternViewSet(EmployeeApiViewSet):

@@ -12,6 +12,7 @@ from .models import (
     EmployeeDocument,
     EmployeeDocumentFolder,
     EmployeeEmploymentStatus,
+    EmployeeFormTemplate,
     EmploymentType,
     ExternalEmployeeLink,
     Gender,
@@ -279,6 +280,72 @@ class EmploymentTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmploymentType
         fields = ("id", "name", "external_peopleforce_id", "is_active", "employee_count")
+
+
+class EmployeeFormTemplateSerializer(serializers.ModelSerializer):
+    form_type_label = serializers.CharField(source="get_form_type_display", read_only=True)
+    preboarding_form_name = serializers.CharField(source="preboarding_form.name", read_only=True)
+    section_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = EmployeeFormTemplate
+        fields = (
+            "id",
+            "form_type",
+            "form_type_label",
+            "name",
+            "description",
+            "allow_employee_access",
+            "workflow_name",
+            "allow_requester_disable_workflow",
+            "preboarding_form",
+            "preboarding_form_name",
+            "absence_policy_names",
+            "sections",
+            "section_count",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("created_at", "updated_at")
+        extra_kwargs = {
+            "description": {"required": False, "allow_blank": True},
+            "workflow_name": {"required": False, "allow_blank": True},
+            "absence_policy_names": {"required": False},
+            "sections": {"required": False},
+            "preboarding_form": {"required": False, "allow_null": True},
+        }
+
+    def validate_sections(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Sections must be a list.")
+        for index, section in enumerate(value, start=1):
+            if not isinstance(section, dict):
+                raise serializers.ValidationError(f"Section {index} must be an object.")
+            if not str(section.get("name", "")).strip():
+                raise serializers.ValidationError(f"Section {index} must have a name.")
+            fields = section.get("fields", [])
+            if fields is None:
+                section["fields"] = []
+                continue
+            if not isinstance(fields, list):
+                raise serializers.ValidationError(f"Section {index} fields must be a list.")
+        return value
+
+    def validate_absence_policy_names(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Absence policies must be a list.")
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    def validate(self, attrs):
+        preboarding_form = attrs.get("preboarding_form")
+        if self.instance and preboarding_form and preboarding_form.pk == self.instance.pk:
+            raise serializers.ValidationError({"preboarding_form": "Form cannot reference itself."})
+        return attrs
 
 
 class WorkingPatternSerializer(serializers.ModelSerializer):

@@ -7,6 +7,7 @@ from apps.employees.models import (
     Clinic,
     Employee,
     EmployeeEmploymentStatus,
+    EmployeeFormTemplate,
     EmploymentType,
     ManagerAssignment,
     WorkingPattern,
@@ -63,3 +64,51 @@ class EmployeeHireApiTests(APITestCase):
         status = EmployeeEmploymentStatus.objects.get(employee=employee)
         self.assertEqual(status.employment_type, employment_type)
         self.assertEqual(status.working_pattern_name, working_pattern.name)
+
+
+class EmployeeFormTemplateApiTests(APITestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="hr-forms", password="test")
+        self.client.force_authenticate(self.user)
+
+    def test_create_form_template_and_summary(self):
+        response = self.client.post(
+            "/api/employees/form-templates/",
+            {
+                "form_type": EmployeeFormTemplate.FormType.NEW_HIRE,
+                "name": "Тестова форма найму",
+                "description": "Форма для перевірки створення.",
+                "allow_employee_access": True,
+                "workflow_name": "Пребординг Запоріжжя",
+                "allow_requester_disable_workflow": False,
+                "sections": [
+                    {
+                        "id": "work_details",
+                        "name": "Деталі роботи",
+                        "fields": [{"id": "position", "name": "Посада", "required": True}],
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["section_count"], 1)
+        self.assertTrue(EmployeeFormTemplate.objects.filter(name="Тестова форма найму").exists())
+
+        summary = self.client.get("/api/employees/form-templates/summary/")
+        self.assertEqual(summary.status_code, 200)
+        counts = {row["form_type"]: row["count"] for row in summary.data}
+        self.assertGreaterEqual(counts.get(EmployeeFormTemplate.FormType.NEW_HIRE, 0), 1)
+
+    def test_soft_delete_form_template(self):
+        template = EmployeeFormTemplate.objects.create(
+            form_type=EmployeeFormTemplate.FormType.CUSTOM_REQUEST,
+            name="Архівний кастомний запит",
+        )
+
+        response = self.client.delete(f"/api/employees/form-templates/{template.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        template.refresh_from_db()
+        self.assertFalse(template.is_active)
