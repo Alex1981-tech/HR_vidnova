@@ -1,0 +1,88 @@
+diff --git a/frontend/src/styles/index.css b/frontend/src/styles/index.css
+index a17baff..2c3efe1 100644
+--- a/frontend/src/styles/index.css
++++ b/frontend/src/styles/index.css
+@@ -12894,3 +12894,71 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
+     width: 100%;
+   }
+ }
++
++/* ===== Design Phase 5.2: attendance company table -> stacked cards on phone ===== */
++@media (max-width: 640px) { /* --bp-sm */
++  .attendance-table-shell table,
++  .attendance-table-shell tbody,
++  .attendance-table-shell tr,
++  .attendance-table-shell td {
++    display: block;
++    width: 100%;
++  }
++
++  .attendance-table-shell {
++    overflow-x: visible;
++  }
++
++  .attendance-table-shell thead {
++    display: none;
++  }
++
++  .attendance-table-shell tr.clickable-row {
++    border: 1px solid var(--line);
++    border-radius: var(--radius-md);
++    background: var(--panel);
++    box-shadow: var(--shadow-xs);
++    padding: var(--space-2) var(--space-3);
++    margin-bottom: var(--space-2);
++  }
++
++  .attendance-table-shell td {
++    height: auto;
++    border: 0;
++    padding: 4px 0;
++    display: flex;
++    align-items: center;
++    justify-content: space-between;
++    gap: var(--space-3);
++    white-space: normal;
++  }
++
++  .attendance-table-shell td.name-cell {
++    padding: 0 0 var(--space-2);
++    margin-bottom: var(--space-1);
++    border-bottom: 1px solid var(--border-subtle);
++  }
++
++  .attendance-table-shell td[data-label]::before {
++    content: attr(data-label);
++    flex: 0 0 auto;
++    color: var(--muted);
++    font-size: var(--font-caption);
++    font-weight: var(--fw-medium);
++    text-transform: uppercase;
++    letter-spacing: 0.03em;
++  }
++
++  /* остання комірка (кнопка-дія) — праворуч, без label */
++  .attendance-table-shell td:last-child {
++    justify-content: flex-end;
++    padding-top: var(--space-2);
++  }
++
++  /* empty-state на всю ширину картки */
++  .attendance-table-shell td[colspan] {
++    border: 0;
++    box-shadow: none;
++    padding: 0;
++  }
++}
+
+# ---- App.tsx companion change (apply manually after attendance-detail lands) ----
+# У компанійній таблиці (className="attendance-summary-table", ~рядок 4158) додати
+# data-label на 8 метричних <td>, щоб CSS-картки на телефоні мали підписи полів:
+#   <td data-label={headers[1]}>{row.expected}</td>
+#   <td data-label={headers[2]}>{row.worked}</td>
+#   <td data-label={headers[3]}>{row.overtime}</td>
+#   <td data-label={headers[4]}>{row.breakTime}</td>
+#   <td data-label={headers[5]}>{row.paidAbsence}</td>
+#   <td data-label={headers[6]}>{row.unpaidAbsence}</td>
+#   <td data-label={headers[7]}>{row.totalAbsence}</td>
+#   <td data-label={headers[8]}>{row.difference}</td>

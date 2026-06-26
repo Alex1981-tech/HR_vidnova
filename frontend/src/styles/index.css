@@ -12894,3 +12894,33 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
     width: 100%;
   }
 }
+
+/* ===== Design Phase 3.1: numeric column alignment + tabular figures ===== */
+.people-table td,
+.attendance-summary-table td,
+.leave-balance-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* числові колонки відвідуваності праворуч (усе крім імені та кнопки-дії) */
+.attendance-summary-table th:not(:first-child):not(:last-child),
+.attendance-summary-table td:not(.name-cell):not(:last-child) {
+  text-align: right;
+}
+
+/* ===== Design: a11y focus ring (tokenized, keyboard-only) ===== */
+.primary-action:focus-visible,
+.secondary-action:focus-visible,
+.toolbar-button:focus-visible,
+.toolbar-icon:focus-visible,
+.icon-button:focus-visible,
+.quick-add:focus-visible,
+.nav-button:focus-visible,
+.settings-link:focus-visible,
+.row-action:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
