@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.selfservice",
     "apps.integrations",
+    "apps.assets",
 ]
 
 MIDDLEWARE = [
@@ -177,6 +178,14 @@ CELERY_TIMEZONE = TIME_ZONE
 SKUD_UPROX_BASE_URL = os.getenv("SKUD_UPROX_BASE_URL", "")
 SKUD_ZKTECO_DEVICE_IP = os.getenv("SKUD_ZKTECO_DEVICE_IP", "")
 SKUD_SYNC_ENABLED = env_bool("SKUD_SYNC_ENABLED", False)
+
+# CMMS (vidnova-cmms) integration — assets + responsible person
+CMMS_API_BASE_URL = os.getenv("CMMS_API_BASE_URL", "")
+# Browser-facing CMMS URL for asset photos (signed /uploads links)
+CMMS_PUBLIC_URL = os.getenv("CMMS_PUBLIC_URL", "https://cmms.vidnova.com")
+CMMS_API_USERNAME = os.getenv("CMMS_API_USERNAME", "")
+CMMS_API_PASSWORD = os.getenv("CMMS_API_PASSWORD", "")
+CMMS_API_TIMEOUT = int(os.getenv("CMMS_API_TIMEOUT", "20"))
 
 PEOPLEFORCE_API_BASE_URL = os.getenv("PEOPLEFORCE_API_BASE_URL", "https://app.peopleforce.io/api/public/v3")
 PEOPLEFORCE_API_KEY = os.getenv("PEOPLEFORCE_API_KEY", "")

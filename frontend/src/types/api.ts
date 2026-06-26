@@ -472,3 +472,18 @@ export type SelfKnowledge = {
   categories: KnowledgeCategory[];
   documents: KnowledgeDocument[];
 };
+
+export type CmmsAsset = {
+  id: number;
+  inventory_number: string;
+  name: string;
+  status: string;
+  manufacturer?: string | null;
+  asset_type_id: number | null;
+  category_id: number | null;
+  location_id?: number | null;
+  department_id?: number | null;
+  responsible_person_id: number | null;
+  responsible_person_name: string | null;
+  photo_url?: string | null;
+};

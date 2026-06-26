@@ -2,6 +2,7 @@ import {
   Bell,
   BookOpen,
   Bold,
+  Boxes,
   BriefcaseBusiness,
   Building2,
   Calendar,
@@ -86,6 +87,7 @@ import type {
   CompanyAttendanceSummary,
   DashboardOverview,
   DepartmentLevelOption,
+  CmmsAsset,
   DepartmentOption,
   DivisionOption,
   EmployeeListItem,
@@ -117,6 +119,7 @@ type Section =
   | 'attendance'
   | 'requests'
   | 'knowledge'
+  | 'assets'
   | 'reports'
   | 'org'
   | 'settings';
@@ -268,6 +271,7 @@ const sidebarItems: Array<{ section: Section; icon: LucideIcon; badge?: number; 
   { section: 'attendance', icon: Clock3 },
   { section: 'requests', icon: Zap },
   { section: 'knowledge', icon: BookOpen },
+  { section: 'assets', icon: Boxes },
   { section: 'reports', icon: Columns3 },
 ];
 
@@ -281,6 +285,7 @@ const sectionPaths: Record<Section, string> = {
   attendance: '/attendance',
   requests: '/requests',
   knowledge: '/knowledge',
+  assets: '/assets',
   reports: '/reports',
   org: '/org',
   settings: '/settings',
@@ -293,6 +298,7 @@ const pathSectionMap: Record<string, Section> = {
   attendance: 'attendance',
   requests: 'requests',
   knowledge: 'knowledge',
+  assets: 'assets',
   reports: 'reports',
   org: 'org',
   settings: 'settings',
@@ -1157,6 +1163,29 @@ function Topbar({
 
 type LoginStep = 'phone' | 'code';
 
+const authModules: Array<{ title: string; text: string; icon: LucideIcon }> = [
+  {
+    title: 'Облік часу',
+    text: 'Дані зі СКУД, зміни, запізнення та присутність.',
+    icon: Clock3,
+  },
+  {
+    title: 'Відпустки',
+    text: 'Заявки керівнику, погодження та історія рішень.',
+    icon: CalendarCheck,
+  },
+  {
+    title: 'База знань',
+    text: 'Інструкції, правила, документи та внутрішні процеси.',
+    icon: BookOpen,
+  },
+  {
+    title: 'Оргструктура',
+    text: 'Візуальний граф керівників, відділів і ролей.',
+    icon: Network,
+  },
+];
+
 function LoginView({
   brandingSettings,
   onSuccess,
@@ -1228,87 +1257,155 @@ function LoginView({
     setMessage('');
   }
 
+  const isPhoneStep = step === 'phone';
+  const loginDescription = isPhoneStep
+    ? 'Введіть номер телефону. Якщо профіль знайдено, ми надішлемо код підтвердження в Telegram.'
+    : 'Введіть код із Telegram. QR нижче веде в єдиного бота Vidnova для HR і Clinical Photo.';
+
   return (
     <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
-      <main className="auth-panel" aria-label="Вхід">
-        <div className="auth-brand-row">
+      <header className="auth-header">
+        <div className="auth-logo">
           <BrandMark brandingSettings={brandingSettings} />
+          <span>HR</span>
         </div>
-        <div className="auth-title">
-          <h1>HR Vidnova</h1>
-          <p>Вхід через Telegram</p>
-        </div>
+        <p>
+          Підтримка: <strong>IT / HR відділ</strong>
+        </p>
+      </header>
 
-        {step === 'phone' ? (
-          <form className="auth-form" onSubmit={submitPhone}>
-            <label className="auth-field">
-              <span>Телефон</span>
-              <div>
-                <Phone size={18} />
-                <input
-                  type="tel"
-                  inputMode="tel"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  placeholder="+380..."
-                  autoComplete="tel"
-                />
-              </div>
-            </label>
-            {error ? <p className="auth-error">{error}</p> : null}
-            <button type="submit" className="primary-action auth-submit" disabled={busy}>
-              <ShieldCheck size={18} />
-              <span>{busy ? 'Запит...' : 'Отримати код'}</span>
-            </button>
-          </form>
-        ) : (
-          <form className="auth-form" onSubmit={submitCode}>
-            <div className="auth-telegram">
-              <a
-                href={TELEGRAM_BOT_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="auth-qr-link"
-                title="Відкрити Telegram-бот"
-                aria-label="Відкрити Telegram-бот Clinical Photo"
-              >
-                <QRCodeSVG value={TELEGRAM_BOT_URL} size={132} level="M" marginSize={1} />
-              </a>
-              <div className="auth-telegram-copy">
-                <span>Clinical Photo</span>
-                <p>Скануйте QR або натисніть на нього, щоб перейти в Telegram-бот.</p>
-              </div>
+      <main className="auth-layout" aria-label="Вхід">
+        <section className="auth-hero" aria-label="Про HR Vidnova">
+          <div className="auth-hero-pattern" />
+          <div className="auth-hero-content">
+            <span className="auth-eyebrow">
+              <ShieldCheck size={16} />
+              Внутрішня система клініки
+            </span>
+            <div className="auth-hero-copy">
+              <h1>Керування персоналом без хаосу</h1>
+              <p>
+                Єдиний простір для робочого часу, заявок на відпустку, бази знань
+                і зрозумілої структури підпорядкування.
+              </p>
             </div>
-            <label className="auth-field">
-              <span>Код</span>
-              <div>
-                <Lock size={18} />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={6}
-                  value={code}
-                  onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  autoComplete="one-time-code"
-                />
-              </div>
-            </label>
-            {message && !error ? <p className="auth-message">{message}</p> : null}
-            {error ? <p className="auth-error">{error}</p> : null}
-            <div className="auth-actions">
-              <button type="button" className="secondary-action" onClick={backToPhone} disabled={busy}>
-                <ChevronLeft size={17} />
-                <span>Назад</span>
-              </button>
+            <div className="auth-modules" aria-label="Модулі системи">
+              {authModules.map((module) => {
+                const Icon = module.icon;
+                return (
+                  <article className="auth-module" key={module.title}>
+                    <span>
+                      <Icon size={18} />
+                    </span>
+                    <div>
+                      <strong>{module.title}</strong>
+                      <p>{module.text}</p>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="auth-panel">
+          <div className="auth-status">
+            <ShieldCheck size={15} />
+            <span>Захищений вхід</span>
+          </div>
+          <div className="auth-title">
+            <h2>Увійдіть у кабінет</h2>
+            <p>{loginDescription}</p>
+          </div>
+
+          {isPhoneStep ? (
+            <form className="auth-form" onSubmit={submitPhone}>
+              <label className={`auth-field ${error ? 'invalid' : ''}`}>
+                <span>Номер телефону</span>
+                <div>
+                  <Phone size={18} />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(event) => {
+                      setPhone(event.target.value);
+                      if (error) setError('');
+                    }}
+                    placeholder="380 67 000 00 00"
+                    autoComplete="tel"
+                    aria-invalid={Boolean(error)}
+                  />
+                </div>
+              </label>
+              {error ? <p className="auth-error">{error}</p> : null}
               <button type="submit" className="primary-action auth-submit" disabled={busy}>
-                <Check size={18} />
-                <span>{busy ? 'Перевірка...' : 'Увійти'}</span>
+                <ShieldCheck size={18} />
+                <span>{busy ? 'Надсилаємо код...' : 'Отримати код'}</span>
               </button>
-            </div>
-          </form>
-        )}
+              <a className="auth-telegram-button" href={TELEGRAM_BOT_URL} target="_blank" rel="noopener noreferrer">
+                <span>Увійти через Telegram</span>
+                <ArrowUpRight size={17} />
+              </a>
+            </form>
+          ) : (
+            <form className="auth-form" onSubmit={submitCode}>
+              <div className="auth-telegram">
+                <a
+                  href={TELEGRAM_BOT_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="auth-qr-link"
+                  title="Відкрити Telegram-бот"
+                  aria-label="Відкрити Telegram-бот Clinical Photo"
+                >
+                  <QRCodeSVG value={TELEGRAM_BOT_URL} size={126} level="M" marginSize={1} />
+                </a>
+                <div className="auth-telegram-copy">
+                  <span>Clinical Photo</span>
+                  <p>Скануйте QR або натисніть на нього, щоб перейти в Telegram-бот.</p>
+                </div>
+              </div>
+              <label className={`auth-field ${error ? 'invalid' : ''}`}>
+                <span>Код підтвердження</span>
+                <div>
+                  <Lock size={18} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={code}
+                    onChange={(event) => {
+                      setCode(event.target.value.replace(/\D/g, '').slice(0, 6));
+                      if (error) setError('');
+                    }}
+                    placeholder="000000"
+                    autoComplete="one-time-code"
+                    aria-invalid={Boolean(error)}
+                  />
+                </div>
+              </label>
+              {message && !error ? <p className="auth-message">{message}</p> : null}
+              {error ? <p className="auth-error">{error}</p> : null}
+              <div className="auth-actions">
+                <button type="button" className="secondary-action" onClick={backToPhone} disabled={busy}>
+                  <ChevronLeft size={17} />
+                  <span>Назад</span>
+                </button>
+                <button type="submit" className="primary-action auth-submit" disabled={busy}>
+                  <Check size={18} />
+                  <span>{busy ? 'Перевіряємо...' : 'Увійти'}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="auth-security">
+            <strong>Доступ лише для співробітників.</strong>
+            <span>Якщо номер не розпізнано, зверніться до HR або адміністратора системи.</span>
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -1317,12 +1414,23 @@ function LoginView({
 function AuthLoadingView({ brandingSettings }: { brandingSettings: BrandingSettings }) {
   return (
     <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
-      <main className="auth-panel loading" aria-label="Завантаження">
-        <BrandMark brandingSettings={brandingSettings} />
-        <div className="auth-title">
-          <h1>HR Vidnova</h1>
-          <p>Перевірка сесії</p>
+      <header className="auth-header">
+        <div className="auth-logo">
+          <BrandMark brandingSettings={brandingSettings} />
+          <span>HR</span>
         </div>
+        <p>
+          Підтримка: <strong>IT / HR відділ</strong>
+        </p>
+      </header>
+      <main className="auth-layout loading" aria-label="Завантаження">
+        <section className="auth-panel loading">
+          <BrandMark brandingSettings={brandingSettings} />
+          <div className="auth-title">
+            <h2>HR Vidnova</h2>
+            <p>Перевірка сесії</p>
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -12873,6 +12981,224 @@ function NotificationsView() {
   );
 }
 
+function AssetsView({ copy }: { copy: AppCopy }) {
+  const [items, setItems] = useState<CmmsAsset[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
+  const [openAssetId, setOpenAssetId] = useState<number | null>(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const pageSize = 25;
+
+  useEffect(() => {
+    api
+      .employees({ status: 'active', page_size: 500 })
+      .then((result) => setEmployees(result.items))
+      .catch(() => setEmployees([]));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    setError('');
+    api
+      .assets({ page, page_size: pageSize, search: search.trim() || undefined })
+      .then((data) => {
+        if (cancelled) return;
+        setItems(data.items);
+        setTotal(data.total);
+        setLoadState('ok');
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setError(loadError instanceof ApiError ? loadError.message : 'Не вдалося завантажити активи');
+        setLoadState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (openAssetId == null) return undefined;
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.asset-responsible')) setOpenAssetId(null);
+    }
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [openAssetId]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pickerOptions = useMemo(() => {
+    const query = pickerQuery.trim().toLowerCase();
+    return employees
+      .filter((employee) => !query || `${employee.full_name} ${employee.position_name} ${employee.department_name}`.toLowerCase().includes(query))
+      .slice(0, 60);
+  }, [employees, pickerQuery]);
+
+  async function assign(asset: CmmsAsset, employeeId: number | null) {
+    setSavingId(asset.id);
+    setError('');
+    try {
+      const result = await api.assignAssetResponsible(asset.id, employeeId);
+      setItems((current) =>
+        current.map((item) =>
+          item.id === asset.id
+            ? { ...item, responsible_person_id: result.responsible_person_id, responsible_person_name: result.responsible_person_name }
+            : item,
+        ),
+      );
+      setOpenAssetId(null);
+      setPickerQuery('');
+    } catch (assignError) {
+      setError(assignError instanceof ApiError ? assignError.message : 'Не вдалося призначити відповідального');
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <main className="workspace assets-page">
+      <header className="page-header">
+        <div>
+          <h1>{copy.nav.assets}</h1>
+        </div>
+      </header>
+
+      <div className="list-toolbar">
+        <label className="wide-search">
+          <Search size={16} />
+          <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук активу за назвою чи інв. номером" />
+        </label>
+      </div>
+
+      <div className="result-meta">
+        <span>
+          {loadState === 'loading'
+            ? copy.common.loading
+            : total === 0
+              ? 'Активів не знайдено'
+              : `${(page - 1) * pageSize + 1}-${(page - 1) * pageSize + items.length} / ${total}`}
+        </span>
+        {total > pageSize ? (
+          <div className="pagination">
+            <button type="button" aria-label={copy.common.previous} disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+              <ChevronLeft size={16} />
+            </button>
+            {buildPageItems(page, totalPages).map((item, index) =>
+              item === 'gap' ? (
+                <span key={`gap-${index}`} className="page-gap">
+                  …
+                </span>
+              ) : (
+                <button type="button" key={item} className={item === page ? 'active' : ''} onClick={() => setPage(item)}>
+                  {item}
+                </button>
+              ),
+            )}
+            <button type="button" aria-label={copy.common.next} disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {error ? <div className="org-empty-panel"><EmptyState title="Помилка" text={error} /></div> : null}
+
+      {loadState === 'ok' && items.length === 0 ? (
+        <div className="org-empty-panel"><EmptyState title="Активів не знайдено" /></div>
+      ) : (
+        <div className="asset-grid">
+          {items.map((asset) => (
+            <article key={asset.id} className="asset-card">
+              <div className="asset-card-media">
+                <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
+                {asset.photo_url ? (
+                  <img src={asset.photo_url} alt={asset.name} loading="lazy" />
+                ) : (
+                  <div className="asset-card-noimg">
+                    <Boxes size={42} />
+                  </div>
+                )}
+              </div>
+              <div className="asset-card-body">
+                <strong className="asset-card-name" title={asset.name}>{asset.name}</strong>
+                <span className="asset-card-inv">Інв. № {asset.inventory_number}</span>
+                <div className="asset-responsible">
+                  <button
+                    type="button"
+                    className={`asset-responsible-trigger${openAssetId === asset.id ? ' active' : ''}`}
+                    disabled={savingId === asset.id}
+                    onClick={() => {
+                      setOpenAssetId(openAssetId === asset.id ? null : asset.id);
+                      setPickerQuery('');
+                    }}
+                  >
+                    <Users size={14} />
+                    {asset.responsible_person_name ? (
+                      <span className="asset-responsible-name">{asset.responsible_person_name}</span>
+                    ) : (
+                      <span className="asset-responsible-empty">Не призначено</span>
+                    )}
+                    <ChevronDown size={14} />
+                  </button>
+                  {openAssetId === asset.id ? (
+                    <div className="asset-picker">
+                      <div className="org-picker-search">
+                        <Search size={15} />
+                        <input type="text" value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Пошук співробітника…" autoFocus />
+                      </div>
+                      <div className="asset-picker-list">
+                        {asset.responsible_person_id != null ? (
+                          <button type="button" className="org-picker-item reset" onClick={() => assign(asset, null)}>
+                            Зняти відповідального
+                          </button>
+                        ) : null}
+                        {pickerOptions.map((employee, index) => {
+                          const person = employeeToPerson(employee, index, copy);
+                          return (
+                            <button type="button" key={employee.id} className="org-picker-item" onClick={() => assign(asset, employee.id)}>
+                              <Avatar name={person.fullName} src={person.avatarUrl} accent={person.accent} />
+                              <span>
+                                <strong>{person.fullName}</strong>
+                                <small>{person.role}</small>
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {pickerOptions.length === 0 ? <div className="org-picker-empty">Нічого не знайдено</div> : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+function assetStatusClass(status: string): string {
+  const value = (status || '').toLowerCase();
+  if (value.includes('експлуат')) return 'ok';
+  if (value.includes('склад')) return 'idle';
+  if (value.includes('ремонт')) return 'warn';
+  if (value.includes('списан')) return 'muted';
+  if (value.includes('резерв')) return 'info';
+  return 'neutral';
+}
+
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -13113,6 +13439,7 @@ export function App() {
     attendance: <AttendanceView copy={copy} />,
     requests: <RequestsView leave={leave} leaveForm={leaveForm} setLeaveForm={setLeaveForm} onSubmitLeave={handleLeaveSubmit} copy={copy} />,
     knowledge: <KnowledgeView knowledge={knowledge} resetToken={knowledgeResetToken} copy={copy} />,
+    assets: <AssetsView copy={copy} />,
     reports: <UtilityView section="reports" overview={overview} copy={copy} />,
     org: <OrgView copy={copy} themeMode={themeMode} />,
     settings: <SettingsView brandingSettings={brandingSettings} onBrandingChange={setBrandingSettings} copy={copy} />,

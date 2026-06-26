@@ -33,6 +33,7 @@ import type {
   WorkType,
   WorkingPatternOption,
   WorkDaySummary,
+  CmmsAsset,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -290,6 +291,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status/'),
+  assets: (params: { page?: number; page_size?: number; search?: string } = {}) =>
+    request<{ total: number; items: CmmsAsset[] }>(`/api/assets/${buildQuery(params)}`),
+  assignAssetResponsible: (assetId: number, employeeId: number | null) =>
+    request<{ asset_id: number; responsible_person_id: number | null; responsible_person_name: string | null }>(
+      `/api/assets/${assetId}/responsible/`,
+      { method: 'POST', body: JSON.stringify({ employee_id: employeeId }) },
+    ),
   requestLoginCode: (phone: string) =>
     request<AuthCodeResponse>('/api/auth/request-code/', {
       method: 'POST',

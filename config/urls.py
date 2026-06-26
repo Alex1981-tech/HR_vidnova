@@ -52,6 +52,7 @@ urlpatterns = [
     path("api/dashboard/", include("apps.dashboard.urls")),
     path("api/me/", include("apps.selfservice.urls")),
     path("api/employees/", include("apps.employees.urls")),
+    path("api/assets/", include("apps.assets.urls")),
     path("api/skud/", include("apps.skud.urls")),
     path("api/leave/", include("apps.leave.urls")),
     path("api/knowledge/", include("apps.knowledge.urls")),
