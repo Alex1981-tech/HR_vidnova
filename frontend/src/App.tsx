@@ -571,10 +571,8 @@ const settingsGroups: SettingsGroup[] = [
       { slug: 'people-data', label: 'Дані про людей', icon: FileText },
       { slug: 'work-schedules', label: 'Графік роботи', icon: List },
       { slug: 'termination-types', label: 'Типи звільнення', icon: X },
-      { slug: 'asset-fields', label: 'Поля активів', icon: LayoutList },
       { slug: 'probation-conditions', label: 'Умови випробного терміну', icon: Users },
       { slug: 'documents', label: 'Документи', icon: FileText },
-      { slug: 'asset-categories', label: 'Категорії активів', icon: Laptop },
     ],
   },
   {
