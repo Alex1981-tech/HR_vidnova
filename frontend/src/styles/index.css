@@ -594,6 +594,10 @@ a {
     display: none;
   }
 
+  .auth-logo {
+    padding-left: 12px;
+  }
+
   .auth-layout {
     width: min(100% - 24px, 520px);
     padding: 8px 0 24px;
