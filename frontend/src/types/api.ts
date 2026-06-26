@@ -1,0 +1,464 @@
+export type EmployeeStatusCount = {
+  status: string;
+  count: number;
+};
+
+export type ApiList<T> = {
+  count: number;
+  next: string | number | null;
+  previous: string | number | null;
+  results: T[];
+};
+
+export type IntegrationRun = {
+  system: string;
+  job: string;
+  status: string;
+  started_at: string;
+  rows_inserted: number;
+};
+
+export type DashboardOverview = {
+  employees_by_status: EmployeeStatusCount[];
+  workday_exceptions: number;
+  pending_leave_requests: number;
+  last_integration_runs: IntegrationRun[];
+};
+
+export type AuthStatus = {
+  authenticated: boolean;
+  user: null | {
+    id: number;
+    username: string;
+    is_staff: boolean;
+    is_superuser: boolean;
+  };
+  employee: null | {
+    id: number;
+    full_name: string;
+    status: string;
+  };
+};
+
+export type EmployeeProfile = {
+  id: number;
+  full_name: string;
+  first_name: string;
+  last_name: string;
+  middle_name: string;
+  email: string;
+  phone: string;
+  phone2: string;
+  clinic_name: string;
+  department_name: string;
+  position_name: string;
+  status: string;
+  hired_on: string | null;
+};
+
+export type EmployeeDocument = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  folder: number | null;
+  folder_name: string;
+  legacy_peopleforce_id: string;
+  name: string;
+  document_type: string;
+  source_url: string;
+  expires_at: string | null;
+  local_file: string;
+  file_downloaded_at: string | null;
+  file_download_error: string;
+};
+
+export type JobLevel = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  sort_order: number;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type GenderOption = {
+  id: number;
+  code: string;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type TerminationReasonOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type TerminationTypeOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type WorkType = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type ProbationPolicyOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  duration_months: number;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type HolidayPolicyOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  country_code: string;
+  country_name: string;
+  is_active: boolean;
+  location_count: number;
+  holiday_count: number;
+};
+
+export type HolidayOption = {
+  id: number;
+  policy: number;
+  policy_name: string;
+  legacy_peopleforce_id: string;
+  name: string;
+  occurs_on: string;
+  starts_on: string | null;
+  ends_on: string | null;
+  working: boolean;
+  compensated_on: string | null;
+  observed_on: string | null;
+  recurrence: 'none' | 'yearly' | string;
+  is_active: boolean;
+};
+
+export type WorkingPatternScheduleDay = {
+  key: string;
+  label?: string;
+  time_range?: string;
+  break_hours?: number;
+  hours?: number;
+};
+
+export type WorkingPatternSchedule = {
+  source?: string;
+  days?: WorkingPatternScheduleDay[];
+  raw?: Record<string, unknown>;
+};
+
+export type WorkingPatternOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  monday_hours: string | number;
+  tuesday_hours: string | number;
+  wednesday_hours: string | number;
+  thursday_hours: string | number;
+  friday_hours: string | number;
+  saturday_hours: string | number;
+  sunday_hours: string | number;
+  uses_time_range: boolean;
+  is_default: boolean;
+  schedule: WorkingPatternSchedule;
+  is_active: boolean;
+};
+
+export type PositionOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type DivisionOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type SkillOption = {
+  id: number;
+  name: string;
+  external_fotopacients_id: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type ClinicLocation = {
+  id: number;
+  name: string;
+  code: string;
+  external_peopleforce_id: string;
+  country_code: string;
+  country_name: string;
+  address: string;
+  holiday_policy_id: string;
+  holiday_policy_name: string;
+  holiday_policy_ref: number | null;
+  holiday_policy_ref_name: string;
+  time_zone: string;
+  is_active: boolean;
+  employee_count: number;
+};
+
+export type DepartmentLevelOption = {
+  id: number;
+  name: string;
+  color: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  department_count: number;
+};
+
+export type DepartmentOption = {
+  id: number;
+  clinic: number | null;
+  clinic_name: string;
+  parent: number | null;
+  parent_name: string;
+  manager: number | null;
+  manager_name: string;
+  level: number | null;
+  level_name: string;
+  level_color: string;
+  name: string;
+  code: string;
+  external_peopleforce_id: string;
+  is_active: boolean;
+  employee_count: number;
+  children_count: number;
+};
+
+export type EmployeeListItem = EmployeeProfile & {
+  user: number | null;
+  external_baf_id: string;
+  external_fotopacients_id: string;
+  legacy_peopleforce_id: string;
+  employee_number: string;
+  personal_email: string;
+  birth_date: string | null;
+  gender: string;
+  avatar_url: string;
+  avatar_local_url: string;
+  avatar_downloaded_at: string | null;
+  avatar_download_error: string;
+  peopleforce_status: string;
+  peopleforce_fields: Record<string, unknown>;
+  clinic: number | null;
+  department: number | null;
+  position: number | null;
+  division: number | null;
+  division_name: string;
+  employment_type: number | null;
+  employment_type_name: string;
+  job_level: number | null;
+  job_level_name: string;
+  medical_specialties: number[];
+  medical_specialty_names: string[];
+  manager_name: string;
+  manager_profile: EmployeeListItem | null;
+  direct_reports_count: number;
+  dismissed_on: string | null;
+  notes: string;
+  documents: EmployeeDocument[];
+};
+
+export type TeamOption = {
+  id: number;
+  name: string;
+  external_peopleforce_id: string;
+  description: string;
+  lead: number | null;
+  lead_name: string;
+  lead_profile: EmployeeListItem | null;
+  member_count: number;
+  members: EmployeeListItem[];
+  is_active: boolean;
+};
+
+export type WorkDaySummary = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  date: string;
+  planned_minutes: number;
+  actual_minutes: number;
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  status: string;
+  exception_count: number;
+  calculated_at: string | null;
+  locked_at: string | null;
+};
+
+export type CompanyAttendanceSummary = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  position_name: string;
+  department_name: string;
+  clinic_name: string;
+  planned_minutes: number;
+  actual_minutes: number;
+  overtime_minutes: number;
+  break_minutes: number;
+  paid_absence_minutes: number;
+  unpaid_absence_minutes: number;
+  total_absence_minutes: number;
+  difference_minutes: number;
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  exception_count: number;
+  summary_count: number;
+};
+
+export type AccessEvent = {
+  id: number;
+  device_name: string;
+  occurred_at: string;
+  direction: string;
+  quality: string;
+};
+
+export type TimeCorrectionRequest = {
+  id: number;
+  date: string;
+  requested_start_at: string | null;
+  requested_end_at: string | null;
+  reason: string;
+  status: string;
+  submitted_at: string | null;
+  decided_at: string | null;
+  decision_comment: string;
+  created_at: string;
+};
+
+export type SelfAttendance = {
+  employee: EmployeeProfile;
+  range: {
+    from: string;
+    to: string;
+  };
+  workdays: WorkDaySummary[];
+  events: AccessEvent[];
+  correction_requests: TimeCorrectionRequest[];
+};
+
+export type LeaveType = {
+  id: number;
+  name: string;
+  code: string;
+  requires_hr_approval: boolean;
+};
+
+export type LeaveRequest = {
+  id: number;
+  employee?: number;
+  employee_name?: string;
+  legacy_peopleforce_id?: string;
+  leave_type: number;
+  leave_type_name: string;
+  date_from: string;
+  date_to: string;
+  reason: string;
+  amount?: string;
+  tracking_time_in?: string;
+  status: string;
+  submitted_at: string | null;
+  decided_at: string | null;
+  decided_by?: number | null;
+  created_at: string;
+};
+
+export type LeaveBalance = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  leave_type: number;
+  leave_type_name: string;
+  legacy_peopleforce_id: string;
+  effective_on: string | null;
+  balance: string;
+  policy_name: string;
+  policy_activity_type: string;
+  policy_counted_as: string;
+};
+
+export type SelfLeave = {
+  leave_types: LeaveType[];
+  requests: LeaveRequest[];
+};
+
+export type KnowledgeCategory = {
+  id: number;
+  name: string;
+  slug: string;
+  legacy_peopleforce_id: string;
+  description: string;
+  icon_emoji: string;
+  visibility_mode: string;
+  audience_employee_ids: number[];
+  audience_filters: Record<string, unknown>;
+  position: number;
+  parent: number | null;
+  is_active: boolean;
+};
+
+export type KnowledgeAttachment = {
+  id: number;
+  legacy_peopleforce_id: string;
+  file: string;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  source_url: string;
+  created_at: string;
+};
+
+export type KnowledgeDocument = {
+  id: number;
+  category: number;
+  category_name: string;
+  owner_name?: string;
+  view_count: number;
+  legacy_peopleforce_id: string;
+  title: string;
+  slug: string;
+  summary: string;
+  cover_url: string;
+  body: string;
+  body_html: string;
+  status: string;
+  tags: string[];
+  published_at: string | null;
+  attachments: KnowledgeAttachment[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type SelfKnowledge = {
+  categories: KnowledgeCategory[];
+  documents: KnowledgeDocument[];
+};

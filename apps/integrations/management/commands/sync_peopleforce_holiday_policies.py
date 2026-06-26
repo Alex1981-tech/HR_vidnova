@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from typing import Any
+
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
+from django.utils import timezone
+
+from apps.employees.models import Clinic, Holiday, HolidayPolicy
+from apps.integrations.models import PeopleForceEntity, PeopleForceImportRun
+from apps.integrations.peopleforce.client import PeopleForceClient
+from apps.integrations.peopleforce.importer import clean, ext_id, parse_date, payload_hash, trim
+
+
+class Command(BaseCommand):
+    help = "Import PeopleForce holiday policies and holidays for one or more years."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--year",
+            action="append",
+            type=int,
+            help="Calendar year to import. Can be passed more than once. Defaults to current year.",
+        )
+        parser.add_argument("--dry-run", action="store_true", help="Fetch and count without writing data.")
+
+    def handle(self, *args, **options):
+        years = options["year"] or [timezone.localdate().year]
+        counters: dict[str, int] = defaultdict(int)
+        run = PeopleForceImportRun.objects.create(
+            status=PeopleForceImportRun.Status.RUNNING,
+            options={
+                "command": "sync_peopleforce_holiday_policies",
+                "dry_run": options["dry_run"],
+                "years": years,
+            },
+        )
+        try:
+            client = PeopleForceClient()
+            if options["dry_run"]:
+                self._sync(client, run, counters, years=years, dry_run=True)
+            else:
+                with transaction.atomic():
+                    self._sync(client, run, counters, years=years, dry_run=False)
+            run.status = PeopleForceImportRun.Status.DRY_RUN if options["dry_run"] else PeopleForceImportRun.Status.COMPLETED
+            run.finished_at = timezone.now()
+            run.counters = dict(counters)
+            run.save(update_fields=["status", "finished_at", "counters", "updated_at"])
+        except ImproperlyConfigured as exc:
+            run.status = PeopleForceImportRun.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error_message = str(exc)
+            run.counters = dict(counters)
+            run.save(update_fields=["status", "finished_at", "error_message", "counters", "updated_at"])
+            raise CommandError(str(exc)) from exc
+        except Exception as exc:
+            run.status = PeopleForceImportRun.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error_message = str(exc)
+            run.counters = dict(counters)
+            run.save(update_fields=["status", "finished_at", "error_message", "counters", "updated_at"])
+            raise
+
+        self.stdout.write(self.style.SUCCESS(f"PeopleForce holiday policies import run #{run.id}: {run.status}"))
+        for key, value in sorted(counters.items()):
+            self.stdout.write(f"{key}: {value}")
+
+    def _sync(
+        self,
+        client: PeopleForceClient,
+        run: PeopleForceImportRun,
+        counters: dict[str, int],
+        *,
+        years: list[int],
+        dry_run: bool,
+    ) -> None:
+        policy_rows = client.list_all("/holiday_policies")
+        counters["fetched_holiday_policies"] = len(policy_rows)
+        policies: list[HolidayPolicy] = []
+        for payload in policy_rows:
+            policy = self._upsert_policy(payload, run, counters, dry_run=dry_run)
+            if policy is not None:
+                policies.append(policy)
+        self._link_clinics(counters, dry_run=dry_run)
+
+        for year in years:
+            for policy in policies:
+                if not policy.external_peopleforce_id:
+                    continue
+                rows = client.list_all(
+                    "/holidays",
+                    params={
+                        "starts_on": f"{year}-01-01",
+                        "ends_on": f"{year}-12-31",
+                        "holiday_policy_ids[]": policy.external_peopleforce_id,
+                    },
+                )
+                counters[f"fetched_holidays_{year}"] += len(rows)
+                for payload in rows:
+                    self._upsert_holiday(policy, payload, run, counters, dry_run=dry_run)
+
+    def _upsert_policy(
+        self,
+        payload: dict[str, Any],
+        run: PeopleForceImportRun,
+        counters: dict[str, int],
+        *,
+        dry_run: bool,
+    ) -> HolidayPolicy | None:
+        name = trim(clean(payload.get("name")), 180)
+        external_id = ext_id(payload)
+        if not name:
+            counters["holiday_policies_skipped"] += 1
+            return None
+        counters["holiday_policies_seen"] += 1
+        if dry_run:
+            return None
+        self._store_entity("holiday_policies", external_id, "/holiday_policies", payload, run)
+        defaults = {
+            "external_peopleforce_id": external_id,
+            "country_code": trim(clean(payload.get("country_code")), 8),
+            "is_active": True,
+        }
+        policy = HolidayPolicy.objects.filter(external_peopleforce_id=external_id).first() if external_id else None
+        if policy is None:
+            policy, created = HolidayPolicy.objects.get_or_create(name=name, defaults=defaults)
+        else:
+            created = False
+            policy.name = name
+            for field_name, value in defaults.items():
+                setattr(policy, field_name, value)
+            policy.save(update_fields=["name", *defaults.keys(), "updated_at"])
+        if external_id and not policy.external_peopleforce_id:
+            policy.external_peopleforce_id = external_id
+            policy.save(update_fields=["external_peopleforce_id", "updated_at"])
+        counters[f"holiday_policies_{'created' if created else 'updated'}"] += 1
+        return policy
+
+    def _upsert_holiday(
+        self,
+        fallback_policy: HolidayPolicy,
+        payload: dict[str, Any],
+        run: PeopleForceImportRun,
+        counters: dict[str, int],
+        *,
+        dry_run: bool,
+    ) -> Holiday | None:
+        name = trim(clean(payload.get("name")), 180)
+        external_id = ext_id(payload)
+        occurs_on = parse_date(payload.get("occurs_on") or payload.get("starts_on"))
+        if not name or not occurs_on:
+            counters["holidays_skipped"] += 1
+            return None
+        counters["holidays_seen"] += 1
+        if dry_run:
+            return None
+        self._store_entity("holidays", external_id, "/holidays", payload, run)
+        policy = (
+            HolidayPolicy.objects.filter(external_peopleforce_id=clean(payload.get("holiday_policy_id"))).first()
+            or fallback_policy
+        )
+        defaults = {
+            "policy": policy,
+            "name": name,
+            "occurs_on": occurs_on,
+            "starts_on": parse_date(payload.get("starts_on")) or occurs_on,
+            "ends_on": parse_date(payload.get("ends_on")) or parse_date(payload.get("starts_on")) or occurs_on,
+            "working": bool(payload.get("working")),
+            "compensated_on": parse_date(payload.get("compensated_on")),
+            "observed_on": parse_date(payload.get("observed_on")),
+            "recurrence": Holiday.Recurrence.NONE,
+            "raw_payload": payload,
+            "is_active": True,
+        }
+        holiday = Holiday.objects.filter(legacy_peopleforce_id=external_id).first() if external_id else None
+        if holiday is None:
+            holiday, created = Holiday.objects.get_or_create(
+                policy=policy,
+                occurs_on=occurs_on,
+                name=name,
+                defaults={"legacy_peopleforce_id": external_id, **defaults},
+            )
+        else:
+            created = False
+            for field_name, value in defaults.items():
+                setattr(holiday, field_name, value)
+            holiday.save(update_fields=[*defaults.keys(), "updated_at"])
+        if external_id and not holiday.legacy_peopleforce_id:
+            holiday.legacy_peopleforce_id = external_id
+            holiday.save(update_fields=["legacy_peopleforce_id", "updated_at"])
+        counters[f"holidays_{'created' if created else 'updated'}"] += 1
+        return holiday
+
+    def _link_clinics(self, counters: dict[str, int], *, dry_run: bool) -> None:
+        policies = {
+            policy.external_peopleforce_id: policy
+            for policy in HolidayPolicy.objects.exclude(external_peopleforce_id="")
+        }
+        clinics = Clinic.objects.exclude(holiday_policy_id="")
+        for clinic in clinics.iterator():
+            policy = policies.get(clinic.holiday_policy_id)
+            if not policy:
+                counters["clinics_holiday_policy_unlinked"] += 1
+                continue
+            counters["clinics_holiday_policy_linked"] += 1
+            if dry_run:
+                continue
+            clinic.holiday_policy_ref = policy
+            clinic.holiday_policy_name = policy.name
+            clinic.save(update_fields=["holiday_policy_ref", "holiday_policy_name", "updated_at"])
+
+    def _store_entity(
+        self,
+        entity_type: str,
+        external_id: str,
+        endpoint: str,
+        payload: dict[str, Any],
+        run: PeopleForceImportRun,
+    ) -> None:
+        if not external_id:
+            return
+        PeopleForceEntity.objects.update_or_create(
+            entity_type=entity_type,
+            external_id=external_id,
+            defaults={
+                "endpoint": endpoint,
+                "payload": payload,
+                "payload_hash": payload_hash(payload),
+                "fetched_at": timezone.now(),
+                "last_run": run,
+            },
+        )

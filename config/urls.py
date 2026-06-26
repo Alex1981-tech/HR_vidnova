@@ -1,0 +1,60 @@
+"""Root URL routing for HR Vidnova."""
+
+from django.conf import settings
+from django.conf.urls.static import static
+from django.contrib import admin
+from django.urls import include, path
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.employees.models import Employee
+
+
+class AuthStatusView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        user = request.user if request.user.is_authenticated else None
+        employee = None
+        if user:
+            try:
+                profile = user.employee_profile
+                employee = {
+                    "id": profile.id,
+                    "full_name": profile.full_name,
+                    "status": profile.status,
+                }
+            except Employee.DoesNotExist:
+                employee = None
+        return Response(
+            {
+                "authenticated": bool(user),
+                "user": {
+                    "id": user.id,
+                    "username": user.get_username(),
+                    "is_staff": user.is_staff,
+                    "is_superuser": user.is_superuser,
+                }
+                if user
+                else None,
+                "employee": employee,
+            }
+        )
+
+
+urlpatterns = [
+    path("admin/", admin.site.urls),
+    path("api/auth/status/", AuthStatusView.as_view(), name="auth-status"),
+    path("api/dashboard/", include("apps.dashboard.urls")),
+    path("api/me/", include("apps.selfservice.urls")),
+    path("api/employees/", include("apps.employees.urls")),
+    path("api/skud/", include("apps.skud.urls")),
+    path("api/leave/", include("apps.leave.urls")),
+    path("api/knowledge/", include("apps.knowledge.urls")),
+    path("api/public/v3/", include("apps.integrations.peopleforce_compat_urls")),
+    path("api/peopleforce-compatible/v3/", include("apps.integrations.peopleforce_compat_urls")),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
