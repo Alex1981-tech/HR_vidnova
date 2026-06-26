@@ -439,9 +439,18 @@ class EmployeeCompactSerializer(serializers.ModelSerializer):
         if not obj.avatar_file:
             return ""
         try:
-            return obj.avatar_file.url
+            url = obj.avatar_file.url
         except ValueError:
             return ""
+        # Cache-busting version so stale CDN/browser-cached 404s (from before a
+        # media sync) are bypassed, and avatar changes invalidate the cache.
+        version = getattr(obj, "avatar_downloaded_at", None) or getattr(obj, "updated_at", None)
+        if version is not None:
+            try:
+                return f"{url}?v={int(version.timestamp())}"
+            except (AttributeError, ValueError, OSError):
+                return url
+        return url
 
     def get_direct_reports_count(self, obj):
         annotated = getattr(obj, "direct_reports_count", None)
@@ -597,9 +606,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if not obj.avatar_file:
             return ""
         try:
-            return obj.avatar_file.url
+            url = obj.avatar_file.url
         except ValueError:
             return ""
+        # Cache-busting version so stale CDN/browser-cached 404s (from before a
+        # media sync) are bypassed, and avatar changes invalidate the cache.
+        version = getattr(obj, "avatar_downloaded_at", None) or getattr(obj, "updated_at", None)
+        if version is not None:
+            try:
+                return f"{url}?v={int(version.timestamp())}"
+            except (AttributeError, ValueError, OSError):
+                return url
+        return url
 
     def _current_manager(self, obj):
         today = timezone.localdate()
