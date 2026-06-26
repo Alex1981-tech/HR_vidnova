@@ -34,6 +34,7 @@ import type {
   WorkingPatternOption,
   WorkDaySummary,
   CmmsAsset,
+  CmmsAssetOptions,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -292,8 +293,29 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status/'),
-  assets: (params: { page?: number; page_size?: number; search?: string } = {}) =>
-    request<{ total: number; items: CmmsAsset[] }>(`/api/assets/${buildQuery(params)}`),
+  assets: (
+    params: {
+      page?: number;
+      page_size?: number;
+      search?: string;
+      status?: string;
+      location_ids?: number[];
+      department_ids?: number[];
+      responsible_ids?: number[];
+    } = {},
+  ) => {
+    const sp = new URLSearchParams();
+    if (params.page) sp.set('page', String(params.page));
+    if (params.page_size) sp.set('page_size', String(params.page_size));
+    if (params.search) sp.set('search', params.search);
+    if (params.status && params.status !== 'all') sp.set('status', params.status);
+    for (const id of params.location_ids ?? []) sp.append('location_ids', String(id));
+    for (const id of params.department_ids ?? []) sp.append('department_ids', String(id));
+    for (const id of params.responsible_ids ?? []) sp.append('responsible_ids', String(id));
+    const query = sp.toString();
+    return request<{ total: number; items: CmmsAsset[] }>(`/api/assets/${query ? `?${query}` : ''}`);
+  },
+  assetOptions: () => request<CmmsAssetOptions>('/api/assets/options/'),
   assignAssetResponsible: (assetId: number, employeeId: number | null) =>
     request<{ asset_id: number; responsible_person_id: number | null; responsible_person_name: string | null }>(
       `/api/assets/${assetId}/responsible/`,

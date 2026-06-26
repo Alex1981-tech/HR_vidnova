@@ -118,6 +118,10 @@ class AssetOptionsView(APIView):
 
     def get(self, request):
         try:
+            employees = [
+                {"id": emp["id"], "full_name": emp.get("full_name") or emp.get("name")}
+                for emp in cmms_client.list_employees()
+            ]
             return Response(
                 {
                     "statuses": _ASSET_STATUSES,
@@ -125,6 +129,7 @@ class AssetOptionsView(APIView):
                     "categories": cmms_client.list_categories(),
                     "locations": cmms_client.list_locations(),
                     "departments": cmms_client.list_departments(),
+                    "employees": sorted(employees, key=lambda e: (e["full_name"] or "")),
                 }
             )
         except CmmsError as exc:

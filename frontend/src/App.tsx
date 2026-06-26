@@ -89,6 +89,8 @@ import type {
   DashboardOverview,
   DepartmentLevelOption,
   CmmsAsset,
+  CmmsAssetOptions,
+  CmmsLocation,
   DepartmentOption,
   DivisionOption,
   EmployeeListItem,
@@ -1178,8 +1180,8 @@ function Topbar({
           <span>5</span>
         </button>
         <button type="button" className="user-menu" onClick={onLogout} title="Вийти">
-          <Avatar name={employee.full_name || copy.common.user} accent="teal" />
-          <strong>{auth?.user?.username || employee.full_name || copy.common.user}</strong>
+          <Avatar name={employee.full_name || copy.common.user} src={employee.avatar_local_url || ''} accent="teal" size="sm" />
+          <strong>{employee.full_name || auth?.user?.username || copy.common.user}</strong>
           <LogOut size={16} />
         </button>
       </div>
@@ -13144,6 +13146,11 @@ function AssetsView({ copy }: { copy: AppCopy }) {
   const [openAssetId, setOpenAssetId] = useState<number | null>(null);
   const [pickerQuery, setPickerQuery] = useState('');
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [options, setOptions] = useState<CmmsAssetOptions | null>(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [locationPath, setLocationPath] = useState<number[]>([]);
+  const [departmentFilter, setDepartmentFilter] = useState<number | ''>('');
+  const [responsibleFilter, setResponsibleFilter] = useState<number | ''>('');
   const pageSize = 28;
 
   useEffect(() => {
@@ -13151,14 +13158,34 @@ function AssetsView({ copy }: { copy: AppCopy }) {
       .employees({ status: 'active', page_size: 500 })
       .then((result) => setEmployees(result.items))
       .catch(() => setEmployees([]));
+    api
+      .assetOptions()
+      .then(setOptions)
+      .catch(() => setOptions(null));
   }, []);
+
+  // The deepest selected location filters by that location + all its descendants.
+  const locationIds = useMemo(() => {
+    if (!options || locationPath.length === 0) return [];
+    const deepest = locationPath[locationPath.length - 1];
+    const node = findLocationNode(options.locations, deepest);
+    return node ? collectLocationIds(node) : [];
+  }, [options, locationPath]);
 
   useEffect(() => {
     let cancelled = false;
     setLoadState('loading');
     setError('');
     api
-      .assets({ page, page_size: pageSize, search: search.trim() || undefined })
+      .assets({
+        page,
+        page_size: pageSize,
+        search: search.trim() || undefined,
+        status: statusFilter,
+        location_ids: locationIds,
+        department_ids: departmentFilter ? [departmentFilter] : [],
+        responsible_ids: responsibleFilter ? [responsibleFilter] : [],
+      })
       .then((data) => {
         if (cancelled) return;
         setItems(data.items);
@@ -13173,11 +13200,30 @@ function AssetsView({ copy }: { copy: AppCopy }) {
     return () => {
       cancelled = true;
     };
-  }, [page, search]);
+  }, [page, search, statusFilter, locationIds, departmentFilter, responsibleFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, statusFilter, locationIds, departmentFilter, responsibleFilter]);
+
+  const hasActiveFilters =
+    statusFilter !== 'all' || locationPath.length > 0 || departmentFilter !== '' || responsibleFilter !== '';
+
+  function resetFilters() {
+    setStatusFilter('all');
+    setLocationPath([]);
+    setDepartmentFilter('');
+    setResponsibleFilter('');
+    setSearch('');
+  }
+
+  function selectLocationLevel(level: number, value: string) {
+    setLocationPath((current) => {
+      const next = current.slice(0, level);
+      if (value) next.push(Number(value));
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (openAssetId == null) return undefined;
@@ -13231,7 +13277,73 @@ function AssetsView({ copy }: { copy: AppCopy }) {
           <Search size={16} />
           <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Пошук активу за назвою чи інв. номером" />
         </label>
+        {hasActiveFilters ? (
+          <button type="button" className="toolbar-button" onClick={resetFilters}>
+            <X size={15} />
+            Скинути фільтри
+          </button>
+        ) : null}
       </div>
+
+      {options ? (
+        <div className="asset-filters">
+          <div className="asset-filter">
+            <label>Статус</label>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Всі</option>
+              {options.statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="asset-filter asset-filter-location">
+            <label>Локація</label>
+            <div className="asset-location-levels">
+              {Array.from({ length: locationPath.length + 1 }).map((_, level) => {
+                const levelOptions = locationLevelOptions(options.locations, locationPath.slice(0, level));
+                if (levelOptions.length === 0) return null;
+                return (
+                  <select key={level} value={locationPath[level] ?? ''} onChange={(event) => selectLocationLevel(level, event.target.value)}>
+                    <option value="">Всі</option>
+                    {levelOptions.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                  </select>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="asset-filter">
+            <label>Департамент</label>
+            <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value ? Number(event.target.value) : '')}>
+              <option value="">Всі</option>
+              {options.departments.map((dept) => (
+                <option key={dept.id} value={dept.id}>
+                  {dept.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="asset-filter">
+            <label>Відповідальний</label>
+            <select value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.target.value ? Number(event.target.value) : '')}>
+              <option value="">Всі</option>
+              {options.employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
 
       <div className="result-meta">
         <span>
@@ -13339,6 +13451,32 @@ function AssetsView({ copy }: { copy: AppCopy }) {
       )}
     </main>
   );
+}
+
+function collectLocationIds(node: CmmsLocation): number[] {
+  const ids = [node.id];
+  for (const child of node.sublocations ?? []) ids.push(...collectLocationIds(child));
+  return ids;
+}
+
+// Options for the next cascading location dropdown given the selected path so far.
+function locationLevelOptions(locations: CmmsLocation[], path: number[]): CmmsLocation[] {
+  let level = locations;
+  for (const id of path) {
+    const node = level.find((loc) => loc.id === id);
+    if (!node) return [];
+    level = node.sublocations ?? [];
+  }
+  return level;
+}
+
+function findLocationNode(locations: CmmsLocation[], id: number): CmmsLocation | null {
+  for (const loc of locations) {
+    if (loc.id === id) return loc;
+    const found = findLocationNode(loc.sublocations ?? [], id);
+    if (found) return found;
+  }
+  return null;
 }
 
 function assetStatusClass(status: string): string {

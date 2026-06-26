@@ -12206,3 +12206,99 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   z-index: 2;
   background: var(--panel-soft);
 }
+
+/* ---- Assets filter panel ---- */
+.asset-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.asset-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.asset-filter > label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.asset-filter select,
+.asset-location-levels select {
+  height: 36px;
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 13px;
+}
+.asset-location-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---- Compact topbar ---- */
+.topbar {
+  height: 52px;
+}
+.topbar .quick-add {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.topbar .icon-button {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+.topbar .user-menu {
+  min-height: 34px;
+  padding: 0 8px 0 6px;
+  gap: 7px;
+}
+.topbar .user-menu .avatar {
+  width: 26px;
+  height: 26px;
+}
+.topbar .user-menu strong {
+  font-size: 13px;
+}
+
+/* ---- Compact attendance header (win ~25% height for the table) ---- */
+.attendance-company-page .page-header {
+  min-height: 0;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+}
+.attendance-company-page .page-header h1 {
+  font-size: 22px;
+}
+.attendance-company-page .section-tabs {
+  margin-top: 8px;
+}
+.attendance-company-page .attendance-search-row {
+  margin: 8px 0;
+}
+.attendance-company-page .attendance-search-row .wide-search {
+  min-height: 40px;
+}
+.attendance-company-page .attendance-toolbar {
+  margin: 0 0 8px;
+}
+.attendance-company-page .attendance-toolbar .toolbar-button,
+.attendance-company-page .attendance-toolbar .toolbar-icon,
+.attendance-company-page .attendance-toolbar .secondary-action {
+  min-height: 34px;
+}
+.attendance-company-page .result-meta {
+  min-height: 32px;
+}
+.workspace.attendance-page {
+  padding-top: 16px;
+  padding-bottom: 14px;
+}

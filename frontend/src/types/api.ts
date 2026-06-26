@@ -53,6 +53,7 @@ export type AuthLoginResponse = {
 export type EmployeeProfile = {
   id: number;
   full_name: string;
+  avatar_local_url?: string;
   first_name: string;
   last_name: string;
   middle_name: string;
@@ -486,4 +487,21 @@ export type CmmsAsset = {
   responsible_person_id: number | null;
   responsible_person_name: string | null;
   photo_url?: string | null;
+};
+
+export type CmmsLocation = {
+  id: number;
+  name: string;
+  parent_id: number | null;
+  level: number;
+  sublocations?: CmmsLocation[];
+};
+
+export type CmmsAssetOptions = {
+  statuses: string[];
+  asset_types: Array<{ id: number; name: string }>;
+  categories: Array<{ id: number; name: string; parent_id?: number | null }>;
+  locations: CmmsLocation[];
+  departments: Array<{ id: number; name: string }>;
+  employees: Array<{ id: number; full_name: string }>;
 };

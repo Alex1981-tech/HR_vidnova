@@ -8,15 +8,32 @@ from apps.skud.models import AccessEvent, TimeCorrectionRequest, WorkDaySummary
 
 class SelfEmployeeSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
+    avatar_local_url = serializers.SerializerMethodField()
     clinic_name = serializers.CharField(source="clinic.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
     position_name = serializers.CharField(source="position.name", read_only=True)
+
+    def get_avatar_local_url(self, obj):
+        if not obj.avatar_file:
+            return ""
+        try:
+            url = obj.avatar_file.url
+        except ValueError:
+            return ""
+        version = getattr(obj, "avatar_downloaded_at", None) or getattr(obj, "updated_at", None)
+        if version is not None:
+            try:
+                return f"{url}?v={int(version.timestamp())}"
+            except (AttributeError, ValueError, OSError):
+                return url
+        return url
 
     class Meta:
         model = Employee
         fields = (
             "id",
             "full_name",
+            "avatar_local_url",
             "first_name",
             "last_name",
             "middle_name",
