@@ -345,6 +345,60 @@ export type CompanyAttendanceSummary = {
   summary_count: number;
 };
 
+export type EmployeeAttendancePeriod = {
+  id: number;
+  start_at: string;
+  end_at: string;
+  duration_minutes: number;
+  period_type: string;
+  comment: string;
+};
+
+export type EmployeeAttendanceDay = {
+  date: string;
+  planned_minutes: number;
+  actual_minutes: number;
+  overtime_minutes: number;
+  break_minutes: number;
+  paid_absence_minutes: number;
+  unpaid_absence_minutes: number;
+  total_absence_minutes: number;
+  difference_minutes: number;
+  first_entry_at: string | null;
+  last_exit_at: string | null;
+  status: string;
+  exception_count: number;
+  working_pattern_names: string[];
+  periods: EmployeeAttendancePeriod[];
+};
+
+export type EmployeeAttendanceDetail = {
+  employee: {
+    id: number;
+    full_name: string;
+    position_name: string;
+    department_name: string;
+    clinic_name: string;
+    avatar_url: string;
+    avatar_local_url: string;
+  };
+  range: {
+    from: string;
+    to: string;
+  };
+  summary: {
+    planned_minutes: number;
+    actual_minutes: number;
+    overtime_minutes: number;
+    break_minutes: number;
+    paid_absence_minutes: number;
+    unpaid_absence_minutes: number;
+    total_absence_minutes: number;
+    difference_minutes: number;
+  };
+  days: EmployeeAttendanceDay[];
+};
+
 export type AccessEvent = {
   id: number;
   device_name: string;

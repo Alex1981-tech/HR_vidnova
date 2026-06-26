@@ -93,6 +93,9 @@ import type {
   CmmsLocation,
   DepartmentOption,
   DivisionOption,
+  EmployeeAttendanceDay,
+  EmployeeAttendanceDetail,
+  EmployeeAttendancePeriod,
   EmployeeListItem,
   EmployeeProfile,
   HolidayOption,
@@ -219,6 +222,12 @@ type AttendanceSummaryRow = {
   unpaidAbsence: string;
   totalAbsence: string;
   difference: string;
+};
+
+type AttendancePeriodFormState = {
+  start_time: string;
+  end_time: string;
+  comment: string;
 };
 
 const fallbackOverview: DashboardOverview = {
@@ -359,6 +368,35 @@ function peopleRouteFromPathname(pathname: string): PeopleRoute {
 
 function peopleEmployeePath(employeeId: number): string {
   return `/people/employees/${employeeId}`;
+}
+
+type AttendanceRoute = { mode: 'company' } | { mode: 'employee'; id: number };
+
+function attendanceRouteFromPathname(pathname: string): AttendanceRoute {
+  const [sectionName, resource, idSegment] = pathname.split('/').filter(Boolean);
+  if (sectionName === 'attendance' && resource === 'employees') {
+    const id = positiveRouteId(idSegment);
+    return id ? { mode: 'employee', id } : { mode: 'company' };
+  }
+  return { mode: 'company' };
+}
+
+function monthQueryValue(month: Date): string {
+  return `${month.getFullYear()}-${pad(month.getMonth() + 1)}`;
+}
+
+function monthFromAttendanceSearch(search: string): Date {
+  const month = new URLSearchParams(search).get('month') || '';
+  const match = month.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return getInitialMonth();
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  if (!Number.isFinite(year) || monthIndex < 0 || monthIndex > 11) return getInitialMonth();
+  return new Date(year, monthIndex, 1);
+}
+
+function attendanceEmployeePath(employeeId: number, month?: string): string {
+  return `/attendance/employees/${employeeId}${month ? `?month=${month}` : ''}`;
 }
 
 type SettingsItem = {
@@ -577,6 +615,25 @@ function formatDateTime(value: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function formatTime(value: string | null): string {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('uk-UA', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+function isoDateTimeToTimeInput(value: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function attendancePeriodFormFromPeriod(period?: EmployeeAttendancePeriod | null): AttendancePeriodFormState {
+  return {
+    start_time: period ? isoDateTimeToTimeInput(period.start_at) : '09:00',
+    end_time: period ? isoDateTimeToTimeInput(period.end_at) : '18:00',
+    comment: period?.comment || '',
+  };
 }
 
 function sanitizeKnowledgeHtml(html: string): string {
@@ -3804,7 +3861,20 @@ function AttendanceCalendar({ workdays, copy }: { workdays: WorkDaySummary[]; co
   );
 }
 
-function AttendanceView({
+function AttendanceView(props: {
+  copy: AppCopy;
+  brandingSettings: BrandingSettings;
+  employeeCovers: EmployeeCoverMap;
+}) {
+  const location = useLocation();
+  const attendanceRoute = useMemo(() => attendanceRouteFromPathname(location.pathname), [location.pathname]);
+  if (attendanceRoute.mode === 'employee') {
+    return <EmployeeAttendanceDetailView {...props} employeeId={attendanceRoute.id} />;
+  }
+  return <CompanyAttendanceView {...props} />;
+}
+
+function CompanyAttendanceView({
   copy,
   brandingSettings,
   employeeCovers,
@@ -3985,6 +4055,7 @@ function AttendanceView({
         brandingSettings={brandingSettings}
         employeeCovers={employeeCovers}
         onOpenProfile={(employeeId) => navigate(peopleEmployeePath(employeeId))}
+        onOpenAttendance={(employeeId) => navigate(attendanceEmployeePath(employeeId, monthQueryValue(month)))}
         onOpenOrg={() => navigate('/people/org')}
       />
     </main>
@@ -3999,6 +4070,7 @@ function AttendanceSummaryTable({
   brandingSettings,
   employeeCovers,
   onOpenProfile,
+  onOpenAttendance,
   onOpenOrg,
 }: {
   rows: AttendanceSummaryRow[];
@@ -4008,6 +4080,7 @@ function AttendanceSummaryTable({
   brandingSettings: BrandingSettings;
   employeeCovers: EmployeeCoverMap;
   onOpenProfile: (employeeId: number) => void;
+  onOpenAttendance: (employeeId: number) => void;
   onOpenOrg: () => void;
 }) {
   const emptyTitle =
@@ -4051,7 +4124,18 @@ function AttendanceSummaryTable({
               const employee = employeeById.get(row.employeeId);
               const person = employee ? employeeToPerson(employee, index, copy) : null;
               return (
-              <tr key={row.id}>
+              <tr
+                key={row.id}
+                className="clickable-row"
+                tabIndex={0}
+                onClick={() => onOpenAttendance(row.employeeId)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpenAttendance(row.employeeId);
+                  }
+                }}
+              >
                 <td className="name-cell">
                   {employee && person ? (
                     <ProfileHoverCard
@@ -4080,7 +4164,15 @@ function AttendanceSummaryTable({
                 <td>{row.totalAbsence}</td>
                 <td>{row.difference}</td>
                 <td>
-                  <button type="button" className="row-action" aria-label={copyValue(copy.attendance.rowActions, copy.common.actions)}>
+                  <button
+                    type="button"
+                    className="row-action"
+                    aria-label={copyValue(copy.attendance.rowActions, copy.common.actions)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpenAttendance(row.employeeId);
+                    }}
+                  >
                     <FileText size={16} />
                   </button>
                 </td>
@@ -4098,6 +4190,678 @@ function AttendanceSummaryTable({
       </table>
       </div>
   );
+}
+
+function EmployeeAttendanceDetailView({
+  employeeId,
+  copy,
+}: {
+  employeeId: number;
+  copy: AppCopy;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [month, setMonth] = useState(() => monthFromAttendanceSearch(location.search));
+  const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+  const [detail, setDetail] = useState<EmployeeAttendanceDetail | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null);
+  const [editingPeriodId, setEditingPeriodId] = useState<number | null>(null);
+  const [periodFormMode, setPeriodFormMode] = useState<'closed' | 'create' | 'edit'>('closed');
+  const [periodForm, setPeriodForm] = useState<AttendancePeriodFormState>(() => attendancePeriodFormFromPeriod());
+  const [drawerBusy, setDrawerBusy] = useState(false);
+  const [drawerError, setDrawerError] = useState('');
+  const [deletePeriodTarget, setDeletePeriodTarget] = useState<EmployeeAttendancePeriod | null>(null);
+  const range = useMemo(() => getMonthRange(month), [month]);
+  const selectedDay = useMemo(
+    () => (selectedDayDate ? detail?.days.find((day) => day.date === selectedDayDate) ?? emptyEmployeeAttendanceDay(selectedDayDate) : null),
+    [detail?.days, selectedDayDate],
+  );
+
+  useEffect(() => {
+    setMonth(monthFromAttendanceSearch(location.search));
+  }, [employeeId, location.search]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDetail() {
+      setLoadState('loading');
+      try {
+        const result = await api.employeeAttendance(employeeId, range);
+        if (cancelled) return;
+        setDetail(result);
+        setLoadState('ok');
+      } catch {
+        if (cancelled) return;
+        setDetail(null);
+        setLoadState('error');
+      }
+    }
+
+    void loadDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId, range.from, range.to]);
+
+  function changeMonth(nextMonth: Date) {
+    setMonth(nextMonth);
+    navigate(attendanceEmployeePath(employeeId, monthQueryValue(nextMonth)), { replace: true });
+  }
+
+  async function reloadDetail() {
+    const result = await api.employeeAttendance(employeeId, range);
+    setDetail(result);
+    setLoadState('ok');
+    return result;
+  }
+
+  function openDayDrawer(day: EmployeeAttendanceDay) {
+    setSelectedDayDate(day.date);
+    setEditingPeriodId(null);
+    setPeriodFormMode('closed');
+    setPeriodForm(attendancePeriodFormFromPeriod());
+    setDrawerError('');
+  }
+
+  function startCreatePeriod() {
+    setEditingPeriodId(null);
+    setPeriodFormMode('create');
+    setPeriodForm(attendancePeriodFormFromPeriod());
+    setDrawerError('');
+  }
+
+  function startEditPeriod(period: EmployeeAttendancePeriod) {
+    setEditingPeriodId(period.id);
+    setPeriodFormMode('edit');
+    setPeriodForm(attendancePeriodFormFromPeriod(period));
+    setDrawerError('');
+  }
+
+  async function savePeriod(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedDayDate) return;
+    setDrawerBusy(true);
+    setDrawerError('');
+    try {
+      const payload = { date: selectedDayDate, ...periodForm };
+      if (editingPeriodId) {
+        await api.updateEmployeeAttendancePeriod(employeeId, editingPeriodId, payload);
+      } else {
+        await api.createEmployeeAttendancePeriod(employeeId, payload);
+      }
+      await reloadDetail();
+      setEditingPeriodId(null);
+      setPeriodFormMode('closed');
+      setPeriodForm(attendancePeriodFormFromPeriod());
+    } catch {
+      setDrawerError('Не вдалося зберегти запис. Перевірте час початку та завершення.');
+    } finally {
+      setDrawerBusy(false);
+    }
+  }
+
+  async function confirmDeletePeriod() {
+    if (!deletePeriodTarget) return;
+    setDrawerBusy(true);
+    setDrawerError('');
+    try {
+      await api.deleteEmployeeAttendancePeriod(employeeId, deletePeriodTarget.id);
+      await reloadDetail();
+      if (editingPeriodId === deletePeriodTarget.id) {
+        setEditingPeriodId(null);
+        setPeriodFormMode('closed');
+        setPeriodForm(attendancePeriodFormFromPeriod());
+      }
+      setDeletePeriodTarget(null);
+    } catch {
+      setDrawerError('Не вдалося видалити запис.');
+    } finally {
+      setDrawerBusy(false);
+    }
+  }
+
+  const employee = detail?.employee;
+  const summary = detail?.summary;
+  const role = [employee?.position_name, employee?.department_name].filter(Boolean).join(' · ') || 'Співробітник';
+  const absenceMinutes = (summary?.paid_absence_minutes ?? 0) + (summary?.unpaid_absence_minutes ?? 0);
+
+  return (
+    <main className="workspace attendance-page attendance-detail-page">
+      <header className="page-header compact profile-header attendance-detail-header">
+        <div className="profile-back">
+          <button type="button" onClick={() => navigate('/attendance')}>
+            <ChevronLeft size={16} />
+            Назад
+          </button>
+          <div className="profile-person">
+            <Avatar
+              name={employee?.full_name || 'Співробітник'}
+              src={employeeAvatarUrl(employee)}
+              accent={employeeAccentClasses[employeeId % employeeAccentClasses.length]}
+              size="lg"
+            />
+            <div>
+              <strong>{employee?.full_name || (loadState === 'loading' ? copy.common.loading : 'Співробітник')}</strong>
+              <span>{role}</span>
+            </div>
+          </div>
+        </div>
+        <div className="header-actions">
+          <button type="button" className="toolbar-icon" aria-label={copy.common.actions}>
+            <MoreHorizontal size={18} />
+          </button>
+          <button type="button" className="secondary-action">
+            <Sparkles size={16} />
+            Автозаповнення
+          </button>
+          <button type="button" className="secondary-action" onClick={() => navigate(peopleEmployeePath(employeeId))}>
+            <ArrowUpRight size={16} />
+            Профіль
+          </button>
+        </div>
+      </header>
+
+      <div className="attendance-detail-toolbar">
+        <div className="month-controls">
+          <button type="button" className="toolbar-button strong" onClick={() => changeMonth(getInitialMonth())}>
+            {copyValue(copy.attendance.currentMonth, 'Поточний місяць')}
+          </button>
+          <button
+            type="button"
+            className="toolbar-icon"
+            onClick={() => changeMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+            aria-label={copyValue(copy.attendance.previousMonth, 'Попередній місяць')}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            type="button"
+            className="toolbar-icon"
+            onClick={() => changeMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+            aria-label={copyValue(copy.attendance.nextMonth, 'Наступний місяць')}
+          >
+            <ChevronRight size={16} />
+          </button>
+          <span>{formatMonthTitle(month, copy)}</span>
+        </div>
+        <div className="attendance-detail-view-actions">
+          <select aria-label="Проект" defaultValue="">
+            <option value="">Виберіть проект</option>
+          </select>
+          <button
+            type="button"
+            className={`toolbar-icon ${viewMode === 'calendar' ? 'active' : ''}`}
+            aria-label="Календар"
+            onClick={() => setViewMode('calendar')}
+          >
+            <Grid3X3 size={16} />
+          </button>
+          <button
+            type="button"
+            className={`toolbar-icon ${viewMode === 'list' ? 'active' : ''}`}
+            aria-label="Список"
+            onClick={() => setViewMode('list')}
+          >
+            <List size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="metric-row five attendance-detail-metrics">
+        <MetricCard label="Очікувано" value={minutesToText(summary?.planned_minutes ?? 0)} />
+        <MetricCard label="Відпрацьовано" value={minutesToText(summary?.actual_minutes ?? 0)} />
+        <MetricCard label="Понаднормово" value={minutesToText(summary?.overtime_minutes ?? 0)} />
+        <MetricCard label="Відсутності" value={minutesToText(absenceMinutes)} />
+        <MetricCard label="Різниця" value={signedMinutesToText(summary?.difference_minutes ?? 0)} danger={(summary?.difference_minutes ?? 0) < 0} />
+      </div>
+
+      <div className="attendance-detail-body">
+        {loadState === 'error' ? (
+          <EmptyState title="Не вдалося завантажити табель" text={copy.common.backendRetry} />
+        ) : viewMode === 'calendar' ? (
+          <EmployeeAttendanceCalendar
+            days={detail?.days ?? []}
+            month={month}
+            copy={copy}
+            loadState={loadState}
+            selectedDate={selectedDayDate}
+            onOpenDay={openDayDrawer}
+          />
+        ) : (
+          <EmployeeAttendanceList days={detail?.days ?? []} copy={copy} loadState={loadState} />
+        )}
+      </div>
+
+      {selectedDay ? (
+        <AttendanceDayDrawer
+          day={selectedDay}
+          copy={copy}
+          form={periodForm}
+          busy={drawerBusy}
+          error={drawerError}
+          formMode={periodFormMode}
+          editingPeriodId={editingPeriodId}
+          onFormChange={setPeriodForm}
+          onSave={savePeriod}
+          onCancelForm={() => {
+            setPeriodFormMode('closed');
+            setEditingPeriodId(null);
+            setPeriodForm(attendancePeriodFormFromPeriod());
+            setDrawerError('');
+          }}
+          onClose={() => {
+            setSelectedDayDate(null);
+            setEditingPeriodId(null);
+            setPeriodFormMode('closed');
+            setDrawerError('');
+          }}
+          onCreate={startCreatePeriod}
+          onEdit={startEditPeriod}
+          onDelete={setDeletePeriodTarget}
+        />
+      ) : null}
+      {deletePeriodTarget ? (
+        <AttendancePeriodDeleteConfirmModal
+          period={deletePeriodTarget}
+          busy={drawerBusy}
+          onCancel={() => {
+            if (!drawerBusy) setDeletePeriodTarget(null);
+          }}
+          onConfirm={() => void confirmDeletePeriod()}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function EmployeeAttendanceCalendar({
+  days,
+  month,
+  copy,
+  loadState,
+  selectedDate,
+  onOpenDay,
+}: {
+  days: EmployeeAttendanceDay[];
+  month: Date;
+  copy: AppCopy;
+  loadState: LoadState;
+  selectedDate: string | null;
+  onOpenDay: (day: EmployeeAttendanceDay) => void;
+}) {
+  const byDate = useMemo(() => new Map(days.map((item) => [item.date, item])), [days]);
+  const monthDays = useMemo(() => getMonthDays(month.getFullYear(), month.getMonth()), [month]);
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
+  const blanks = firstDay === 0 ? 6 : firstDay - 1;
+  const weekDays = copyArray(copy.calendar.weekdaysShort, ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд']);
+  const today = todayIsoDate();
+
+  if (loadState === 'loading' && !days.length) {
+    return <EmptyState title={copy.common.loading} text="Формується табель за вибраний місяць." />;
+  }
+
+  return (
+    <div className="attendance-calendar employee-attendance-calendar">
+      {weekDays.map((day) => (
+        <div className="weekday" key={day}>
+          {day}
+        </div>
+      ))}
+      {Array.from({ length: blanks }, (_, index) => (
+        <div className="day-cell muted-cell" key={`blank-${index}`} />
+      ))}
+      {monthDays.map((dateValue) => {
+        const item = byDate.get(dateValue) ?? emptyEmployeeAttendanceDay(dateValue);
+        const planned = item?.planned_minutes ?? 0;
+        const actual = item?.actual_minutes ?? 0;
+        const delta = item?.difference_minutes ?? actual - planned;
+        return (
+          <div
+            className={`day-cell employee-day-cell ${dateValue === today ? 'today' : ''} ${dateValue === selectedDate ? 'selected' : ''}`}
+            key={dateValue}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenDay(item)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onOpenDay(item);
+              }
+            }}
+          >
+            <div className="day-title">
+              {dateValue === today ? <span className="today-pill">{formatAttendanceDayShort(dateValue, copy)}</span> : <strong>{formatAttendanceDayShort(dateValue, copy)}</strong>}
+            </div>
+            <div className={`delta-bar ${delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral'}`}>
+              {signedMinutesToText(delta)}
+            </div>
+            <div className="day-hours">
+              <span>
+                W <strong>{minutesToText(actual)}</strong>
+              </span>
+              <span>
+                E <strong>{minutesToText(planned)}</strong>
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EmployeeAttendanceList({
+  days,
+  copy,
+  loadState,
+}: {
+  days: EmployeeAttendanceDay[];
+  copy: AppCopy;
+  loadState: LoadState;
+}) {
+  if (loadState === 'loading' && !days.length) {
+    return <EmptyState title={copy.common.loading} text="Формується список днів за вибраний місяць." />;
+  }
+
+  return (
+    <div className="table-shell attendance-table-shell employee-attendance-list-shell">
+      <table className="attendance-summary-table employee-attendance-list">
+        <thead>
+          <tr>
+            <th>День / Дата</th>
+            <th>Очікувано</th>
+            <th>Відпрацьовано</th>
+            <th>Початок / кінець</th>
+            <th>Понаднормово</th>
+            <th>Перерва</th>
+            <th>Відсутності</th>
+            <th>Загалом відпрацьовано</th>
+            <th>Різниця</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.length ? (
+            days.map((day) => (
+              <tr key={day.date}>
+                <td className="date-cell">{formatAttendanceListDate(day.date, copy)}</td>
+                <td>{minutesToText(day.planned_minutes)}</td>
+                <td>{minutesToText(day.actual_minutes)}</td>
+                <td>
+                  <div className="period-list">
+                    {day.periods.length ? (
+                      day.periods.map((period) => (
+                        <span key={period.id}>
+                          <Edit3 size={13} />
+                          {formatTime(period.start_at)} - {formatTime(period.end_at)}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="muted-period">-</span>
+                    )}
+                  </div>
+                </td>
+                <td>{day.overtime_minutes ? minutesToText(day.overtime_minutes) : '-'}</td>
+                <td>{minutesToText(day.break_minutes)}</td>
+                <td>{minutesToText(day.paid_absence_minutes + day.unpaid_absence_minutes)}</td>
+                <td>{minutesToText(day.actual_minutes)}</td>
+                <td className={day.difference_minutes < 0 ? 'negative-diff' : day.difference_minutes > 0 ? 'positive-diff' : ''}>
+                  {signedMinutesToText(day.difference_minutes)}
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td colSpan={9}>
+                <EmptyState title="Табель порожній" text="За вибраний місяць немає даних присутності." />
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AttendanceDayDrawer({
+  day,
+  copy,
+  form,
+  formMode,
+  busy,
+  error,
+  editingPeriodId,
+  onFormChange,
+  onSave,
+  onCancelForm,
+  onClose,
+  onCreate,
+  onEdit,
+  onDelete,
+}: {
+  day: EmployeeAttendanceDay;
+  copy: AppCopy;
+  form: AttendancePeriodFormState;
+  formMode: 'closed' | 'create' | 'edit';
+  busy: boolean;
+  error: string;
+  editingPeriodId: number | null;
+  onFormChange: (value: AttendancePeriodFormState) => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onCancelForm: () => void;
+  onClose: () => void;
+  onCreate: () => void;
+  onEdit: (period: EmployeeAttendancePeriod) => void;
+  onDelete: (period: EmployeeAttendancePeriod) => void;
+}) {
+  const absenceMinutes = day.paid_absence_minutes + day.unpaid_absence_minutes;
+  const editingPeriod = editingPeriodId ? day.periods.find((period) => period.id === editingPeriodId) : null;
+  return (
+    <aside className="attendance-day-drawer" aria-label="Записи дня">
+      <header className="attendance-day-drawer-header">
+        <strong>{formatAttendanceDrawerTitle(day.date, copy)}</strong>
+        <button type="button" className="toolbar-icon" aria-label="Закрити" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </header>
+
+      <div className="attendance-day-drawer-stats">
+        <span>
+          Відпрацьовано
+          <strong>{minutesToText(day.actual_minutes)}</strong>
+        </span>
+        <span>
+          Відсутності
+          <strong>{absenceMinutes ? minutesToText(absenceMinutes) : '-'}</strong>
+        </span>
+        <span>
+          Очікувано
+          <strong>{minutesToText(day.planned_minutes)}</strong>
+        </span>
+      </div>
+
+      {formMode !== 'closed' ? (
+        <form className="attendance-period-form" onSubmit={onSave}>
+          <label>
+            <span>Виберіть проект</span>
+            <select defaultValue="">
+              <option value="">Виберіть проект</option>
+            </select>
+          </label>
+          <div className="attendance-period-form-grid">
+            <label>
+              <span>Почати роботу</span>
+              <div className="time-field">
+                <Clock3 size={14} />
+                <input
+                  type="time"
+                  value={form.start_time}
+                  onChange={(event) => onFormChange({ ...form, start_time: event.target.value })}
+                  required
+                />
+              </div>
+            </label>
+            <label>
+              <span>Закінчити роботу</span>
+              <div className="time-field">
+                <Clock3 size={14} />
+                <input
+                  type="time"
+                  value={form.end_time}
+                  onChange={(event) => onFormChange({ ...form, end_time: event.target.value })}
+                  required
+                />
+              </div>
+            </label>
+          </div>
+          <label>
+            <span>Коментар</span>
+            <textarea value={form.comment} onChange={(event) => onFormChange({ ...form, comment: event.target.value })} rows={4} />
+          </label>
+          {error ? <p className="attendance-drawer-error">{error}</p> : null}
+          <div className="attendance-period-form-actions">
+            <button type="button" className="secondary-action" onClick={onCancelForm} disabled={busy}>
+              Скасувати
+            </button>
+            <button type="submit" className="primary-action" disabled={busy}>
+              Зберегти
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="attendance-day-records">
+        {day.periods.length ? (
+          day.periods.map((period, index) => (
+            <div className={`attendance-record-card ${editingPeriod?.id === period.id ? 'editing' : ''}`} key={period.id}>
+              <div className="attendance-record-head">
+                <span>
+                  <Edit3 size={13} />
+                  Запис #{index + 1}
+                </span>
+                <div>
+                  <button type="button" aria-label="Редагувати запис" onClick={() => onEdit(period)} disabled={busy}>
+                    <Edit3 size={15} />
+                  </button>
+                  <button type="button" aria-label="Видалити запис" onClick={() => onDelete(period)} disabled={busy}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+              <div className="attendance-record-body">
+                <div>
+                  <span className="status-dot" />
+                  <strong>Почати роботу</strong>
+                  <time>{formatTime(period.start_at)}</time>
+                </div>
+                <div>
+                  <span className="status-dot" />
+                  <strong>Закінчити роботу</strong>
+                  <time>{formatTime(period.end_at)}</time>
+                  <em>
+                    <Clock3 size={12} />
+                    {minutesToText(period.duration_minutes)}
+                  </em>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="attendance-record-empty">Записів за день ще немає</div>
+        )}
+      </div>
+
+      <button type="button" className="secondary-action attendance-new-period" onClick={onCreate} disabled={busy}>
+        <Plus size={17} />
+        Новий запис
+      </button>
+    </aside>
+  );
+}
+
+function AttendancePeriodDeleteConfirmModal({
+  period,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  period: EmployeeAttendancePeriod;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="settings-option-modal-layer" role="dialog" aria-modal="true" aria-label="Видалити запис часу">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
+      <section className="settings-option-modal settings-delete-modal">
+        <header>
+          <strong>Видалити запис часу?</strong>
+          <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <p>
+          Запис {formatTime(period.start_at)} - {formatTime(period.end_at)} буде видалено з табеля. Цю дію не можна
+          скасувати.
+        </p>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onCancel} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="danger-action" onClick={onConfirm} disabled={busy}>
+            Видалити
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function emptyEmployeeAttendanceDay(date: string): EmployeeAttendanceDay {
+  return {
+    date,
+    planned_minutes: 0,
+    actual_minutes: 0,
+    overtime_minutes: 0,
+    break_minutes: 0,
+    paid_absence_minutes: 0,
+    unpaid_absence_minutes: 0,
+    total_absence_minutes: 0,
+    difference_minutes: 0,
+    first_entry_at: null,
+    last_exit_at: null,
+    status: '',
+    exception_count: 0,
+    working_pattern_names: [],
+    periods: [],
+  };
+}
+
+function formatAttendanceDayShort(value: string, copy: AppCopy): string {
+  const date = new Date(`${value}T00:00:00`);
+  const month = new Intl.DateTimeFormat(dateLocaleForCopy(copy), { month: 'short' }).format(date).replace('.', '');
+  return `${date.getDate()} ${month}`;
+}
+
+function formatAttendanceDrawerTitle(value: string, copy: AppCopy): string {
+  const date = new Date(`${value}T00:00:00`);
+  const formatted = new Intl.DateTimeFormat(dateLocaleForCopy(copy), {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    weekday: 'long',
+  })
+    .format(date)
+    .replace(' р.', '')
+    .replace('.', '');
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
+function formatAttendanceListDate(value: string, copy: AppCopy): string {
+  const date = new Date(`${value}T00:00:00`);
+  const weekday = new Intl.DateTimeFormat(dateLocaleForCopy(copy), { weekday: 'short' }).format(date).replace('.', '');
+  return `${date.getDate()} ${weekday}`;
 }
 
 function MetricCard({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {

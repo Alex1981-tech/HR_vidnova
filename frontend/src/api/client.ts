@@ -8,6 +8,8 @@ import type {
   DepartmentLevelOption,
   DepartmentOption,
   DivisionOption,
+  EmployeeAttendanceDetail,
+  EmployeeAttendancePeriod,
   EmployeeListItem,
   EmployeeProfile,
   GenderOption,
@@ -39,6 +41,7 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const CSRF_COOKIE_NAMES = [import.meta.env.VITE_CSRF_COOKIE_NAME ?? 'hr_csrftoken', 'csrftoken'];
+let csrfPrimePromise: Promise<void> | null = null;
 
 type QueryValue = string | number | boolean | null | undefined;
 
@@ -160,6 +163,13 @@ export type WorkingPatternPayload = {
   is_active?: boolean;
 };
 
+export type AttendancePeriodPayload = {
+  date: string;
+  start_time: string;
+  end_time: string;
+  comment?: string;
+};
+
 export type PositionPayload = {
   name: string;
   external_peopleforce_id?: string;
@@ -252,18 +262,37 @@ function getCookie(name: string): string {
   return parts.pop()?.split(';').shift() ?? '';
 }
 
+async function ensureCsrfCookie(path: string): Promise<string> {
+  const existingToken = CSRF_COOKIE_NAMES.map(getCookie).find(Boolean) ?? '';
+  if (existingToken || path === '/api/auth/status/') {
+    return existingToken;
+  }
+  csrfPrimePromise ??= fetch(`${API_BASE}/api/auth/status/`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+    .then(() => undefined)
+    .finally(() => {
+      csrfPrimePromise = null;
+    });
+  await csrfPrimePromise;
+  return CSRF_COOKIE_NAMES.map(getCookie).find(Boolean) ?? '';
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const csrfToken = CSRF_COOKIE_NAMES.map(getCookie).find(Boolean) ?? '';
   const bodyIsFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  const method = (init.method || 'GET').toUpperCase();
+  const needsCsrf = !['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method);
+  const csrfToken = needsCsrf ? await ensureCsrfCookie(path) : '';
   const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       ...(init.body && !bodyIsFormData ? { 'Content-Type': 'application/json' } : {}),
-      ...(init.body && csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      ...(needsCsrf && csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
       ...(init.headers ?? {}),
     },
-    ...init,
   });
 
   if (!response.ok) {
@@ -649,6 +678,22 @@ export const api = {
     request<ApiList<CompanyAttendanceSummary> | CompanyAttendanceSummary[]>(
       `/api/skud/company-attendance/${buildQuery(params)}`,
     ).then(normalizeList),
+  employeeAttendance: (employeeId: number, params: { from?: string; to?: string } = {}) =>
+    request<EmployeeAttendanceDetail>(`/api/skud/employee-attendance/${employeeId}/${buildQuery(params)}`),
+  createEmployeeAttendancePeriod: (employeeId: number, payload: AttendancePeriodPayload) =>
+    request<EmployeeAttendancePeriod>(`/api/skud/employee-attendance/${employeeId}/periods/`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateEmployeeAttendancePeriod: (employeeId: number, periodId: number, payload: AttendancePeriodPayload) =>
+    request<EmployeeAttendancePeriod>(`/api/skud/employee-attendance/${employeeId}/periods/${periodId}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteEmployeeAttendancePeriod: (employeeId: number, periodId: number) =>
+    request<void>(`/api/skud/employee-attendance/${employeeId}/periods/${periodId}/`, {
+      method: 'DELETE',
+    }),
   workdays: (params: { from?: string; to?: string; employee?: number; status?: string; page?: number } = {}) =>
     request<ApiList<WorkDaySummary> | WorkDaySummary[]>(`/api/skud/workdays/${buildQuery(params)}`).then(normalizeList),
   leaveTypes: (params: { page?: number; page_size?: number } = {}) =>

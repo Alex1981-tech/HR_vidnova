@@ -7,6 +7,8 @@ from .views import (
     AccessIdentityViewSet,
     AccessSystemViewSet,
     CompanyAttendanceSummaryView,
+    EmployeeAttendanceDetailView,
+    EmployeeAttendancePeriodView,
     IntegrationRunViewSet,
     TimeCorrectionRequestViewSet,
     WorkDaySummaryViewSet,
@@ -23,4 +25,7 @@ router.register("runs", IntegrationRunViewSet, basename="integration-run")
 
 urlpatterns = [
     path("company-attendance/", CompanyAttendanceSummaryView.as_view(), name="company-attendance-summary"),
+    path("employee-attendance/<int:employee_id>/", EmployeeAttendanceDetailView.as_view(), name="employee-attendance-detail"),
+    path("employee-attendance/<int:employee_id>/periods/", EmployeeAttendancePeriodView.as_view(), name="employee-attendance-period-create"),
+    path("employee-attendance/<int:employee_id>/periods/<int:period_id>/", EmployeeAttendancePeriodView.as_view(), name="employee-attendance-period-detail"),
 ] + router.urls
