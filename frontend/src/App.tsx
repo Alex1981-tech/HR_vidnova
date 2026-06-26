@@ -4155,14 +4155,14 @@ function AttendanceSummaryTable({
                     </div>
                   )}
                 </td>
-                <td>{row.expected}</td>
-                <td>{row.worked}</td>
-                <td>{row.overtime}</td>
-                <td>{row.breakTime}</td>
-                <td>{row.paidAbsence}</td>
-                <td>{row.unpaidAbsence}</td>
-                <td>{row.totalAbsence}</td>
-                <td>{row.difference}</td>
+                <td data-label={headers[1]}>{row.expected}</td>
+                <td data-label={headers[2]}>{row.worked}</td>
+                <td data-label={headers[3]}>{row.overtime}</td>
+                <td data-label={headers[4]}>{row.breakTime}</td>
+                <td data-label={headers[5]}>{row.paidAbsence}</td>
+                <td data-label={headers[6]}>{row.unpaidAbsence}</td>
+                <td data-label={headers[7]}>{row.totalAbsence}</td>
+                <td data-label={headers[8]}>{row.difference}</td>
                 <td>
                   <button
                     type="button"

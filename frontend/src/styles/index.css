@@ -12931,3 +12931,72 @@ textarea:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+
+/* ===== Design Phase 5.2: attendance company table -> stacked cards on phone =====
+   Scoped to company table only (NOT employee detail list .employee-attendance-list-shell). */
+@media (max-width: 640px) { /* --bp-sm */
+  .attendance-table-shell:not(.employee-attendance-list-shell) {
+    overflow-x: visible;
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) table,
+  .attendance-table-shell:not(.employee-attendance-list-shell) tbody,
+  .attendance-table-shell:not(.employee-attendance-list-shell) tr,
+  .attendance-table-shell:not(.employee-attendance-list-shell) td {
+    display: block;
+    width: 100%;
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) thead {
+    display: none;
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) tr.clickable-row {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--panel);
+    box-shadow: var(--shadow-xs);
+    padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-2);
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) td {
+    height: auto;
+    border: 0;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    white-space: normal;
+    text-align: right;
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) td.name-cell {
+    padding: 0 0 var(--space-2);
+    margin-bottom: var(--space-1);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    color: var(--muted);
+    font-size: var(--font-caption);
+    font-weight: var(--fw-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    text-align: left;
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) td:last-child {
+    justify-content: flex-end;
+    padding-top: var(--space-2);
+  }
+
+  .attendance-table-shell:not(.employee-attendance-list-shell) td[colspan] {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+}
