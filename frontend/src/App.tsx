@@ -253,6 +253,7 @@ function profileFromAuthEmployee(employee: NonNullable<AuthStatus['employee']>):
 
 const fallbackLeaveTypes: LeaveType[] = [];
 const TELEGRAM_BOT_URL = import.meta.env.VITE_HR_TELEGRAM_BOT_URL ?? 'https://t.me/Clinical_Photo_bot?start=link';
+const LOGIN_CODE_RESEND_DELAY_SECONDS = 60;
 
 const fallbackKnowledge: SelfKnowledge = {
   categories: [],
@@ -1224,21 +1225,25 @@ function LoginView({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [resendAvailableAt, setResendAvailableAt] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
-  async function submitPhone(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const normalizedPhone = phone.trim();
-    if (!normalizedPhone) {
-      setError('Вкажіть телефон');
-      return;
-    }
+  useEffect(() => {
+    if (step !== 'code') return undefined;
+    setNowTick(Date.now());
+    const intervalId = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [step, resendAvailableAt]);
+
+  async function requestCode(normalizedPhone: string, successMessage: string) {
     setBusy(true);
     setError('');
     setMessage('');
     try {
       await api.requestLoginCode(normalizedPhone);
       setStep('code');
-      setMessage('Перевірте Telegram або відкрийте бота за QR');
+      setMessage(successMessage);
+      setResendAvailableAt(Date.now() + LOGIN_CODE_RESEND_DELAY_SECONDS * 1000);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError('Забагато запитів. Спробуйте пізніше');
@@ -1248,6 +1253,16 @@ function LoginView({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitPhone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedPhone = phone.trim();
+    if (!normalizedPhone) {
+      setError('Вкажіть телефон');
+      return;
+    }
+    await requestCode(normalizedPhone, 'Перевірте Telegram або відкрийте бота за QR');
   }
 
   async function submitCode(event: FormEvent<HTMLFormElement>) {
@@ -1280,9 +1295,17 @@ function LoginView({
     setCode('');
     setError('');
     setMessage('');
+    setResendAvailableAt(0);
+  }
+
+  async function resendCode() {
+    if (busy || resendRemaining > 0) return;
+    setCode('');
+    await requestCode(phone.trim(), 'Надіслали новий код у Telegram');
   }
 
   const isPhoneStep = step === 'phone';
+  const resendRemaining = isPhoneStep ? 0 : Math.max(0, Math.ceil((resendAvailableAt - nowTick) / 1000));
   const loginDescription = isPhoneStep
     ? 'Введіть номер телефону. Якщо профіль знайдено, ми надішлемо код підтвердження в Telegram.'
     : 'Введіть код із Telegram. QR нижче веде в єдиного бота Vidnova для HR і Clinical Photo.';
@@ -1409,6 +1432,12 @@ function LoginView({
               </label>
               {message && !error ? <p className="auth-message">{message}</p> : null}
               {error ? <p className="auth-error">{error}</p> : null}
+              <div className="auth-resend-row" aria-live="polite">
+                <button type="button" className="auth-resend" onClick={resendCode} disabled={busy || resendRemaining > 0}>
+                  <Timer size={16} />
+                  <span>{resendRemaining > 0 ? `Повторно через ${resendRemaining} с` : 'Надіслати код ще раз'}</span>
+                </button>
+              </div>
               <div className="auth-actions">
                 <button type="button" className="secondary-action" onClick={backToPhone} disabled={busy}>
                   <ChevronLeft size={17} />
@@ -13115,7 +13144,7 @@ function AssetsView({ copy }: { copy: AppCopy }) {
   const [openAssetId, setOpenAssetId] = useState<number | null>(null);
   const [pickerQuery, setPickerQuery] = useState('');
   const [savingId, setSavingId] = useState<number | null>(null);
-  const pageSize = 25;
+  const pageSize = 28;
 
   useEffect(() => {
     api
@@ -13357,6 +13386,14 @@ export function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const section = sectionFromPathname(location.pathname);
+  const loginRedirectState = location.state as { from?: unknown } | null;
+  const loginRedirectPath =
+    typeof loginRedirectState?.from === 'string' &&
+    loginRedirectState.from.startsWith('/') &&
+    !loginRedirectState.from.startsWith('//') &&
+    !loginRedirectState.from.startsWith('/login')
+      ? loginRedirectState.from
+      : '/';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [knowledgeResetToken, setKnowledgeResetToken] = useState(0);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
@@ -13444,13 +13481,16 @@ export function App() {
   useEffect(() => {
     if (!authChecked) return;
     if (!auth?.authenticated && location.pathname !== '/login') {
-      navigate('/login', { replace: true });
+      navigate('/login', {
+        replace: true,
+        state: { from: `${location.pathname}${location.search}${location.hash}` },
+      });
       return;
     }
     if (auth?.authenticated && location.pathname === '/login') {
-      navigate('/', { replace: true });
+      navigate(loginRedirectPath, { replace: true, state: null });
     }
-  }, [authChecked, auth?.authenticated, location.pathname, navigate]);
+  }, [authChecked, auth?.authenticated, location.hash, location.pathname, location.search, loginRedirectPath, navigate]);
 
   useEffect(() => {
     const legacyPath = legacyHashPaths[location.hash];
@@ -13547,7 +13587,7 @@ export function App() {
     void loadAuthenticatedData().catch(() => {
       setProfile(profileFromAuthEmployee(response.employee));
     });
-    navigate('/', { replace: true });
+    navigate(loginRedirectPath, { replace: true, state: null });
   }
 
   async function handleLogout() {
