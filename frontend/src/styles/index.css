@@ -1631,6 +1631,7 @@ a {
   border-right: 1px solid var(--line);
   background: var(--panel);
   padding: 8px 10px;
+  box-shadow: 6px 0 20px -10px rgba(16, 24, 40, 0.16);
 }
 
 .brand-mark {
@@ -1833,6 +1834,7 @@ a {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   padding: 0 12px 0 22px;
+  box-shadow: 0 6px 20px -10px rgba(16, 24, 40, 0.16);
 }
 
 .topbar-left {
@@ -1867,23 +1869,23 @@ a {
 .primary-action,
 .secondary-action,
 .toolbar-button {
-  min-height: 38px;
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--text);
-  padding: 0 12px;
-  font-weight: 600;
+  padding: 0 var(--space-3);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 
 .icon-button,
 .toolbar-icon {
-  width: 38px;
+  width: 32px;
   padding: 0;
   background: var(--panel-soft);
 }
@@ -11170,7 +11172,7 @@ th,
 .employee-hero,
 .employee-summary,
 .metric-card {
-  box-shadow: 0 8px 22px rgba(31, 52, 84, 0.055);
+  box-shadow: 0 2px 6px -2px rgba(16, 24, 40, 0.08), 0 8px 24px -10px rgba(16, 24, 40, 0.10);
 }
 
 .page-header h1,
