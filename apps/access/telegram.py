@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 import urllib.request
+from html import escape
 
 from django.conf import settings
 
@@ -13,10 +14,14 @@ class TelegramSendError(RuntimeError):
 
 
 def build_login_code_text(code: str, employee: Employee) -> str:
-    employee_name = employee.full_name or "співробітник"
+    employee_name = escape(employee.full_name or "співробітник")
+    safe_code = escape(code)
+    hr_url = "https://hr.vidnova.app/"
     return (
-        "Код входу в HR Vidnova: "
-        f"{code}\n"
+        "Ви входите в систему HR Vidnova:\n"
+        f'<a href="{hr_url}">{hr_url}</a>\n\n'
+        "Код входу:\n"
+        f"<code>{safe_code}</code>\n\n"
         f"{employee_name}\n"
         "Дійсний 5 хвилин. Нікому не передавайте цей код."
     )
@@ -35,7 +40,14 @@ def _send_via_telegram_bot_api(telegram_chat_id: int, text: str) -> None:
     if not token:
         raise TelegramSendError("TELEGRAM_BOT_TOKEN is not configured")
 
-    data = urllib.parse.urlencode({"chat_id": telegram_chat_id, "text": text}).encode()
+    data = urllib.parse.urlencode(
+        {
+            "chat_id": telegram_chat_id,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        }
+    ).encode()
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         request = urllib.request.Request(url, data=data, method="POST")

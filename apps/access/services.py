@@ -46,6 +46,8 @@ def normalize_phone(raw: object) -> str:
         return ""
     if value.startswith("0") and len(value) >= 10:
         return UA_PHONE_PREFIX + value[1:]
+    if value.startswith("80") and len(value) == 11:
+        return f"+3{value}"
     if value.startswith("380"):
         return f"+{value}"
     if value.startswith("+"):

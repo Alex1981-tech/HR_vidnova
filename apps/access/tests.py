@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 from apps.access.models import AuthAuditEvent, EmployeeTelegramLink, TelegramLoginCode
 from apps.access.services import (
@@ -29,6 +30,7 @@ class PhoneNormalizationTests(TestCase):
         self.assertEqual(normalize_phone("+38 (097) 123-45-67"), expected)
         self.assertEqual(normalize_phone("380971234567"), expected)
         self.assertEqual(normalize_phone("0971234567"), expected)
+        self.assertEqual(normalize_phone("80971234567"), expected)
 
     def test_non_ukrainian_number_is_kept_with_plus(self):
         self.assertEqual(normalize_phone("+1 555 123 4567"), "+15551234567")
@@ -112,7 +114,8 @@ class TelegramSenderTests(TestCase):
         text = build_login_code_text("123456", employee)
 
         self.assertIn("HR Vidnova", text)
-        self.assertIn("123456", text)
+        self.assertIn("https://hr.vidnova.app/", text)
+        self.assertIn("<code>123456</code>", text)
         self.assertIn("Ірина", text)
 
     @override_settings(TELEGRAM_BOT_TOKEN="test-token", HR_TELEGRAM_SENDER_BACKEND="telegram_bot_api")
@@ -123,14 +126,23 @@ class TelegramSenderTests(TestCase):
         send_login_code(12345, "123456", employee)
 
         urlopen_mock.assert_called_once()
+        request = urlopen_mock.call_args.args[0]
+        payload = parse_qs(request.data.decode())
+        self.assertEqual(payload["parse_mode"], ["HTML"])
+        self.assertEqual(payload["disable_web_page_preview"], ["true"])
+        self.assertEqual(payload["chat_id"], ["12345"])
+        self.assertIn("<code>123456</code>", payload["text"][0])
 
 
 @override_settings(HR_BOT_API_SECRET="test-bot-secret")
 class BotLinkByPhoneApiTests(APITestCase):
-    def post_link(self, payload: dict, secret: str | None = "test-bot-secret"):
+    def post_link(self, payload: dict, secret: str | None = "test-bot-secret", *, bearer: bool = False):
         headers = {}
         if secret is not None:
-            headers["HTTP_X_BOT_API_SECRET"] = secret
+            if bearer:
+                headers["HTTP_AUTHORIZATION"] = f"Bearer {secret}"
+            else:
+                headers["HTTP_X_BOT_API_SECRET"] = secret
         return self.client.post(reverse("bot-link-by-phone"), payload, format="json", **headers)
 
     def test_missing_bot_secret_is_rejected_and_audited(self):
@@ -163,7 +175,8 @@ class BotLinkByPhoneApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, {"status": "ok"})
+        self.assertEqual(response.data["status"], "ok")
+        self.assertTrue(response.data["username"])
         link = EmployeeTelegramLink.objects.get(employee=employee)
         self.assertEqual(link.telegram_chat_id, 12345)
         self.assertEqual(link.telegram_user_id, 54321)
@@ -173,6 +186,15 @@ class BotLinkByPhoneApiTests(APITestCase):
         self.assertEqual(event.result, AuthAuditEvent.Result.OK)
         self.assertEqual(event.employee, employee)
         self.assertEqual(event.telegram_link, link)
+
+    def test_valid_bearer_request_creates_telegram_link_for_shared_bot(self):
+        employee = Employee.objects.create(first_name="Ірина", last_name="Тестова", phone="+38 (097) 123-45-67")
+
+        response = self.post_link({"phone": "0971234567", "chat_id": 12345}, bearer=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["status"], "ok")
+        self.assertTrue(EmployeeTelegramLink.objects.filter(employee=employee, telegram_chat_id=12345).exists())
 
     def test_repeated_request_updates_existing_link_without_duplicate(self):
         employee = Employee.objects.create(first_name="Ірина", last_name="Тестова", phone="0971234567")

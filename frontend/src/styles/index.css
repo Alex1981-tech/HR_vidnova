@@ -203,6 +203,57 @@ a {
   gap: 16px;
 }
 
+.auth-telegram {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.auth-qr-link {
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(31, 52, 84, 0.08);
+  transition: transform 0.16s ease, border-color 0.16s ease;
+}
+
+.auth-qr-link:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+}
+
+.auth-qr-link svg {
+  display: block;
+}
+
+.auth-telegram-copy {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-telegram-copy > span {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.auth-telegram-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .auth-field {
   display: grid;
   gap: 8px;
@@ -249,6 +300,24 @@ a {
 .auth-actions .primary-action {
   min-height: 42px;
   gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .auth-panel {
+    min-height: auto;
+    padding: 22px;
+  }
+
+  .auth-telegram {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .auth-telegram-copy {
+    width: 100%;
+  }
+
 }
 
 .app-shell[data-theme="dark"] {
@@ -767,12 +836,6 @@ a {
   filter: brightness(1.08);
 }
 
-.app-shell[data-theme="dark"] .api-indicator.ok {
-  color: #8df3bf !important;
-  border-color: rgba(83, 221, 139, 0.42) !important;
-  background: rgba(31, 100, 67, 0.26) !important;
-}
-
 .app-shell[data-theme="dark"] .people-table th,
 .app-shell[data-theme="dark"] .attendance-summary-table th,
 .app-shell[data-theme="dark"] .leave-balance-table th {
@@ -960,12 +1023,6 @@ a {
     border-color: transparent !important;
     background: linear-gradient(135deg, var(--primary), var(--primary-strong)) !important;
     box-shadow: 0 14px 30px color-mix(in srgb, var(--brand-accent) 28%, transparent) !important;
-  }
-
-  .app-shell[data-theme="auto"] .api-indicator.ok {
-    color: #8df3bf !important;
-    border-color: rgba(83, 221, 139, 0.42) !important;
-    background: rgba(31, 100, 67, 0.26) !important;
   }
 
   .app-shell[data-theme="auto"] .people-table th,
@@ -1167,12 +1224,6 @@ a {
 
 .app-shell[data-theme="dark"] .primary-action:hover {
   filter: brightness(1.08);
-}
-
-.app-shell[data-theme="dark"] .api-indicator.ok {
-  border-color: color-mix(in srgb, var(--green) 34%, #234236);
-  background: #10291f;
-  color: #70d7ad;
 }
 
 .app-shell[data-theme="dark"] .people-table th,
@@ -1500,32 +1551,6 @@ a {
   background: #f05761;
   color: white;
   font-size: 11px;
-}
-
-.api-indicator {
-  min-height: 38px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 10px;
-  color: var(--muted);
-  background: var(--panel);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.api-indicator.ok {
-  color: var(--green);
-  background: var(--green-soft);
-  border-color: #b7e2d2;
-}
-
-.api-indicator.offline {
-  color: var(--amber);
-  background: var(--amber-soft);
-  border-color: #edd398;
 }
 
 .user-menu {
@@ -10431,7 +10456,6 @@ td {
   }
 
   .quick-add span,
-  .api-indicator span,
   .user-menu strong {
     display: none;
   }

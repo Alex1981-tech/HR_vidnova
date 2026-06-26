@@ -70,6 +70,7 @@ import { ECanDrag, GraphState, MultipointConnection, polyline } from '@gravity-u
 import type { Graph, TBlock, TConnection, TGraphColors, TGraphConstants, TPoint, TRect } from '@gravity-ui/graph';
 import { GraphBlock, GraphCanvas, useGraph } from '@gravity-ui/graph/react';
 import type { LucideIcon } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import type { CSSProperties, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -235,7 +236,17 @@ const fallbackEmployee: EmployeeProfile = {
   hired_on: null,
 };
 
+function profileFromAuthEmployee(employee: NonNullable<AuthStatus['employee']>): EmployeeProfile {
+  return {
+    ...fallbackEmployee,
+    id: employee.id,
+    full_name: employee.full_name || fallbackEmployee.full_name,
+    status: employee.status,
+  };
+}
+
 const fallbackLeaveTypes: LeaveType[] = [];
+const TELEGRAM_BOT_URL = import.meta.env.VITE_HR_TELEGRAM_BOT_URL ?? 'https://t.me/Clinical_Photo_bot?start=link';
 
 const fallbackKnowledge: SelfKnowledge = {
   categories: [],
@@ -1104,14 +1115,12 @@ function MobileMenu({
 
 function Topbar({
   auth,
-  apiState,
   employee,
   onOpenMobileMenu,
   onLogout,
   copy,
 }: {
   auth: AuthStatus | null;
-  apiState: 'ok' | 'offline';
   employee: EmployeeProfile;
   onOpenMobileMenu: () => void;
   onLogout: () => void;
@@ -1136,10 +1145,6 @@ function Topbar({
           <Bell size={18} />
           <span>5</span>
         </button>
-        <div className={`api-indicator ${apiState}`}>
-          <ShieldCheck size={17} />
-          <span>{apiState === 'ok' ? copy.common.apiOnline : copy.common.apiOffline}</span>
-        </div>
         <button type="button" className="user-menu" onClick={onLogout} title="Вийти">
           <Avatar name={employee.full_name || copy.common.user} accent="teal" />
           <strong>{auth?.user?.username || employee.full_name || copy.common.user}</strong>
@@ -1154,11 +1159,9 @@ type LoginStep = 'phone' | 'code';
 
 function LoginView({
   brandingSettings,
-  apiState,
   onSuccess,
 }: {
   brandingSettings: BrandingSettings;
-  apiState: 'ok' | 'offline';
   onSuccess: (response: AuthLoginResponse) => Promise<void>;
 }) {
   const [step, setStep] = useState<LoginStep>('phone');
@@ -1181,7 +1184,7 @@ function LoginView({
     try {
       await api.requestLoginCode(normalizedPhone);
       setStep('code');
-      setMessage('Перевірте Telegram, якщо номер привʼязаний');
+      setMessage('Перевірте Telegram або відкрийте бота за QR');
     } catch (err) {
       if (err instanceof ApiError && err.status === 429) {
         setError('Забагато запитів. Спробуйте пізніше');
@@ -1230,10 +1233,6 @@ function LoginView({
       <main className="auth-panel" aria-label="Вхід">
         <div className="auth-brand-row">
           <BrandMark brandingSettings={brandingSettings} />
-          <span className={`api-indicator ${apiState}`}>
-            <ShieldCheck size={17} />
-            <span>{apiState === 'ok' ? 'API online' : 'API offline'}</span>
-          </span>
         </div>
         <div className="auth-title">
           <h1>HR Vidnova</h1>
@@ -1264,6 +1263,22 @@ function LoginView({
           </form>
         ) : (
           <form className="auth-form" onSubmit={submitCode}>
+            <div className="auth-telegram">
+              <a
+                href={TELEGRAM_BOT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="auth-qr-link"
+                title="Відкрити Telegram-бот"
+                aria-label="Відкрити Telegram-бот Clinical Photo"
+              >
+                <QRCodeSVG value={TELEGRAM_BOT_URL} size={132} level="M" marginSize={1} />
+              </a>
+              <div className="auth-telegram-copy">
+                <span>Clinical Photo</span>
+                <p>Скануйте QR або натисніть на нього, щоб перейти в Telegram-бот.</p>
+              </div>
+            </div>
             <label className="auth-field">
               <span>Код</span>
               <div>
@@ -12873,7 +12888,6 @@ export function App() {
   const [knowledge, setKnowledge] = useState<SelfKnowledge>(fallbackKnowledge);
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => readBrandingSettings());
   const [employeeCovers, setEmployeeCovers] = useState<EmployeeCoverMap>(() => readEmployeeCovers());
-  const [apiState, setApiState] = useState<'ok' | 'offline'>('offline');
   const [correctionForm, setCorrectionForm] = useState({
     date: '2026-06-24',
     requested_start_at: '',
@@ -12913,7 +12927,6 @@ export function App() {
         const authStatus = await api.authStatus();
         if (cancelled) return;
         setAuth(authStatus);
-        setApiState('ok');
 
         if (authStatus.authenticated && authStatus.employee) {
           const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
@@ -12935,7 +12948,6 @@ export function App() {
         }
       } catch {
         if (!cancelled) {
-          setApiState('offline');
           setAuth({ authenticated: false, user: null, employee: null });
         }
       } finally {
@@ -13051,8 +13063,10 @@ export function App() {
 
   async function handleLoginSuccess(response: AuthLoginResponse) {
     setAuth({ authenticated: true, user: response.user, employee: response.employee });
-    setApiState('ok');
-    await loadAuthenticatedData();
+    setProfile(profileFromAuthEmployee(response.employee));
+    void loadAuthenticatedData().catch(() => {
+      setProfile(profileFromAuthEmployee(response.employee));
+    });
     navigate('/', { replace: true });
   }
 
@@ -13121,7 +13135,7 @@ export function App() {
   }
 
   if (!auth?.authenticated) {
-    return <LoginView brandingSettings={brandingSettings} apiState={apiState} onSuccess={handleLoginSuccess} />;
+    return <LoginView brandingSettings={brandingSettings} onSuccess={handleLoginSuccess} />;
   }
 
   return (
@@ -13130,7 +13144,6 @@ export function App() {
       <div className="main-shell">
         <Topbar
           auth={auth}
-          apiState={apiState}
           employee={profile}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
           onLogout={handleLogout}

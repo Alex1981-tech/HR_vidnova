@@ -51,6 +51,9 @@ def _required_int(value: object) -> int | None:
 def _bot_secret_is_valid(request) -> bool:
     expected = settings.HR_BOT_API_SECRET
     provided = request.headers.get("X-Bot-Api-Secret", "")
+    authorization = request.headers.get("Authorization", "")
+    if not provided and authorization.startswith("Bearer "):
+        provided = authorization.removeprefix("Bearer ").strip()
     return bool(expected and provided and hmac.compare_digest(provided, expected))
 
 
@@ -254,7 +257,7 @@ class BotLinkByPhoneView(APIView):
                 metadata={"created": created},
             )
 
-        return Response({"status": "ok"})
+        return Response({"status": "ok", "username": employee.full_name or employee.email or f"employee-{employee.pk}"})
 
 
 class RequestLoginCodeView(APIView):
@@ -377,7 +380,7 @@ class VerifyLoginCodeView(APIView):
         max_attempts = settings.HR_LOGIN_CODE_MAX_ATTEMPTS
         with transaction.atomic():
             login_code = (
-                TelegramLoginCode.objects.select_for_update()
+                TelegramLoginCode.objects.select_for_update(of=("self",))
                 .select_related("telegram_link")
                 .filter(employee=employee, consumed_at__isnull=True)
                 .order_by("-created_at")
