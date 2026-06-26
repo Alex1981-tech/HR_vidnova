@@ -1,5 +1,7 @@
 import type {
   ApiList,
+  AuthCodeResponse,
+  AuthLoginResponse,
   AuthStatus,
   CompanyAttendanceSummary,
   DashboardOverview,
@@ -288,6 +290,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   authStatus: () => request<AuthStatus>('/api/auth/status/'),
+  requestLoginCode: (phone: string) =>
+    request<AuthCodeResponse>('/api/auth/request-code/', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    }),
+  verifyLoginCode: (phone: string, code: string) =>
+    request<AuthLoginResponse>('/api/auth/verify-code/', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    }),
+  logout: () =>
+    request<{ status: string }>('/api/auth/logout/', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
   overview: () => request<DashboardOverview>('/api/dashboard/overview/'),
   employees: (
     params: {

@@ -35,6 +35,7 @@ import {
   ListChecks,
   ListOrdered,
   Lock,
+  LogOut,
   Mail,
   MapPin,
   Menu,
@@ -78,6 +79,7 @@ import { ApiError, api } from './api/client';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
+  AuthLoginResponse,
   AuthStatus,
   ClinicLocation,
   CompanyAttendanceSummary,
@@ -1105,12 +1107,14 @@ function Topbar({
   apiState,
   employee,
   onOpenMobileMenu,
+  onLogout,
   copy,
 }: {
   auth: AuthStatus | null;
   apiState: 'ok' | 'offline';
   employee: EmployeeProfile;
   onOpenMobileMenu: () => void;
+  onLogout: () => void;
   copy: AppCopy;
 }) {
   return (
@@ -1136,13 +1140,176 @@ function Topbar({
           <ShieldCheck size={17} />
           <span>{apiState === 'ok' ? copy.common.apiOnline : copy.common.apiOffline}</span>
         </div>
-        <button type="button" className="user-menu">
+        <button type="button" className="user-menu" onClick={onLogout} title="Вийти">
           <Avatar name={employee.full_name || copy.common.user} accent="teal" />
           <strong>{auth?.user?.username || employee.full_name || copy.common.user}</strong>
-          <ChevronDown size={16} />
+          <LogOut size={16} />
         </button>
       </div>
     </header>
+  );
+}
+
+type LoginStep = 'phone' | 'code';
+
+function LoginView({
+  brandingSettings,
+  apiState,
+  onSuccess,
+}: {
+  brandingSettings: BrandingSettings;
+  apiState: 'ok' | 'offline';
+  onSuccess: (response: AuthLoginResponse) => Promise<void>;
+}) {
+  const [step, setStep] = useState<LoginStep>('phone');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  async function submitPhone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedPhone = phone.trim();
+    if (!normalizedPhone) {
+      setError('Вкажіть телефон');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.requestLoginCode(normalizedPhone);
+      setStep('code');
+      setMessage('Перевірте Telegram, якщо номер привʼязаний');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        setError('Забагато запитів. Спробуйте пізніше');
+      } else {
+        setError('Не вдалося запитати код');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanCode = code.trim();
+    if (cleanCode.length < 6) {
+      setError('Вкажіть 6-значний код');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const response = await api.verifyLoginCode(phone.trim(), cleanCode);
+      await onSuccess(response);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 429) {
+        setError('Забагато спроб. Спробуйте пізніше');
+      } else if (err instanceof ApiError && err.status === 400) {
+        setError('Код недійсний або прострочений');
+      } else {
+        setError('Невірний код');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function backToPhone() {
+    setStep('phone');
+    setCode('');
+    setError('');
+    setMessage('');
+  }
+
+  return (
+    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
+      <main className="auth-panel" aria-label="Вхід">
+        <div className="auth-brand-row">
+          <BrandMark brandingSettings={brandingSettings} />
+          <span className={`api-indicator ${apiState}`}>
+            <ShieldCheck size={17} />
+            <span>{apiState === 'ok' ? 'API online' : 'API offline'}</span>
+          </span>
+        </div>
+        <div className="auth-title">
+          <h1>HR Vidnova</h1>
+          <p>Вхід через Telegram</p>
+        </div>
+
+        {step === 'phone' ? (
+          <form className="auth-form" onSubmit={submitPhone}>
+            <label className="auth-field">
+              <span>Телефон</span>
+              <div>
+                <Phone size={18} />
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="+380..."
+                  autoComplete="tel"
+                />
+              </div>
+            </label>
+            {error ? <p className="auth-error">{error}</p> : null}
+            <button type="submit" className="primary-action auth-submit" disabled={busy}>
+              <ShieldCheck size={18} />
+              <span>{busy ? 'Запит...' : 'Отримати код'}</span>
+            </button>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={submitCode}>
+            <label className="auth-field">
+              <span>Код</span>
+              <div>
+                <Lock size={18} />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  autoComplete="one-time-code"
+                />
+              </div>
+            </label>
+            {message && !error ? <p className="auth-message">{message}</p> : null}
+            {error ? <p className="auth-error">{error}</p> : null}
+            <div className="auth-actions">
+              <button type="button" className="secondary-action" onClick={backToPhone} disabled={busy}>
+                <ChevronLeft size={17} />
+                <span>Назад</span>
+              </button>
+              <button type="submit" className="primary-action auth-submit" disabled={busy}>
+                <Check size={18} />
+                <span>{busy ? 'Перевірка...' : 'Увійти'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function AuthLoadingView({ brandingSettings }: { brandingSettings: BrandingSettings }) {
+  return (
+    <div className="auth-shell" data-theme={normalizeTheme(brandingSettings.theme)}>
+      <main className="auth-panel loading" aria-label="Завантаження">
+        <BrandMark brandingSettings={brandingSettings} />
+        <div className="auth-title">
+          <h1>HR Vidnova</h1>
+          <p>Перевірка сесії</p>
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -12698,6 +12865,7 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [knowledgeResetToken, setKnowledgeResetToken] = useState(0);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [overview, setOverview] = useState<DashboardOverview>(fallbackOverview);
   const [profile, setProfile] = useState<EmployeeProfile>(fallbackEmployee);
   const [attendance, setAttendance] = useState<SelfAttendance>(fallbackAttendance);
@@ -12719,25 +12887,44 @@ export function App() {
     reason: '',
   });
 
+  async function loadAuthenticatedData() {
+    const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
+      api.overview(),
+      api.selfProfile(),
+      api.selfAttendance(),
+      api.selfLeave(),
+      api.selfKnowledge(),
+    ]);
+    setOverview(dashboard);
+    setProfile(selfProfile);
+    setAttendance(selfAttendance);
+    setLeave(selfLeave);
+    setKnowledge(selfKnowledge);
+    if (selfLeave.leave_types[0]) {
+      setLeaveForm((current) => ({ ...current, leave_type: String(selfLeave.leave_types[0].id) }));
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       try {
-        const [authStatus, dashboard] = await Promise.all([api.authStatus(), api.overview()]);
+        const authStatus = await api.authStatus();
         if (cancelled) return;
         setAuth(authStatus);
-        setOverview(dashboard);
         setApiState('ok');
 
         if (authStatus.authenticated && authStatus.employee) {
-          const [selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
+          const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
+            api.overview(),
             api.selfProfile(),
             api.selfAttendance(),
             api.selfLeave(),
             api.selfKnowledge(),
           ]);
           if (cancelled) return;
+          setOverview(dashboard);
           setProfile(selfProfile);
           setAttendance(selfAttendance);
           setLeave(selfLeave);
@@ -12747,7 +12934,12 @@ export function App() {
           }
         }
       } catch {
-        if (!cancelled) setApiState('offline');
+        if (!cancelled) {
+          setApiState('offline');
+          setAuth({ authenticated: false, user: null, employee: null });
+        }
+      } finally {
+        if (!cancelled) setAuthChecked(true);
       }
     }
 
@@ -12756,6 +12948,17 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!auth?.authenticated && location.pathname !== '/login') {
+      navigate('/login', { replace: true });
+      return;
+    }
+    if (auth?.authenticated && location.pathname === '/login') {
+      navigate('/', { replace: true });
+    }
+  }, [authChecked, auth?.authenticated, location.pathname, navigate]);
 
   useEffect(() => {
     const legacyPath = legacyHashPaths[location.hash];
@@ -12846,6 +13049,27 @@ export function App() {
     setLeaveForm((current) => ({ ...current, reason: '' }));
   }
 
+  async function handleLoginSuccess(response: AuthLoginResponse) {
+    setAuth({ authenticated: true, user: response.user, employee: response.employee });
+    setApiState('ok');
+    await loadAuthenticatedData();
+    navigate('/', { replace: true });
+  }
+
+  async function handleLogout() {
+    try {
+      await api.logout();
+    } catch {
+      // Local session state is cleared even if the network request fails.
+    }
+    setAuth({ authenticated: false, user: null, employee: null });
+    setProfile(fallbackEmployee);
+    setAttendance(fallbackAttendance);
+    setLeave(fallbackLeave);
+    setKnowledge(fallbackKnowledge);
+    navigate('/login', { replace: true });
+  }
+
   function changeSection(nextSection: Section) {
     if (nextSection === 'knowledge') {
       setKnowledgeResetToken((current) => current + 1);
@@ -12892,11 +13116,26 @@ export function App() {
     '--primary-soft': `color-mix(in srgb, ${brandingSettings.primaryColor} 14%, #ffffff)`,
   } as CSSProperties;
 
+  if (!authChecked) {
+    return <AuthLoadingView brandingSettings={brandingSettings} />;
+  }
+
+  if (!auth?.authenticated) {
+    return <LoginView brandingSettings={brandingSettings} apiState={apiState} onSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="app-shell" data-theme={themeMode} style={appThemeStyle}>
       <Sidebar active={section} onChange={changeSection} brandingSettings={brandingSettings} copy={copy} />
       <div className="main-shell">
-        <Topbar auth={auth} apiState={apiState} employee={profile} onOpenMobileMenu={() => setMobileMenuOpen(true)} copy={copy} />
+        <Topbar
+          auth={auth}
+          apiState={apiState}
+          employee={profile}
+          onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          onLogout={handleLogout}
+          copy={copy}
+        />
         {content[section]}
       </div>
       <MobileMenu

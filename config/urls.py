@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,7 +12,7 @@ from apps.employees.models import Employee
 
 
 class AuthStatusView(APIView):
-    authentication_classes = []
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = []
 
     def get(self, request):
@@ -46,6 +47,8 @@ class AuthStatusView(APIView):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/status/", AuthStatusView.as_view(), name="auth-status"),
+    path("api/auth/", include("apps.access.auth_urls")),
+    path("api/bot/", include("apps.access.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),
     path("api/me/", include("apps.selfservice.urls")),
     path("api/employees/", include("apps.employees.urls")),

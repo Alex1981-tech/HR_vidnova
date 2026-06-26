@@ -1,0 +1,102 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-hr_vidnova}
+      POSTGRES_USER: ${DB_USER:-hr_vidnova}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hr_vidnova} -d ${DB_NAME:-hr_vidnova}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+
+  web:
+    image: ghcr.io/alex1981-tech/hr_vidnova/web:latest
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8050 --workers 3 --threads 4 --timeout 120"
+    env_file:
+      - .env
+    volumes:
+      - staticfiles:/app/staticfiles
+      - media:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging: *default-logging
+
+  celery:
+    image: ghcr.io/alex1981-tech/hr_vidnova/web:latest
+    restart: unless-stopped
+    command: celery -A config worker -l info -Q celery -c 2 --max-tasks-per-child=100
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging: *default-logging
+
+  frontend:
+    image: ghcr.io/alex1981-tech/hr_vidnova/frontend:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8096:80"
+    volumes:
+      - staticfiles:/app/staticfiles:ro
+      - media:/app/media:ro
+    depends_on:
+      - web
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging: *default-logging
+
+  # Auto-update ONLY the labeled HR Vidnova containers (label-enable mode keeps
+  # it from touching the other apps on this host). Pulls new :latest from GHCR.
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "120"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  staticfiles:
+  media:

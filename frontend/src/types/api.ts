@@ -40,6 +40,16 @@ export type AuthStatus = {
   };
 };
 
+export type AuthCodeResponse = {
+  status: 'code_sent' | string;
+};
+
+export type AuthLoginResponse = {
+  status: 'ok' | string;
+  user: NonNullable<AuthStatus['user']>;
+  employee: NonNullable<AuthStatus['employee']>;
+};
+
 export type EmployeeProfile = {
   id: number;
   full_name: string;

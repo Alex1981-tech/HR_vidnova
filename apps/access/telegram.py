@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+import urllib.parse
+import urllib.request
+
+from django.conf import settings
+
+from apps.employees.models import Employee
+
+
+class TelegramSendError(RuntimeError):
+    pass
+
+
+def build_login_code_text(code: str, employee: Employee) -> str:
+    employee_name = employee.full_name or "співробітник"
+    return (
+        "Код входу в HR Vidnova: "
+        f"{code}\n"
+        f"{employee_name}\n"
+        "Дійсний 5 хвилин. Нікому не передавайте цей код."
+    )
+
+
+def send_login_code(telegram_chat_id: int, code: str, employee: Employee) -> None:
+    backend = settings.HR_TELEGRAM_SENDER_BACKEND
+    if backend == "telegram_bot_api":
+        _send_via_telegram_bot_api(telegram_chat_id, build_login_code_text(code, employee))
+        return
+    raise TelegramSendError("Unsupported Telegram sender backend")
+
+
+def _send_via_telegram_bot_api(telegram_chat_id: int, text: str) -> None:
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        raise TelegramSendError("TELEGRAM_BOT_TOKEN is not configured")
+
+    data = urllib.parse.urlencode({"chat_id": telegram_chat_id, "text": text}).encode()
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    try:
+        request = urllib.request.Request(url, data=data, method="POST")
+        urllib.request.urlopen(request, timeout=10)
+    except Exception as exc:  # noqa: BLE001
+        raise TelegramSendError("Telegram sendMessage failed") from exc

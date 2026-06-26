@@ -141,8 +141,20 @@ SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
 CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
+
+# Behind a TLS-terminating reverse proxy (nginx / Cloudflare tunnel): trust the
+# forwarded scheme so request.is_secure() works and secure cookies / CSRF over
+# https are accepted.
+if env_bool("USE_X_FORWARDED_PROTO", not DEBUG):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 HR_PUBLIC_READ_API = env_bool("HR_PUBLIC_READ_API", DEBUG)
 HR_PUBLIC_WRITE_API = env_bool("HR_PUBLIC_WRITE_API", False)
+HR_BOT_API_SECRET = os.getenv("HR_BOT_API_SECRET", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+HR_TELEGRAM_SENDER_BACKEND = os.getenv("HR_TELEGRAM_SENDER_BACKEND", "telegram_bot_api")
+HR_LOGIN_CODE_TTL_SECONDS = int(os.getenv("HR_LOGIN_CODE_TTL_SECONDS", "300"))
+HR_LOGIN_CODE_MAX_ATTEMPTS = int(os.getenv("HR_LOGIN_CODE_MAX_ATTEMPTS", "5"))
+HR_LOGIN_CODE_REQUEST_LIMIT_PER_MINUTE = int(os.getenv("HR_LOGIN_CODE_REQUEST_LIMIT_PER_MINUTE", "5"))
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

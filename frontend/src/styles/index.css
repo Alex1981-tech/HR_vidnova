@@ -104,6 +104,153 @@ a {
   color: var(--text);
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(90deg, rgba(167, 156, 247, 0.16) 0 34%, transparent 34%),
+    var(--app-bg);
+  color: var(--text);
+}
+
+.auth-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: #0f172a;
+  --panel: #111827;
+  --panel-soft: #1f2937;
+  --line: #2d3b52;
+  --line-strong: #3a4a62;
+  --text: #e5edf7;
+  --muted: #9fb0c4;
+  --primary: #a79cf7;
+  --primary-strong: #c4bdfd;
+}
+
+@media (prefers-color-scheme: dark) {
+  .auth-shell[data-theme="auto"] {
+    color-scheme: dark;
+    --app-bg: #0f172a;
+    --panel: #111827;
+    --panel-soft: #1f2937;
+    --line: #2d3b52;
+    --line-strong: #3a4a62;
+    --text: #e5edf7;
+    --muted: #9fb0c4;
+    --primary: #a79cf7;
+    --primary-strong: #c4bdfd;
+  }
+}
+
+.auth-panel {
+  width: min(100%, 430px);
+  min-height: 430px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 18px 44px rgba(31, 52, 84, 0.13);
+}
+
+.auth-panel.loading {
+  min-height: 240px;
+  justify-content: center;
+}
+
+.auth-brand-row,
+.auth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-title {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-title h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.auth-title p,
+.auth-message,
+.auth-error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auth-error {
+  color: var(--red);
+}
+
+.auth-message {
+  color: var(--green);
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+}
+
+.auth-field > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-field > div {
+  height: 46px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.auth-field svg {
+  color: var(--muted);
+}
+
+.auth-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.auth-submit {
+  min-height: 44px;
+  justify-content: center;
+  gap: 8px;
+}
+
+.auth-actions .secondary-action,
+.auth-actions .primary-action {
+  min-height: 42px;
+  gap: 8px;
+}
+
 .app-shell[data-theme="dark"] {
   color-scheme: dark;
   --app-bg: #0f172a;
