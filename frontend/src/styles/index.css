@@ -434,7 +434,6 @@ a {
 }
 
 .auth-qr-link:focus-visible,
-.auth-telegram-button:focus-visible,
 .auth-submit:focus-visible,
 .auth-actions button:focus-visible {
   outline: 3px solid rgba(15, 143, 137, 0.22);
@@ -530,26 +529,6 @@ a {
 
 .auth-shell .auth-submit:disabled {
   opacity: 0.72;
-}
-
-.auth-telegram-button {
-  min-height: 52px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  border: 1px solid var(--auth-line);
-  border-radius: 8px;
-  background: var(--auth-card);
-  color: var(--auth-navy);
-  font-weight: 800;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
-}
-
-.auth-telegram-button:hover {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--auth-accent) 55%, var(--auth-line));
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--auth-accent) 13%, transparent);
 }
 
 .auth-actions .secondary-action,

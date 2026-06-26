@@ -1366,10 +1366,6 @@ function LoginView({
                 <ShieldCheck size={18} />
                 <span>{busy ? 'Надсилаємо код...' : 'Отримати код'}</span>
               </button>
-              <a className="auth-telegram-button" href={TELEGRAM_BOT_URL} target="_blank" rel="noopener noreferrer">
-                <span>Увійти через Telegram</span>
-                <ArrowUpRight size={17} />
-              </a>
             </form>
           ) : (
             <form className="auth-form" onSubmit={submitCode}>
