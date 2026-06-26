@@ -1205,6 +1205,26 @@ function Sidebar({
   );
 }
 
+// Shared overlay dismissal: Escape-to-close + body scroll-lock while open.
+// onClose is read via ref so the effect only re-runs when `open` changes.
+function useOverlayDismiss(open: boolean, onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open]);
+}
+
 function MobileMenu({
   active,
   isOpen,
@@ -1220,6 +1240,7 @@ function MobileMenu({
   brandingSettings: BrandingSettings;
   copy: AppCopy;
 }) {
+  useOverlayDismiss(isOpen, onClose);
   if (!isOpen) return null;
 
   return (
@@ -2721,6 +2742,7 @@ function PeopleFilterDrawer({
   onReset: () => void;
   onClose: () => void;
 }) {
+  useOverlayDismiss(open, onClose);
   const [expandedFilter, setExpandedFilter] = useState<PeopleMultiFilterKey | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const statusOptions: PeopleFilterOption[] = [
@@ -3252,6 +3274,7 @@ function TeamsPanel({ onOpenOrg, copy }: { onOpenOrg: () => void; copy: AppCopy 
   const [saveState, setSaveState] = useState<LoadState>('idle');
   const [error, setError] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<TeamOption | null>(null);
+  useOverlayDismiss(Boolean(selectedTeam), () => setSelectedTeam(null));
   const [editingTeam, setEditingTeam] = useState<TeamOption | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TeamOption | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -15115,7 +15138,7 @@ export function App() {
   }
 
   return (
-    <div className="app-shell" data-theme={themeMode} style={appThemeStyle}>
+    <div className="app-shell" data-theme={themeMode} data-density="compact" style={appThemeStyle}>
       <Sidebar active={section} onChange={changeSection} brandingSettings={brandingSettings} copy={copy} />
       <div className="main-shell">
         <Topbar
