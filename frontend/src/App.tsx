@@ -4100,6 +4100,70 @@ function ProfilePopover({
   );
 }
 
+// ---- People-data driven profile fields ----
+type ProfileFieldDef = {
+  id: number;
+  name: string;
+  field_type: string;
+  is_system: boolean;
+  system_key: string;
+  is_enabled: boolean;
+  show_in_summary: boolean;
+  order: number;
+};
+type ProfileGroup = { id: number; name: string; order: number; group_fields: ProfileFieldDef[] };
+
+function resolveProfileFieldValue(field: ProfileFieldDef, employee: EmployeeListItem | null): string {
+  if (!employee) return '-';
+  if (!field.is_system) {
+    const raw = (employee.custom_fields ?? {})[String(field.id)];
+    return raw !== undefined && raw !== null && raw !== '' ? String(raw) : '-';
+  }
+  switch (field.system_key) {
+    case 'employee_number': return employee.employee_number || employee.legacy_peopleforce_id || String(employee.id);
+    case 'full_name': return employee.full_name || '-';
+    case 'last_name': return employee.last_name || '-';
+    case 'first_name': return employee.first_name || '-';
+    case 'middle_name': return employee.middle_name || '-';
+    case 'email': return employee.email || '-';
+    case 'personal_email': return employee.personal_email || '-';
+    case 'phone': return employee.phone || '-';
+    case 'phone2': return employee.phone2 || '-';
+    case 'birth_date': return employee.birth_date ? formatDate(employee.birth_date) : '-';
+    case 'gender': return employee.gender ? formatGender(employee.gender) : '-';
+    case 'hired_on': return employee.hired_on ? formatDate(employee.hired_on) : '-';
+    case 'position': return employee.position_name || '-';
+    case 'department': return employee.department_name || '-';
+    case 'division': return employee.division_name || '-';
+    case 'clinic': return employee.clinic_name || '-';
+    case 'employment_type': return employee.employment_type_name || '-';
+    case 'job_level': return employee.job_level_name || '-';
+    default: return '-';
+  }
+}
+
+function useProfileFieldGroups(): ProfileGroup[] {
+  const [groups, setGroups] = useState<ProfileGroup[]>([]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all(
+      ['personal', 'work', 'compensation'].map((tab) =>
+        fetch(`/api/employees/field-groups/?tab=${tab}`, { credentials: 'include', headers: { Accept: 'application/json' } })
+          .then((r) => (r.ok ? r.json() : { results: [] }))
+          .catch(() => ({ results: [] })),
+      ),
+    ).then((parts) => {
+      if (!alive) return;
+      const all = parts.flatMap((p) => (Array.isArray(p) ? p : p.results ?? [])) as ProfileGroup[];
+      setGroups(all);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return groups;
+}
+
 function EmployeeAdminProfileView({
   employee,
   onBack,
@@ -4162,6 +4226,21 @@ function EmployeeAdminProfileView({
     [copy.people.tenure || 'Tenure', formatTenure(employee?.hired_on ?? null)],
     [copy.people.documents || 'Documents', employee ? String(employee.documents.length) : '-'],
   ];
+
+  const fieldGroups = useProfileFieldGroups();
+  const configPanels = fieldGroups
+    .map((group) => ({
+      title: group.name,
+      fields: group.group_fields
+        .filter((f) => f.is_enabled)
+        .map((f) => [f.name, resolveProfileFieldValue(f, employee)] as string[]),
+    }))
+    .filter((panel) => panel.fields.length);
+  const configSummary = fieldGroups
+    .flatMap((group) => group.group_fields)
+    .filter((f) => f.is_enabled && f.show_in_summary)
+    .map((f) => [f.name, resolveProfileFieldValue(f, employee)] as string[]);
+  const effectiveSummary = configSummary.length ? configSummary : summaryFields;
 
   return (
     <main className="employee-profile-page">
@@ -4232,9 +4311,17 @@ function EmployeeAdminProfileView({
 
       <div className="employee-detail-layout">
         <div className="employee-detail-main">
-          <EmployeeInfoPanel title={copy.people.personal || 'Personal'} fields={fields} copy={copy} />
-          <EmployeeInfoPanel title={copy.people.contacts || 'Contacts'} fields={contactFields} copy={copy} />
-          <EmployeeInfoPanel title={copy.people.social || 'Social networks'} fields={socialFields} copy={copy} />
+          {configPanels.length ? (
+            configPanels.map((panel) => (
+              <EmployeeInfoPanel key={panel.title} title={panel.title} fields={panel.fields} copy={copy} />
+            ))
+          ) : (
+            <>
+              <EmployeeInfoPanel title={copy.people.personal || 'Personal'} fields={fields} copy={copy} />
+              <EmployeeInfoPanel title={copy.people.contacts || 'Contacts'} fields={contactFields} copy={copy} />
+              <EmployeeInfoPanel title={copy.people.social || 'Social networks'} fields={socialFields} copy={copy} />
+            </>
+          )}
           <EmployeeInfoPanel
             title={copy.people.documents || 'Documents'}
             fields={employee?.documents.length ? employee.documents.map((document) => [document.name, document.folder_name || document.document_type]) : []}
@@ -4244,7 +4331,7 @@ function EmployeeAdminProfileView({
         <aside className="employee-summary">
           <h2>{copy.people.profileHome || 'Home'}</h2>
           <div>
-            {summaryFields.map(([label, value]) => (
+            {effectiveSummary.map(([label, value]) => (
               <div className="summary-field" key={label}>
                 <span>{label}</span>
                 <strong>{value}</strong>

@@ -322,6 +322,7 @@ export type EmployeeListItem = EmployeeProfile & {
   avatar_download_error: string;
   peopleforce_status: string;
   peopleforce_fields: Record<string, unknown>;
+  custom_fields: Record<string, unknown>;
   clinic: number | null;
   department: number | null;
   position: number | null;

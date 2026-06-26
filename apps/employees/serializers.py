@@ -724,6 +724,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "avatar_download_error",
             "peopleforce_status",
             "peopleforce_fields",
+            "custom_fields",
             "clinic",
             "clinic_name",
             "department",
