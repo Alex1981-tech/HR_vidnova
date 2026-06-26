@@ -9,6 +9,9 @@ from .models import (
     DepartmentLevel,
     Division,
     Employee,
+    EmployeeField,
+    EmployeeFieldGroup,
+    EmployeeFieldTable,
     EmployeeDocument,
     EmployeeDocumentFolder,
     EmployeeEmploymentStatus,
@@ -808,3 +811,28 @@ class ManagerAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagerAssignment
         fields = ("id", "employee", "employee_name", "manager", "manager_name", "valid_from", "valid_to", "is_primary")
+
+
+class EmployeeFieldSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeField
+        fields = (
+            "id", "group", "name", "field_type", "is_system", "system_key",
+            "is_enabled", "is_required", "show_in_summary", "options", "help_text", "order",
+        )
+        read_only_fields = ("is_system", "system_key")
+
+
+class EmployeeFieldTableSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeFieldTable
+        fields = ("id", "group", "name", "columns", "is_enabled", "order")
+
+
+class EmployeeFieldGroupSerializer(serializers.ModelSerializer):
+    group_fields = EmployeeFieldSerializer(many=True, source="fields", read_only=True)
+    tables = EmployeeFieldTableSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EmployeeFieldGroup
+        fields = ("id", "tab", "name", "slug", "is_system", "order", "group_fields", "tables")

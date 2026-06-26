@@ -354,6 +354,7 @@ class Employee(TimestampedModel):
     hired_on = models.DateField(null=True, blank=True)
     dismissed_on = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    custom_fields = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["last_name", "first_name", "middle_name"]
@@ -611,3 +612,74 @@ class EmployeeImportIssue(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.severity}: {self.message}"
+
+
+class EmployeeFieldGroup(TimestampedModel):
+    """Група полів профілю співробітника (напр. Особисте, Контакти) у вкладці."""
+
+    class Tab(models.TextChoices):
+        PERSONAL = "personal", "Особисте"
+        WORK = "work", "Робота"
+        COMPENSATION = "compensation", "Компенсація"
+
+    tab = models.CharField(max_length=20, choices=Tab.choices, default=Tab.PERSONAL, db_index=True)
+    name = models.CharField(max_length=160)
+    slug = models.SlugField(max_length=160, blank=True)
+    is_system = models.BooleanField(default=False)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["tab", "order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.get_tab_display()}: {self.name}"
+
+
+class EmployeeField(TimestampedModel):
+    """Поле профілю. Системне (мапиться на атрибут Employee через system_key) або
+    кастомне (значення зберігається в Employee.custom_fields[str(field.id)])."""
+
+    class FieldType(models.TextChoices):
+        SYSTEM = "system", "Система"
+        TEXT = "text", "Однорядковий текст"
+        TEXTAREA = "textarea", "Текст з багато рядків"
+        NUMBER = "number", "Число"
+        DATE = "date", "Дата"
+        SELECT = "select", "Список"
+        EMPLOYEE = "employee", "Вибір співробітника"
+        URL = "url", "Посилання"
+
+    group = models.ForeignKey(EmployeeFieldGroup, on_delete=models.CASCADE, related_name="fields")
+    name = models.CharField(max_length=200)
+    field_type = models.CharField(max_length=20, choices=FieldType.choices, default=FieldType.TEXT)
+    is_system = models.BooleanField(default=False)
+    system_key = models.CharField(max_length=80, blank=True, help_text="Атрибут Employee для системних полів")
+    is_enabled = models.BooleanField(default=True)
+    is_required = models.BooleanField(default=False)
+    show_in_summary = models.BooleanField(default=False)
+    options = models.JSONField(default=list, blank=True, help_text="Варіанти для типу select")
+    help_text = models.CharField(max_length=300, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["group", "order", "id"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class EmployeeFieldTable(TimestampedModel):
+    """Повторювана таблиця в групі (напр. освіта, сертифікати). Рядки зберігаються
+    в Employee.custom_fields['table_<id>'] як список словників по ключах колонок."""
+
+    group = models.ForeignKey(EmployeeFieldGroup, on_delete=models.CASCADE, related_name="tables")
+    name = models.CharField(max_length=200)
+    columns = models.JSONField(default=list, blank=True, help_text="[{key,label,type}]")
+    is_enabled = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["group", "order", "id"]
+
+    def __str__(self) -> str:
+        return self.name

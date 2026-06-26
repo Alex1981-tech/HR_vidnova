@@ -8,6 +8,9 @@ from rest_framework.response import Response
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
 from .models import (
+    EmployeeField,
+    EmployeeFieldGroup,
+    EmployeeFieldTable,
     Clinic,
     Department,
     DepartmentLevel,
@@ -32,6 +35,9 @@ from .models import (
     WorkingPattern,
 )
 from .serializers import (
+    EmployeeFieldSerializer,
+    EmployeeFieldGroupSerializer,
+    EmployeeFieldTableSerializer,
     ClinicSerializer,
     DepartmentLevelSerializer,
     DepartmentSerializer,
@@ -721,3 +727,36 @@ class EmployeeViewSet(EmployeeApiViewSet):
 class ManagerAssignmentViewSet(EmployeeApiViewSet):
     queryset = ManagerAssignment.objects.select_related("employee", "manager").all()
     serializer_class = ManagerAssignmentSerializer
+
+
+class EmployeeFieldGroupViewSet(EmployeeApiViewSet):
+    serializer_class = EmployeeFieldGroupSerializer
+
+    def get_queryset(self):
+        qs = EmployeeFieldGroup.objects.prefetch_related("fields", "tables")
+        tab = self.request.query_params.get("tab", "").strip()
+        if tab:
+            qs = qs.filter(tab=tab)
+        return qs
+
+
+class EmployeeFieldViewSet(EmployeeApiViewSet):
+    serializer_class = EmployeeFieldSerializer
+    queryset = EmployeeField.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save(is_system=False, system_key="")
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_system:
+            return Response(
+                {"detail": "Системне поле не можна видалити, лише вимкнути."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+
+class EmployeeFieldTableViewSet(EmployeeApiViewSet):
+    serializer_class = EmployeeFieldTableSerializer
+    queryset = EmployeeFieldTable.objects.all()
