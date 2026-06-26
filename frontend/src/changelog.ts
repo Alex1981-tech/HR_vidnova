@@ -10,6 +10,16 @@ export type ChangelogEntry = {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '1.0.02',
+    date: '26.06.2026',
+    changes: [
+      'Telegram-вхід: повторна відправка коду з таймером та повернення на сторінку, яку користувач відкривав до входу.',
+      'Безпека: HR API закрито для anonymous при production-прапорі `HR_PUBLIC_READ_API=0`; dashboard переведено на той самий permission-контур.',
+      'Сесії HR відокремлено від FotoPacients через окремі cookie names.',
+      'Додано production runbook для Telegram-auth, bot fan-out і rollback.',
+    ],
+  },
+  {
     version: '1.0.01',
     date: '26.06.2026',
     changes: [

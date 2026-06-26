@@ -6,10 +6,12 @@ from dataclasses import dataclass
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.models import Group
 
 from apps.employees.models import Employee
 
 UA_PHONE_PREFIX = "+380"
+EMPLOYEE_GROUP_NAME = "employee"
 
 
 class PhoneMatchStatus:
@@ -113,6 +115,8 @@ def ensure_employee_user(employee: Employee):
         if employee.email and not user.email:
             user.email = employee.email
             user.save(update_fields=["email"])
+        employee_group, _ = Group.objects.get_or_create(name=EMPLOYEE_GROUP_NAME)
+        user.groups.add(employee_group)
         return user
 
     user_model = get_user_model()
@@ -141,4 +145,6 @@ def ensure_employee_user(employee: Employee):
 
     employee.user = user
     employee.save(update_fields=["user", "updated_at"])
+    employee_group, _ = Group.objects.get_or_create(name=EMPLOYEE_GROUP_NAME)
+    user.groups.add(employee_group)
     return user

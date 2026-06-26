@@ -399,6 +399,34 @@ a {
   color: var(--auth-teal-strong);
 }
 
+.auth-resend-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-resend {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--auth-teal-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.auth-resend:not(:disabled):hover {
+  color: var(--auth-navy);
+}
+
+.auth-resend:disabled {
+  cursor: not-allowed;
+  color: var(--auth-muted);
+}
+
 .auth-form {
   display: grid;
   gap: 14px;

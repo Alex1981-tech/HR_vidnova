@@ -351,6 +351,7 @@ class AuthLoginFlowApiTests(APITestCase):
         employee.refresh_from_db()
         self.assertIsNotNone(employee.user_id)
         self.assertEqual(employee.user.username, f"employee-{employee.id}")
+        self.assertTrue(employee.user.groups.filter(name="employee").exists())
         login_code = TelegramLoginCode.objects.get(employee=employee)
         self.assertIsNotNone(login_code.consumed_at)
         status_response = self.client.get(reverse("auth-status"))
@@ -430,3 +431,37 @@ class AuthLoginFlowApiTests(APITestCase):
         self.assertEqual(second.status_code, 429)
         event = AuthAuditEvent.objects.filter(event=AuthAuditEvent.Event.LOGIN_CODE_REQUESTED).get()
         self.assertEqual(event.result, AuthAuditEvent.Result.LOCKED)
+
+
+@override_settings(HR_PUBLIC_READ_API=False, HR_PUBLIC_WRITE_API=False)
+class ProductionPermissionTests(APITestCase):
+    def assert_requires_auth(self, response):
+        self.assertIn(response.status_code, {401, 403})
+
+    def test_anonymous_cannot_read_hr_apis_when_public_read_is_disabled(self):
+        employees_response = self.client.get("/api/employees/employees/")
+        dashboard_response = self.client.get(reverse("dashboard-overview"))
+
+        self.assert_requires_auth(employees_response)
+        self.assert_requires_auth(dashboard_response)
+
+    def test_auth_endpoints_stay_open_when_public_read_is_disabled(self):
+        status_response = self.client.get(reverse("auth-status"))
+        code_response = self.client.post(reverse("auth-request-code"), {"phone": "0971234567"}, format="json")
+
+        self.assertEqual(status_response.status_code, 200)
+        self.assertFalse(status_response.data["authenticated"])
+        self.assertIn("hr_csrftoken", status_response.cookies)
+        self.assertEqual(code_response.status_code, 200)
+        self.assertEqual(code_response.data, {"status": "code_sent"})
+
+    def test_authenticated_user_can_read_hr_apis_when_public_read_is_disabled(self):
+        user = get_user_model().objects.create_user(username="employee-user", password="pass")
+        Employee.objects.create(user=user, first_name="Ірина", last_name="Тестова")
+        self.client.force_authenticate(user=user)
+
+        employees_response = self.client.get("/api/employees/employees/")
+        dashboard_response = self.client.get(reverse("dashboard-overview"))
+
+        self.assertEqual(employees_response.status_code, 200)
+        self.assertEqual(dashboard_response.status_code, 200)

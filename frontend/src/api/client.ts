@@ -37,6 +37,7 @@ import type {
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+const CSRF_COOKIE_NAMES = [import.meta.env.VITE_CSRF_COOKIE_NAME ?? 'hr_csrftoken', 'csrftoken'];
 
 type QueryValue = string | number | boolean | null | undefined;
 
@@ -251,7 +252,7 @@ function getCookie(name: string): string {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const csrfToken = getCookie('csrftoken');
+  const csrfToken = CSRF_COOKIE_NAMES.map(getCookie).find(Boolean) ?? '';
   const bodyIsFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',

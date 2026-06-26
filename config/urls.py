@@ -3,6 +3,8 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.urls import include, path
 from rest_framework.authentication import BasicAuthentication, SessionAuthentication
 from rest_framework.response import Response
@@ -11,6 +13,7 @@ from rest_framework.views import APIView
 from apps.employees.models import Employee
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class AuthStatusView(APIView):
     authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = []

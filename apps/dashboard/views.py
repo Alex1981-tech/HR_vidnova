@@ -1,15 +1,15 @@
 from django.db.models import Count
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.permissions import ConfiguredReadOnlyOrAuthenticated
 from apps.employees.models import Employee
 from apps.leave.models import LeaveRequest
 from apps.skud.models import IntegrationRun, WorkDaySummary
 
 
 class OverviewView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
 
     def get(self, request):
         employees = Employee.objects.values("status").annotate(count=Count("id"))
