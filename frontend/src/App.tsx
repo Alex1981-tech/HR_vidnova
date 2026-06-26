@@ -79,6 +79,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ApiError, api, type EmployeeHirePayload } from './api/client';
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
+import { ReportsView } from './views/ReportsView';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
@@ -15117,7 +15118,7 @@ export function App() {
     requests: <RequestsView leave={leave} leaveForm={leaveForm} setLeaveForm={setLeaveForm} onSubmitLeave={handleLeaveSubmit} copy={copy} />,
     knowledge: <KnowledgeView knowledge={knowledge} resetToken={knowledgeResetToken} copy={copy} />,
     assets: <AssetsView copy={copy} />,
-    reports: <UtilityView section="reports" overview={overview} copy={copy} />,
+    reports: <ReportsView />,
     org: <OrgView copy={copy} themeMode={themeMode} />,
     settings: <SettingsView brandingSettings={brandingSettings} onBrandingChange={setBrandingSettings} copy={copy} />,
     changelog: <ChangelogView onBack={() => changeSection('settings')} />,
