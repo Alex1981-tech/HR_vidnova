@@ -78,6 +78,20 @@
   --row-h: 40px;
   --cell-py: 8px;
   --cell-px: 12px;
+
+  /* ---- Z-index scale (named layers — завжди через токен, щоб уникати «вікно ззаду») ----
+     Порядок: base < sticky < topbar < sidebar < dropdown < drawer < overlay < modal < popover < toast.
+     Локальні z-index 1..6 всередині компонентів (local stacking context) НЕ мігруємо. */
+  --z-base: 0;
+  --z-sticky: 100;    /* sticky table/section headers */
+  --z-topbar: 200;
+  --z-sidebar: 300;
+  --z-dropdown: 400;  /* select menus, picker dropdowns */
+  --z-drawer: 500;    /* side drawers + їх scrim (внутрішній порядок через +offset) */
+  --z-overlay: 600;   /* елементи поверх drawer (picker над team-drawer) */
+  --z-modal: 700;     /* модалки, confirm-layer */
+  --z-popover: 800;   /* hover profile card — поверх модалок */
+  --z-toast: 900;
 }
 
 [data-density="comfortable"] { --row-h: 44px; --cell-py: 10px; --cell-px: 16px; }

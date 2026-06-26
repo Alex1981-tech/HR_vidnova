@@ -975,16 +975,16 @@ a {
 
 /* High-priority dark theme guard for global palette and core controls. */
 .app-shell[data-theme="dark"] {
-  --app-bg: #0d1117 !important;
-  --panel: #131a26 !important;
-  --panel-soft: #1a2433 !important;
-  --panel-softer: #202c3e !important;
-  --line: #2d3b52 !important;
-  --line-strong: #3d4e68 !important;
-  --text: #f4f8ff !important;
-  --muted: #a6b4c8 !important;
-  --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff) !important;
-  --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738) !important;
+  --app-bg: #0d1117;
+  --panel: #131a26;
+  --panel-soft: #1a2433;
+  --panel-softer: #202c3e;
+  --line: #2d3b52;
+  --line-strong: #3d4e68;
+  --text: #f4f8ff;
+  --muted: #a6b4c8;
+  --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff);
+  --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738);
   color: var(--text) !important;
   color-scheme: dark;
   background: linear-gradient(180deg, #101722 0%, #0d1117 54%, #0b0f15 100%) !important;
@@ -1223,16 +1223,16 @@ a {
 
 @media (prefers-color-scheme: dark) {
   .app-shell[data-theme="auto"] {
-    --app-bg: #0d1117 !important;
-    --panel: #131a26 !important;
-    --panel-soft: #1a2433 !important;
-    --panel-softer: #202c3e !important;
-    --line: #2d3b52 !important;
-    --line-strong: #3d4e68 !important;
-    --text: #f4f8ff !important;
-    --muted: #a6b4c8 !important;
-    --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff) !important;
-    --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738) !important;
+    --app-bg: #0d1117;
+    --panel: #131a26;
+    --panel-soft: #1a2433;
+    --panel-softer: #202c3e;
+    --line: #2d3b52;
+    --line-strong: #3d4e68;
+    --text: #f4f8ff;
+    --muted: #a6b4c8;
+    --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff);
+    --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738);
     color: var(--text) !important;
     color-scheme: dark;
     background: linear-gradient(180deg, #101722 0%, #0d1117 54%, #0b0f15 100%) !important;
@@ -1417,8 +1417,8 @@ a {
   --text: #eef4ff;
   --muted: #a9b7cc;
   --muted-2: #7f90aa;
-  --primary-strong: color-mix(in srgb, var(--brand-accent) 72%, #ffffff) !important;
-  --primary-soft: color-mix(in srgb, var(--brand-accent) 18%, #172033) !important;
+  --primary-strong: color-mix(in srgb, var(--brand-accent) 72%, #ffffff);
+  --primary-soft: color-mix(in srgb, var(--brand-accent) 18%, #172033);
   background:
     radial-gradient(circle at 16% -8%, color-mix(in srgb, var(--brand-accent) 14%, transparent) 0 260px, transparent 420px),
     var(--app-bg);
@@ -1615,15 +1615,15 @@ a {
 
 @media (prefers-color-scheme: dark) {
   .app-shell[data-theme="auto"] {
-    --primary-strong: color-mix(in srgb, var(--brand-accent) 72%, #ffffff) !important;
-    --primary-soft: color-mix(in srgb, var(--brand-accent) 18%, #172033) !important;
+    --primary-strong: color-mix(in srgb, var(--brand-accent) 72%, #ffffff);
+    --primary-soft: color-mix(in srgb, var(--brand-accent) 18%, #172033);
   }
 }
 
 .sidebar {
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: var(--z-sidebar);
   height: 100vh;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
@@ -1826,7 +1826,7 @@ a {
 .topbar {
   position: sticky;
   top: 0;
-  z-index: 20;
+  z-index: var(--z-topbar);
   height: 56px;
   display: flex;
   justify-content: space-between;
@@ -2675,7 +2675,7 @@ button:disabled {
 .people-filter-scrim {
   position: fixed;
   inset: 56px 0 0 0;
-  z-index: 38;
+  z-index: var(--z-drawer);
   display: none;
   border: 0;
   background: transparent;
@@ -2691,7 +2691,7 @@ button:disabled {
   top: 56px;
   right: 0;
   bottom: 0;
-  z-index: 39;
+  z-index: calc(var(--z-drawer) + 1);
   width: min(392px, calc(100vw - 16px));
   display: grid;
   grid-template-rows: 56px minmax(0, 1fr) auto;
@@ -2757,7 +2757,7 @@ button:disabled {
 }
 
 .people-filter-select.expanded {
-  z-index: 45;
+  z-index: calc(var(--z-drawer) + 2);
 }
 
 .people-filter-select > span {
@@ -2830,7 +2830,7 @@ button:disabled {
   top: 38px;
   left: 0;
   right: 0;
-  z-index: 55;
+  z-index: calc(var(--z-drawer) + 3);
   overflow: hidden;
   min-width: 0;
   border: 1px solid var(--line);
@@ -3107,7 +3107,7 @@ button:disabled {
 .people-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--z-sticky);
 }
 
 .people-table {
@@ -3298,7 +3298,7 @@ button:disabled {
    doesn't clip it). The trigger schedules show/hide with JS. */
 .profile-portal {
   position: fixed;
-  z-index: 200;
+  z-index: var(--z-popover);
   width: 332px;
 }
 
@@ -3747,7 +3747,7 @@ button:disabled {
 .team-drawer {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: var(--z-drawer);
   display: flex;
   justify-content: flex-end;
   pointer-events: none;
@@ -3991,7 +3991,7 @@ button:disabled {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 95;
+  z-index: var(--z-overlay);
   border: 1px solid var(--line-strong);
   border-radius: 6px;
   background: var(--panel);
@@ -4158,7 +4158,7 @@ button:disabled {
 }
 
 .team-member-remove-layer {
-  z-index: 120;
+  z-index: var(--z-modal);
 }
 
 /* Employee admin profile */
@@ -8021,7 +8021,7 @@ button.org-graph-card-body {
   line-height: 1;
   box-shadow: 0 7px 16px rgba(242, 140, 0, 0.26);
   cursor: pointer;
-  z-index: 2;
+  z-index: var(--z-sticky);
 }
 
 .org-expand-button:hover,
@@ -11085,7 +11085,7 @@ button.org-graph-card-body {
 
 .settings-crop-handle {
   position: absolute;
-  z-index: 2;
+  z-index: var(--z-sticky);
   width: 16px;
   height: 16px;
   border: 2px solid #fff;
@@ -11302,7 +11302,7 @@ td {
   .mobile-menu-layer {
     position: fixed;
     inset: 0;
-    z-index: 90;
+    z-index: var(--z-drawer);
     display: block;
   }
 
@@ -11777,16 +11777,16 @@ td {
 /* Theme guard after legacy fixed colors */
 /* Last-mile dark contrast overrides. Keep these high-priority values near the final legacy block. */
 .app-shell[data-theme="dark"] {
-  --app-bg: #0d1117 !important;
-  --panel: #131a26 !important;
-  --panel-soft: #1a2433 !important;
-  --panel-softer: #202c3e !important;
-  --line: #2d3b52 !important;
-  --line-strong: #3d4e68 !important;
-  --text: #f4f8ff !important;
-  --muted: #a6b4c8 !important;
-  --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff) !important;
-  --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738) !important;
+  --app-bg: #0d1117;
+  --panel: #131a26;
+  --panel-soft: #1a2433;
+  --panel-softer: #202c3e;
+  --line: #2d3b52;
+  --line-strong: #3d4e68;
+  --text: #f4f8ff;
+  --muted: #a6b4c8;
+  --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff);
+  --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738);
   color: var(--text) !important;
   background: linear-gradient(180deg, #101722 0%, #0d1117 54%, #0b0f15 100%) !important;
 }
@@ -11909,16 +11909,16 @@ td {
 
 @media (prefers-color-scheme: dark) {
   .app-shell[data-theme="auto"] {
-    --app-bg: #0d1117 !important;
-    --panel: #131a26 !important;
-    --panel-soft: #1a2433 !important;
-    --panel-softer: #202c3e !important;
-    --line: #2d3b52 !important;
-    --line-strong: #3d4e68 !important;
-    --text: #f4f8ff !important;
-    --muted: #a6b4c8 !important;
-    --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff) !important;
-    --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738) !important;
+    --app-bg: #0d1117;
+    --panel: #131a26;
+    --panel-soft: #1a2433;
+    --panel-softer: #202c3e;
+    --line: #2d3b52;
+    --line-strong: #3d4e68;
+    --text: #f4f8ff;
+    --muted: #a6b4c8;
+    --primary-strong: color-mix(in srgb, var(--brand-accent) 74%, #ffffff);
+    --primary-soft: color-mix(in srgb, var(--brand-accent) 20%, #1b2738);
     color: var(--text) !important;
     background: linear-gradient(180deg, #101722 0%, #0d1117 54%, #0b0f15 100%) !important;
   }
@@ -12713,7 +12713,7 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 .attendance-summary-table thead th {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--z-sticky);
   background: var(--panel-soft);
 }
 
