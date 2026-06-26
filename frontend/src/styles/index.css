@@ -3147,7 +3147,7 @@ button:disabled {
   height: 37px;
   border-top: 1px solid var(--line);
   overflow: hidden;
-  padding: 0 9px;
+  padding: 0 var(--space-3);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3155,9 +3155,11 @@ button:disabled {
 
 .people-table th {
   background: var(--panel-soft);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .people-table td {
@@ -4591,9 +4593,9 @@ button:disabled {
 
 .attendance-summary-table th,
 .attendance-summary-table td {
-  height: 46px;
+  height: var(--row-h);
   border-top: 1px solid var(--line);
-  padding: 0 11px;
+  padding: 0 var(--space-3);
   text-align: left;
   white-space: nowrap;
 }
@@ -4618,8 +4620,11 @@ button:disabled {
 .attendance-summary-table th {
   height: 38px;
   background: var(--panel-soft);
-  color: #214362;
-  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .attendance-summary-table td {
@@ -5384,8 +5389,11 @@ button:disabled {
 
 .leave-balance-table th {
   background: var(--panel-soft);
-  color: #23415f;
-  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .leave-balance-table td {
