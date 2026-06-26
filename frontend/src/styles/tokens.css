@@ -68,6 +68,10 @@
   --primary-light: #a79cf7;
   --primary-contrast: #ffffff;
 
+  /* button surface tuning (light) — dark переоприділяється у dark-блоках index.css */
+  --button-text: #273b56;
+  --button-soft-border: #e1e9f2;
+
   /* ---- Semantic palette (нові; узгоджені з наявними green/amber/red/blue) ---- */
   --success: #0f9d6c; --success-soft: #e7f6ef;
   --warning: #c98a00; --warning-soft: #fdf4e3;

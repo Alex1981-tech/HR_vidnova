@@ -2194,7 +2194,7 @@ button:disabled {
 .notifications-header h1 {
   margin: 0;
   color: var(--text);
-  font-size: 24px;
+  font-size: var(--font-display);
   font-weight: 600;
   line-height: 1.2;
 }
@@ -2467,7 +2467,7 @@ button:disabled {
 
 .feed-post h2 {
   margin: 0 0 12px;
-  font-size: 24px;
+  font-size: var(--font-display);
   letter-spacing: 0;
 }
 
@@ -6944,7 +6944,7 @@ button.knowledge-document-views {
 .knowledge-editor-heading h1 {
   overflow: hidden;
   color: #061c3d;
-  font-size: 24px;
+  font-size: var(--font-display);
   line-height: 1.08;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -8343,7 +8343,7 @@ button.org-graph-card-body {
 
 .settings-header h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-display);
   line-height: 1.15;
   letter-spacing: 0;
 }
@@ -8446,7 +8446,7 @@ button.org-graph-card-body {
 
 .settings-detail-header h1 {
   margin: 2px 0 0;
-  font-size: 24px;
+  font-size: var(--font-display);
   line-height: 1.15;
   letter-spacing: 0;
 }
@@ -8505,7 +8505,7 @@ button.org-graph-card-body {
 .settings-option-header h1 {
   margin: 14px 0 0;
   color: #061c3d;
-  font-size: 24px;
+  font-size: var(--font-display);
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -11156,7 +11156,7 @@ th,
 .quick-add,
 .secondary-action,
 .primary-action {
-  color: #273b56;
+  color: var(--button-text);
 }
 
 .primary-action {
@@ -11177,7 +11177,7 @@ th,
 .widget-actions button,
 .row-action {
   background: var(--panel-soft);
-  border-color: #e1e9f2;
+  border-color: var(--button-soft-border);
 }
 
 .panel,
@@ -12998,5 +12998,34 @@ textarea:focus-visible {
     border: 0;
     box-shadow: none;
     padding: 0;
+  }
+}
+
+/* ===== Design Phase 5.4: people filters as bottom sheet on phone ===== */
+@media (max-width: 640px) { /* --bp-sm */
+  .people-filter-scrim {
+    inset: 0;
+  }
+
+  .people-filter-scrim.open {
+    background: rgba(16, 24, 40, 0.45);
+  }
+
+  .people-filter-drawer {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: 85vh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: 0 -18px 40px rgba(16, 24, 40, 0.22);
+    transform: translateY(102%);
+  }
+
+  .people-filter-drawer.open {
+    transform: translateY(0);
   }
 }
