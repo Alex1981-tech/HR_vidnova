@@ -13,6 +13,9 @@ from .models import (
     EmployeeFieldGroup,
     EmployeeFieldTable,
     EmployeeDocument,
+    EmergencyContact,
+    Dependent,
+    EmployeeNote,
     EmployeeDocumentFolder,
     EmployeeEmploymentStatus,
     EmployeeFormTemplate,
@@ -445,14 +448,23 @@ class ExternalEmployeeLinkSerializer(serializers.ModelSerializer):
 
 
 class EmployeeDocumentFolderSerializer(serializers.ModelSerializer):
+    parent_name = serializers.CharField(source="parent.name", read_only=True)
+    document_count = serializers.SerializerMethodField()
+
     class Meta:
         model = EmployeeDocumentFolder
-        fields = ("id", "legacy_peopleforce_id", "name", "description", "is_active")
+        fields = ("id", "legacy_peopleforce_id", "name", "description", "parent", "parent_name", "document_count", "is_active")
+        read_only_fields = ("legacy_peopleforce_id",)
+
+    def get_document_count(self, obj):
+        annotated = getattr(obj, "doc_count", None)
+        return annotated if annotated is not None else obj.documents.count()
 
 
 class EmployeeDocumentSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.full_name", read_only=True)
     folder_name = serializers.CharField(source="folder.name", read_only=True)
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = EmployeeDocument
@@ -468,10 +480,21 @@ class EmployeeDocumentSerializer(serializers.ModelSerializer):
             "source_url",
             "expires_at",
             "local_file",
+            "file_url",
             "file_downloaded_at",
             "file_download_error",
         )
         read_only_fields = ("local_file", "file_downloaded_at", "file_download_error")
+
+    def get_file_url(self, obj):
+        if not obj.local_file:
+            return ""
+        try:
+            url = obj.local_file.url
+        except ValueError:
+            return ""
+        request = self.context.get("request")
+        return request.build_absolute_uri(url) if request else url
 
 
 class EmployeeCompactSerializer(serializers.ModelSerializer):
@@ -808,6 +831,45 @@ class EmployeeSerializer(serializers.ModelSerializer):
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today)).count()
 
 
+class EmployeeProfileBlockSerializer(serializers.ModelSerializer):
+    """Restricted per-block edit профілю (Фаза 2). Дозволяє писати ЛИШЕ allowlist
+    системних полів + злиття кастомних значень через custom_fields_delta. На відміну
+    від широкого EmployeeSerializer не чіпає external ids, FK-зайнятість, peopleforce_fields."""
+
+    custom_fields_delta = serializers.DictField(required=False, write_only=True)
+
+    class Meta:
+        model = Employee
+        fields = (
+            "last_name",
+            "first_name",
+            "middle_name",
+            "email",
+            "personal_email",
+            "birth_date",
+            "gender",
+            "phone",
+            "phone2",
+            "telegram_id",
+            "facebook_url",
+            "instagram_url",
+            "custom_fields_delta",
+        )
+
+    def validate_gender(self, value):
+        if value and not Gender.objects.filter(code=value).exists():
+            raise serializers.ValidationError("Невідома стать.")
+        return value
+
+    def update(self, instance, validated_data):
+        delta = validated_data.pop("custom_fields_delta", None)
+        if delta:
+            merged = dict(instance.custom_fields or {})
+            merged.update(delta)
+            instance.custom_fields = merged
+        return super().update(instance, validated_data)
+
+
 class ManagerAssignmentSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.full_name", read_only=True)
     manager_name = serializers.CharField(source="manager.full_name", read_only=True)
@@ -815,6 +877,42 @@ class ManagerAssignmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagerAssignment
         fields = ("id", "employee", "employee_name", "manager", "manager_name", "valid_from", "valid_to", "is_primary")
+
+
+class EmergencyContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmergencyContact
+        fields = (
+            "id",
+            "employee",
+            "name",
+            "relationship",
+            "work_phone",
+            "home_phone",
+            "mobile_phone",
+            "address",
+            "order",
+        )
+
+
+class DependentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dependent
+        fields = ("id", "employee", "name", "birth_date", "gender", "description", "order")
+
+
+class EmployeeNoteSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EmployeeNote
+        fields = ("id", "employee", "body_html", "author", "author_name", "created_at", "updated_at")
+        read_only_fields = ("author", "created_at", "updated_at")
+
+    def get_author_name(self, obj):
+        if not obj.author_id:
+            return ""
+        return obj.author.get_full_name() or obj.author.get_username()
 
 
 class EmployeeFieldSerializer(serializers.ModelSerializer):

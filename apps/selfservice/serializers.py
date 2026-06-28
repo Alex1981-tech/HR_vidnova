@@ -5,6 +5,22 @@ from apps.knowledge.models import KnowledgeCategory, KnowledgeDocument
 from apps.leave.models import LeaveRequest, LeaveType
 from apps.skud.models import AccessEvent, TimeCorrectionRequest, WorkDaySummary
 
+from .models import UserPreference
+
+
+SUPPORTED_TIME_ZONES = {"Europe/Kyiv", "Europe/Warsaw", "Europe/London"}
+
+
+class UserPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserPreference
+        fields = ("language", "theme", "time_zone")
+
+    def validate_time_zone(self, value):
+        if value not in SUPPORTED_TIME_ZONES:
+            raise serializers.ValidationError("Unsupported time zone.")
+        return value
+
 
 class SelfEmployeeSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)

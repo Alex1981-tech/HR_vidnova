@@ -53,6 +53,18 @@ services:
       redis:
         condition: service_healthy
 
+  celery-beat:
+    build: .
+    restart: unless-stopped
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   staticfiles:

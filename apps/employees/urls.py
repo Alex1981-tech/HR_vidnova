@@ -5,6 +5,9 @@ from .views import (
     DepartmentLevelViewSet,
     DepartmentViewSet,
     DivisionViewSet,
+    EmergencyContactViewSet,
+    DependentViewSet,
+    EmployeeNoteViewSet,
     EmployeeDocumentFolderViewSet,
     EmployeeDocumentViewSet,
     EmployeeFormTemplateViewSet,
@@ -50,6 +53,9 @@ router.register("medical-specialties", MedicalSpecialtyViewSet, basename="medica
 router.register("teams", TeamViewSet, basename="team")
 router.register("document-folders", EmployeeDocumentFolderViewSet, basename="employee-document-folder")
 router.register("documents", EmployeeDocumentViewSet, basename="employee-document")
+router.register("emergency-contacts", EmergencyContactViewSet, basename="emergency-contact")
+router.register("dependents", DependentViewSet, basename="dependent")
+router.register("employee-notes", EmployeeNoteViewSet, basename="employee-note")
 router.register("employees", EmployeeViewSet, basename="employee")
 router.register("manager-assignments", ManagerAssignmentViewSet, basename="manager-assignment")
 

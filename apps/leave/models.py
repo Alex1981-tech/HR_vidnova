@@ -17,13 +17,15 @@ class LeaveType(TimestampedModel):
     code = models.CharField(max_length=40, unique=True)
     legacy_peopleforce_id = models.CharField(max_length=120, blank=True, db_index=True)
     unit = models.CharField(max_length=40, blank=True)
+    icon = models.CharField(max_length=40, blank=True, help_text="Ключ іконки (frontend)")
     color = models.CharField(max_length=40, blank=True)
+    order = models.PositiveIntegerField(default=0, db_index=True)
     legacy_payload = models.JSONField(default=dict, blank=True)
     requires_hr_approval = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["order", "name"]
 
     def __str__(self) -> str:
         return self.name

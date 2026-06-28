@@ -1,159 +1,346 @@
-# План: сторінка співробітника (профіль) — вкладки + контент
+# План: сторінка співробітника `/people/employees/:id`
 
-Референси: `docs/фото/image*.png` (PeopleForce). Ціль — `/people/employees/:id`.
+Референси: `docs/фото/image*.png` (PeopleForce). Мета — профіль співробітника з PF-like header, вкладками, editable people data, документами, відсутностями, time, assets і додатковими підсторінками.
 
-## Архітектурне рішення
-Вкладки **Особисте / Робота / Компенсація** — **config-driven** через ту саму систему «Дані про людей»
-(групи полів по вкладках `personal/work/compensation`). Тобто перевикористовуємо `EmployeeConfigPanel`
-(показ + інлайн-редагування значень кастомних полів уже працює), просто **фільтруємо групи за активною вкладкою**.
-Решта вкладок (Відсутності/Time/Документи/Більше) — окремий контент.
+Статус: ✅ зроблено · 🚧 частково · ⏳ todo · ⛔ свідомо заглушка
 
-Статус: ✅ done · 🚧 in progress · ⏳ todo · ⛔ stub (заглушка)
+## Референси
 
----
+- `image.png`, `image copy.png`, `image copy 2.png`, `image copy 33.png`, `image copy 34.png` — profile shell/header, `Особисте`, права summary-колонка.
+- `image copy 3.png` — dropdown `Більше`.
+- `image copy 4.png` — `Робота` + права `Хронологія`.
+- `image copy 5.png`, `image copy 14.png`, `image copy 15.png` — compensation subtabs/table setup.
+- `image copy 6.png` — `Відсутності`: balance cards, `Запити`, `Історія`.
+- `image copy 7.png` — `Time` calendar/timesheet.
+- `image copy 8.png`-`10.png`, `image copy 18.png`-`21.png` — documents profile/settings/upload.
+- `image copy 11.png`-`13.png` — people-data table/column settings.
+- `image copy 16.png`, `image copy 17.png` — leave types settings.
+- `image copy 22.png`-`26.png` — `Більше`: emergency contacts, children, notes.
+- `image copy 27.png`-`32.png` — per-block edit, validation, education/certificate/file modal.
 
-## Фаза 0 — Таблиці: інфраструктура 🚧 (рішення A — вмикаємо)
-### ✅ Settings-бік (зроблено)
-- [x] Секція «Таблиці» в кожній групі people-data + «+ Таблиця».
-- [x] Модалка «Редагувати таблицю» (Група[ro] + Ім'я + список стовпців edit/delete + «+ Додати стовпець»).
-- [x] Модалка «Новий/Редагувати стовпець» (Ім'я + Тип + options для select). Типи: text/textarea/number/date/
-      select/employee/url/**boolean(Прапорець)**. (треба ще: **file(вкладення)** — image copy 32.)
-- [x] Видалення таблиці (confirm). Backend `EmployeeFieldTableViewSet` + columns JSON — перевірено (201/200).
-### ✅ Profile-бік (зроблено)
-- [x] Рендер таблиці на профілі (`EmployeeTablePanel`): таблиця рядків + «+ Додати»/edit/delete → модалка
-      `EmployeeTableRowModal` по стовпцях, рядки в `custom_fields['table_<id>']` (round-trip перевірено).
-- [x] Інпути стовпців по типу (text/textarea/number/date/url/select/employee/boolean-checkbox).
-- [x] Config-вкладки узагальнено: personal/work/compensation рендерять панелі полів + таблиці груп.
-- [ ] Тип стовпця **file**: завантаження вкладення (image copy 32) — ще ні (пізніше з документами).
-Backend уже має `EmployeeFieldTable` (`columns` JSON `[{key,label,type}]`) + рядки в `Employee.custom_fields['table_<id>']`,
-`EmployeeFieldTableViewSet` (CRUD). Треба:
-- **Типи стовпців** (image copy 12): text, textarea, number, date, employee, select, url + **boolean (Прапорець)** — новий.
-  (Перевикористати з полями; boolean додати і для полів, і для стовпців.)
-- **Settings (people-data):** повернути секцію «Таблиці» в групі + кнопку «+ Таблиця» (і/або в шапці).
-  Модалки: «Редагувати таблицю» (Ім'я + список стовпців + reorder + видалити стовпець) та
-  «Новий/Редагувати стовпець» (Ім'я + Тип [+ options для select]). image copy 11/13/12.
-- **Видалення/перейменування таблиці.**
-- **Профіль:** компонент рендеру таблиці (рядки з `custom_fields['table_<id>']`), додавання/редагування рядка
-  (модалка з полями по стовпцях), сорт за датою «Діє з» де є.
+## Поточний стан коду, який треба врахувати
 
-## Фаза 1 — Каркас вкладок ✅
-- [x] Стан активної вкладки `activeTab` в `EmployeeAdminProfileView`.
-- [x] Таб-бар: Особисте, Робота, Компенсація, Відсутності, Time, Документи + **Більше** (dropdown з 6 пунктів).
-- [x] `ProfileGroup` тримає `group.tab`; personalPanels фільтруються на `tab==='personal'`.
-- [x] Контент перемикається за вкладкою; summary «Головна» лише на Особисте (layout `full-width` на решті).
-- [x] Time = embed `EmployeeAttendanceDetailView`. Решта вкладок — `ProfileTabPlaceholder` (заглушка).
-- Примітка: prev/next місяця в embed-Time поки навігує на `/attendance/...` (рефайн пізніше).
+- ✅ Профіль уже має header, banner/avatar, вкладки, `Більше`, config-driven `Особисте/Робота/Компенсація`, table panels і embed `EmployeeAttendanceDetailView`.
+- ✅ `EmployeeFieldGroup`, `EmployeeField`, `EmployeeFieldTable` існують; settings `Дані про людей` уже має таблиці/колонки, а профіль зберігає рядки в `Employee.custom_fields['table_<id>']`.
+- ✅ Сід `employees.0022_seed_work_compensation_tables` уже створює PF-like таблиці `Посади`, `Робота`, `Базова компенсація`, `Додаткові компенсації`.
+- ✅ `LeaveType`, `LeaveRequest`, `LeaveBalance` уже існують і доступні через `/api/leave/types/`, `/api/leave/requests/`, `/api/leave/balances/`. Це не новий backend, а доробка існуючої схеми.
+- ✅ `EmployeeDocumentFolder` і `EmployeeDocument` уже існують, але `local_file` read-only у serializer; multipart upload з профілю ще відсутній.
+- 🚧 Assets API уже прокидує `responsible_ids` у CMMS, але це CMMS employee id, не HR employee id. Для профілю потрібен HR→CMMS bridge.
+- ⏳ `EmergencyContact`, `Dependent`, `EmployeeNote` відсутні.
+- ⏳ Немає role/object permission matrix для HR/manager/self/compensation/documents; більшість HR API зараз спирається на `ConfiguredReadOnlyOrAuthenticated` і dev flags.
 
-## Фаза 2 — Особисте: показ ✅ + PER-BLOCK EDIT ⏳ (деталізовано image copy 27–32)
-- [x] Config-панелі по `tab=personal`; фільтр на personal зроблено; legacy-док-панель прибрано.
-- [x] (старе) інлайн-редагування лише кастомних значень — **замінити** на per-block edit.
-- [ ] **Per-block edit:** «Редагувати» на панелі → вся панель = форма (системні + кастомні), Скасувати/Зберегти.
-  - Системні поля редаговані → колонки моделі: last_name, first_name, middle_name, email, personal_email,
-    birth_date(date), gender(select Жінка/Чоловік), phone, phone2, telegram_id, facebook_url, instagram_url.
-    Read-only: employee_number/id, full_name. Save = один PATCH employee (системні колонки + custom_fields).
-  - Інпут по типу (text/textarea/number/date/select+clearX/employee/url/boolean), help_text під полем, валідація required.
-- [ ] **Особисте має таблиці** (Навички/Освіта/Ліцензії) — рендер з Фази 0 profile-бік + row-add модалки
-  (image copy 31 «Додати освіту», copy 32 «Додати сертифікат» з file-вкладенням).
+## Архітектурні рішення
 
-## Фаза 3 — Робота 🚧 (= ТАБЛИЦІ, чисті PF-таблиці в custom_fields)
-### ✅ Зроблено
-- [x] Сід-міграція 0022: видалено старі work-групи (Посада/Команда), створено групу «Робота» з таблицями
-      **Посади** (8 ст.) і **Робота** (6 ст.). Select-стовпці префілено опціями з довідників (Посада/Департамент/
-      Локація/Рівень/Підрозділ/Тип роботи/Графік), Менеджер = employee.
-- [x] Рендеряться на профілі (вкладка Робота) — рядки додаються/редагуються (Фаза 0 profile-бік).
-### ⏳ Лишилось
-- [ ] Права колонка «Хронологія» (історія рядків Посади за «Діє з») — пізніше.
-- [ ] (Опц.) сорт рядків за «Діє з», показ «останнього» як поточного.
+### 1. URL-driven вкладки
 
-## Фаза 3-OLD — (архів) Робота config-опис ⏳
-Референси image copy 11/12/13 + image copy 4. Робота побудована на **`EmployeeFieldTable`** (модель уже є:
-`columns` JSON, рядки в `Employee.custom_fields['table_<id>']`).
-- Таблиці-сід (`tab=work`):
-  - **Посади** (8 ст.): Діє з (date), Менеджер (employee), Рівень посади, Посада, Департамент, Підрозділ, Локація, Юридична особа
-  - **Робота** (6 ст.): Діє з (date), Тип роботи, Графік роботи, Випробний термін, Випр. термін закінчується, Коментар (textarea)
-- **Settings (people-data) Робота-вкладка:** секція «Таблиці» зі списком таблиць; модалка «Редагувати таблицю»
-  (Група + Ім'я + список стовпців + «+ Додати стовпець» → модалка «Новий стовпець» з Ім'я+Тип). image copy 11–13.
-- **Профіль Робота:** кожна таблиця = панель; показує останній (за «Діє з») рядок як поля; «+ Додати» новий датований
-  рядок; права колонка «Хронологія» = всі рядки таблиці Посади.
-- **Backend:** `EmployeeFieldTableViewSet` уже є (CRUD columns). Рядки зберігаються в `custom_fields['table_<id>']`
-  через PATCH employee. Можливо потрібен сід-міграція для 2 таблиць.
+- `/people/employees/:id` лишається alias для `personal`.
+- Нові deep links:
+  - `/people/employees/:id/personal`
+  - `/people/employees/:id/work`
+  - `/people/employees/:id/compensation`
+  - `/people/employees/:id/absence`
+  - `/people/employees/:id/time?month=YYYY-MM`
+  - `/people/employees/:id/documents`
+  - `/people/employees/:id/tasks`
+  - `/people/employees/:id/workflow`
+  - `/people/employees/:id/assets`
+  - `/people/employees/:id/emergency`
+  - `/people/employees/:id/dependents`
+  - `/people/employees/:id/notes`
+- `activeTab` має синхронізуватися з pathname/search, щоб back/forward, reload і пряме посилання відновлювали вкладку.
+- Для `Time` місяць живе в query профілю (`month=YYYY-MM`), а стрілки місяця не ведуть на `/attendance/...`.
 
-> ✅ РІШЕННЯ (Alex): **варіант A — вмикаємо таблиці ЗАГАЛОМ** (повертаю «+ Таблиця» + редагування таблиць/стовпців).
+### 2. Layout rules
 
-## Фаза 4 — Компенсація 🚧 (= ТАБЛИЦІ)
-- [x] Сід 0022: у групі «Компенсація» таблиці **Базова компенсація** (7 ст.) + **Додаткові компенсації** (8 ст.),
-      рендеряться на профілі. Валюта/Період/Частота — select з дефолт-опціями; Перепрацювання = boolean.
-- [ ] (Опц.) під-таби «Базова / Додаткова» (зараз дві окремі панелі). Payroll/розрахунок — пізніше.
+- `Особисте`: main column + права summary-колонка `Головна` як у PF.
+- `Робота`: main column + права `Хронологія` обов'язково для matching `image copy 4.png`.
+- `Компенсація`, `Відсутності`, `Time`, `Документи`, `Більше/*`: full-width panel.
+- Mobile/tablet: tabs horizontal scroll, права колонка переходить нижче main, таблиці та time calendar мають внутрішній horizontal scroll, модалки майже full-width зі sticky footer.
 
-## Фаза 4-OLD — (архів) опис ⏳
-Таблиці-сід (`tab=compensation`), image copy 14/15:
-- **Базова компенсація** (7 ст.): Діє з (date), Сума (number), Валюта (select), Період (select), Графік оплати (select),
-  Перепрацювання (**boolean/Прапорець**), Коментар (textarea)
-- **Додаткові компенсації** (8 ст.): Вид компенсації (select), Опис (text), Тип виплати (select), Частота (select),
-  Починається (date), Дата завершення (date), Сума (number), Валюта (select)
-- Профіль: під-таби «Базова / Додаткова», кожна = таблиця рядків, «+ Додати».
-- Розрахунок/нарахування (payroll-логіка) — **пізніше**; зараз лише введення/зберігання рядків.
+### 3. Permission/contract boundary
 
-## Фаза 5 — Відсутності ⏳ (настройка = окрема сторінка /settings/leave-types)
-### 5a. Settings: `/settings/leave-types` «Типи відсутностей» (image copy 16/17)
-**Backend новий:** модель `LeaveType` (name, tracking_unit: days|hours, icon, color, order, is_active)
-+ (пізніше) вкладені політики/нарахування `LeavePolicy`. ViewSet CRUD + reorder.
-- [ ] Сторінка: список типів з grip-reorder, розгортання (політики), «+» (додати політику), «...» меню.
-- [ ] Модалка «Додати/Редагувати тип»: Ім'я + Одиниця (Дні/Години) + іконка + колір.
-- [ ] Сід типів: Відпустка, Лікарняний, За власний рахунок, Віддалена робота, Особисті події,
-      Декретна відпустка, Неробоча зміна.
-- [ ] Шапка «Збори»/«Призначення» — поки заглушки/пізніше.
-### 5b. Профіль — вкладка Відсутності (image copy 6)
-- [ ] Картки балансів по типах (Відпустка/Лікарняний/За власний рахунок) — «Створити запит».
-- [ ] Запити («Нічого не знайдено») + Історія (таблиця нарахувань).
-- Баланси/нарахування — backend пізніше; спершу каркас + типи зі сторінки 5a.
+- Додати окремий permission/role matrix до реалізації редагування:
+  - HR/admin: повний профіль, people-data settings, documents, leave setup.
+  - Manager: перегляд підлеглих, обмежені поля, leave/team/time за scope.
+  - Employee self: тільки self-visible поля, свої відсутності/time/documents за правилами.
+  - Compensation: окремий privilege, не просто authenticated.
+  - Documents: upload/download/delete окремо від перегляду.
+- Per-block edit не повинен використовувати широкий `EmployeeSerializer` напряму. Потрібен restricted action/serializer з allowlist системних полів профілю.
+- Dev flags `HR_PUBLIC_READ_API` / `HR_PUBLIC_WRITE_API` не вважати production-поведінкою.
 
-## Фаза 6 — Time ⏳ (перевикористання наявного)
-Вже існує `EmployeeAttendanceDetailView` (`frontend/src/App.tsx:5129`), маршрут
-`/attendance/employees/:id?month=YYYY-MM` — місячний таймшит (точно як референс image copy 7).
-- [ ] ✅ РІШЕННЯ (Alex): **вбудувати (embed)** цей компонент у вкладку Time (не перехід).
+## Backend/API roadmap
 
-## Фаза 7 — Документи ⏳ (реально, але only upload з ПК)
-Backend: є `EmployeeDocumentFolder` + `EmployeeDocument` (FileField `local_file`).
-### 7a. Settings `/settings/documents` (image copy 18–21)
-- [ ] Таб **Папки**: список (Ім'я+опис, Кількість документів, «...»), пошук, «+ Додати».
-      Модалка: Ім'я + Опис + **Батьківська папка** (треба додати self-FK `parent` у `EmployeeDocumentFolder`).
-      Тогл «автопризначення за полями» — **пізніше** (advanced).
-- [ ] CRUD папок (створ./переймен./видал.).
-- [ ] Таб **Шаблони** (.docx генерація) — **пізніше/поза скоупом** (поки приховати або заглушка).
-### 7b. Профіль — вкладка Документи (image copy 8/9/10)
-- [ ] Список папок з лічильником; під папкою — документи (Ім'я / Завантажено).
-- [ ] Пошук по назві.
-- [ ] «Новий» → **тільки «Завантажити файл»** (Google Drive/Dropbox/Figma — НЕ робимо).
-- [ ] Модалка «Додати документ»: вибір папки + drag-drop/клік (multipart, до 10 файлів, 200Мб).
-- [ ] Дії над документом: скачати / видалити (уточнити обсяг).
-- [ ] **Backend:** multipart upload endpoint (parser), унікальний `legacy_peopleforce_id` для ручних
-      завантажень (UniqueConstraint `(employee, legacy_peopleforce_id)`), `document_type=file`. Rebuild backend.
+### A. People-data fields/tables 🚧
 
-## Фаза 8 — Більше (dropdown) — деталізовано Alex
-Кожен пункт = окрема «під-сторінка» профілю (панель на всю ширину, без правої колонки).
-- **Завдання** ⛔ заглушка (постановку задач у застосунку ще не реалізовано).
-- **Воркфлоу** ⛔ заглушка.
-- **Активи** ⏳ РЕАЛЬНО: вивести **призначені активи картками** (CMMS asset, responsible_person = цей співробітник).
-  Backend є (`/api/assets/?responsible_ids=`) → переважно фронт. (image — картки активів.)
-- **Екстрені контакти** ⏳ РЕАЛЬНО (image copy 22/23): список + модалка «Додати контакт»
-  (Ім'я*, Відносини [select], Робочий/Домашній/Мобільний телефон, Адреса). **Backend новий:** `EmergencyContact`.
-- **Діти** ⏳ РЕАЛЬНО (image copy 24/25): список + модалка «Додати дитину»
-  (Ім'я, Дата народження [опц], Стать [опц], Опис [rich, опц]). **Backend новий:** `Dependent`.
-- **Примітки** ⏳ РЕАЛЬНО (image copy 26): список + модалка «Додати примітку» (rich text B/i/U/список/зображення/файл).
-  **Backend новий:** `EmployeeNote` (body html, author, created_at).
+- [x] `EmployeeFieldGroup/EmployeeField/EmployeeFieldTable` і CRUD viewsets існують.
+- [x] Settings UI має таблиці/колонки, boolean уже є на frontend і в compensation seed.
+- [ ] Додати backend validation для `EmployeeFieldTable.columns`:
+  - `key` stable slug, unique per table, не порожній;
+  - `label` required;
+  - `type` тільки allowlist;
+  - `select.options` required/list;
+  - `employee` не має options;
+  - `file` заборонений до появи attachment storage.
+- [ ] Додати `boolean` у `EmployeeField.FieldType` на backend (`AlterField` choices) і serializer validation.
+- [ ] `file` тип не додавати як generic field без backing model. Для сертифікатів/освіти потрібен row attachment design.
+- [ ] Винести profile field-group loading у `frontend/src/api/client.ts` замість raw `fetch`.
 
-## Відповіді Alex (зафіксовано)
-- Time → **embed** у профіль (Фаза 6).
-- Більше → Alex **готує опис по кожному пункту** (поки заглушки).
-- Per-block «Редагувати» → Alex **готує** (поза скоупом зараз).
-- Таблиці → **вмикаємо** (варіант A).
-- Документи/Відсутності/Робота/Компенсація → налаштовуються на окремих settings-сторінках (зафіксовано вище).
+### B. Atomic row API для таблиць ⏳
 
-## Поза скоупом зараз
-- Нарахування/payroll (Компенсація), баланси/нарахування Відсутностей, авто-призначення документів,
-  .docx-шаблони, історія Time за межами наявного компонента.
+Поточний PATCH усього `Employee.custom_fields['table_<id>']` працює, але має ризики full-JSON overwrite, немає row id, audit/concurrency і cleanup при зміні таблиці.
 
-## ✅ Права колонка (вирішено Alex)
-- **Summary «Головна» — ТІЛЬКИ на вкладці «Особисте».** Решта вкладок — контент на всю ширину.
-- На «Робота» праворуч «Хронологія» — **пізніше**.
+Рішення: залишити storage у `custom_fields` на MVP, але додати backend actions з row-level контрактом:
+
+- `GET /api/employees/employees/:id/table-rows/?table=:table_id`
+- `POST /api/employees/employees/:id/table-rows/`
+- `PATCH /api/employees/employees/:id/table-rows/:row_id/`
+- `DELETE /api/employees/employees/:id/table-rows/:row_id/`
+- Кожен row отримує `row_id`, `created_at`, `updated_at`; зміни виконуються в `transaction.atomic()` + `select_for_update()`.
+- Для rename/delete column не видаляти дані автоматично. Delete table у settings спочатку `is_enabled=false`; physical cleanup тільки окремою підтвердженою дією.
+
+### C. Restricted profile update ⏳
+
+- Додати action, наприклад `PATCH /api/employees/employees/:id/profile-block/`.
+- Allowlist системних полів: `last_name`, `first_name`, `middle_name`, `email`, `personal_email`, `birth_date`, `gender`, `phone`, `phone2`, `telegram_id`, `facebook_url`, `instagram_url`.
+- Read-only: `id`, `employee_number`, `legacy_peopleforce_id`, external ids, `peopleforce_fields`, `user`, імпортні технічні поля.
+- `gender` не hardcoded `Жінка/Чоловік`: frontend вантажить `/api/employees/genders/`, зберігає `Gender.code` у `Employee.gender`.
+- Custom values у тому ж block-save можна PATCHити як `{custom_fields_delta}`, але не замінювати весь JSON без merge/validation.
+
+### D. Work domain sync ⏳
+
+`Робота` не може бути лише display у `custom_fields`, бо доменні моделі вже існують:
+
+- `ManagerAssignment`
+- `EmployeePositionHistory`
+- `EmployeeEmploymentStatus`
+- SKUD використовує employment/schedule доменну історію, не JSON-таблицю.
+
+Рішення:
+
+- Таблиці `Посади`/`Робота` залишаються PF-like UI layer.
+- Значення select-колонок перевести зі static label options на structured source (`position`, `department`, `division`, `clinic`, `job_level`, `employment_type`, `working_pattern`) і зберігати IDs.
+- Save row у `Посади` синхронізує latest/current row у `Employee.position/department/division/clinic/job_level` + `ManagerAssignment`/`EmployeePositionHistory`.
+- Save row у `Робота` синхронізує `Employee.employment_type` + `EmployeeEmploymentStatus`/working pattern.
+- До завершення sync ці таблиці позначати як draft/display-only і не використовувати для SKUD/звітів.
+
+### E. Leave ⏳
+
+Не створювати `LeaveType` з нуля. Доробити існуючу модель:
+
+- Поточні поля: `name`, `code`, `legacy_peopleforce_id`, `unit`, `color`, `requires_hr_approval`, `is_active`.
+- Додати/нормалізувати: `tracking_unit` (`days|hours`) або узгодити з поточним `unit`, `icon`, `order`.
+- Додати endpoint reorder для `/api/leave/types/`.
+- Profile tab вантажить:
+  - `api.leaveTypes({page_size: 100})`
+  - `api.leaveBalances({employee})`
+  - `api.leaveRequests({employee})`
+- `LeavePolicy`/accrual automation лишаються пізніше; у MVP показуємо наявні balances/history з `LeaveBalance.effective_on`.
+
+### F. Documents ⏳
+
+Використати існуючі `EmployeeDocumentFolder` / `EmployeeDocument`, але доробити:
+
+- `EmployeeDocumentFolder.parent` self-FK + folder counts/search/soft-delete semantics.
+- API client methods: folders, documents, upload, download/delete.
+- Multipart upload action:
+  - до 10 файлів;
+  - max 200MB на файл;
+  - allowlist типів (`pdf`, `doc`, `docx`, `png`, `jpeg`, `jpg`);
+  - required `employee`, `folder`;
+  - генерувати manual `legacy_peopleforce_id` (`manual:<uuid>`) для UniqueConstraint `(employee, legacy_peopleforce_id)`;
+  - transactional create; per-file result/error для multi-upload.
+- Download/delete semantics:
+  - download local file через authenticated endpoint;
+  - delete manual files дозволений за правами;
+  - imported PeopleForce docs не видаляти фізично без окремої policy.
+
+### G. Assets ⏳
+
+- Не використовувати `responsible_ids=<HR employee id>` напряму.
+- Додати bridge:
+  - або `GET /api/assets/?hr_employee_id=:id`;
+  - або backend resolves HR `Employee.external_*`/mapping у CMMS employee id і вже тоді прокидує `responsible_ids`.
+- Тести мають mockати CMMS client і mapping.
+
+### H. More models ⏳
+
+- `EmergencyContact`: `employee`, `name`, `relationship`, `work_phone`, `home_phone`, `mobile_phone`, `address`, `order`.
+- `Dependent`: `employee`, `name`, `birth_date`, `gender`, `description`.
+- `EmployeeNote`: `employee`, `body_html`, `author`, `created_at`, `updated_at`.
+- Для notes attachments потрібен окремий upload/attachment model і sanitization; knowledge media upload не переиспользовувати як є.
+
+## Frontend/UX roadmap
+
+### Фаза 0 — Profile shell і routing 🚧
+
+- [x] Header/banner/avatar/name/role/location/actions/tabs уже є.
+- [ ] URL-driven active tab + active `Більше` state.
+- [ ] Loading/not found/forbidden/error для direct URL `/people/employees/:id`, навіть якщо employee не в поточній сторінці списку.
+- [ ] Top-level retry state.
+- [ ] PF-like visual acceptance:
+  - light gray page background;
+  - compact cards;
+  - 6-8px radius;
+  - thin borders/subtle shadow;
+  - small icon squares;
+  - restrained purple active underline/buttons;
+  - no nested cards.
+
+### Фаза 1 — People-data settings/table infrastructure 🚧
+
+- [x] Settings: tabs `Особисте/Робота/Компенсація`, groups, fields, tables, column modal.
+- [x] Profile: table panels, add/edit/delete rows, boolean checkbox in table rows.
+- [ ] Settings modal UX criteria from references:
+  - reorder/drag affordance for columns;
+  - bordered column list;
+  - type menu with icons;
+  - sticky footer;
+  - empty/error states;
+  - mobile internal scroll.
+- [ ] Switch profile table saves from full employee PATCH to atomic row API.
+- [ ] File column only after row attachment backend is ready.
+
+### Фаза 2 — `Особисте` per-block edit ⏳
+
+- [x] Config panels render by `tab=personal`.
+- [ ] PF pattern: clicking `Редагувати` turns the current panel into a form, not a modal.
+- [ ] Only one block edits at a time.
+- [ ] Footer inside panel: `Скасувати` / `Зберегти`, sticky where needed.
+- [ ] Inline validation, required markers, help text under field.
+- [ ] Disabled save + spinner while saving.
+- [ ] Error preserves draft values.
+- [ ] System + custom fields save through restricted profile action.
+- [ ] Field controls:
+  - text/textarea/number/date/url;
+  - clearable select;
+  - employee picker;
+  - boolean checkbox;
+  - gender dictionary from `/api/employees/genders/`.
+- [ ] Personal tables `Навички/Освіта/Ліцензії/Сертифікати` use table row API; certificate attachment waits for Documents/row attachment storage.
+
+### Фаза 3 — `Робота` ⏳
+
+- [x] Seeded tables `Посади` and `Робота` render on profile.
+- [ ] Make PF display mandatory:
+  - current/latest row as field grid;
+  - add/edit row buttons;
+  - right `Хронологія` with dated position rows;
+  - history toggle/table for older rows.
+- [ ] Use structured dictionary IDs, not static labels, for position/department/division/location/level/work type/schedule.
+- [ ] Save rows through domain sync described in Backend D.
+- [ ] Names to align with PF where relevant: `Посади`, `Статус роботи`, `Профілі посад`, `Цикл зайнятості`.
+
+### Фаза 4 — `Компенсація` ⏳
+
+- [x] Seeded tables `Базова компенсація` and `Додаткові компенсації` render.
+- [ ] Subtabs are required for PF matching:
+  - `Базова компенсація`
+  - `Додаткова компенсація`
+- [ ] One panel at a time with `+ Додати` / edit/delete row.
+- [ ] Keep payroll/accrual calculation out of scope.
+- [ ] Require compensation permission before showing/editing values.
+
+### Фаза 5 — `Відсутності` ⏳
+
+#### Settings `/settings/leave-types`
+
+- [ ] Add route/rendering in settings.
+- [ ] Use existing `/api/leave/types/`.
+- [ ] Add `icon`, `order`, normalized `tracking_unit` migration.
+- [ ] List with drag reorder, expand/collapse, `+`, `...` menu.
+- [ ] Modal: name, unit days/hours, icon, color.
+- [ ] Seed/defaults if DB is empty: Відпустка, Лікарняний, За власний рахунок, Віддалена робота, Особисті події, Декретна відпустка, Неробоча зміна.
+- [ ] Buttons `Збори "Задонать відпустку"` and `Призначення` can be visible disabled/stub until policy work.
+
+#### Profile tab
+
+- [ ] Balance cards by leave type with `Створити запит`.
+- [ ] `Запити`: filter/search/export controls, empty `Нічого не знайдено`.
+- [ ] `Історія`: year/type controls, export, table from balances/history.
+- [ ] Loading/empty/error per block.
+
+### Фаза 6 — `Time` 🚧
+
+- [x] `EmployeeAttendanceDetailView` exists and can be embedded.
+- [ ] Embedded mode must remove duplicate page shell/header/back button.
+- [ ] Month prev/next updates `/people/employees/:id/time?month=YYYY-MM`.
+- [ ] Metrics/calendar/table skeletons.
+- [ ] Calendar/table horizontal scroll on narrow screens.
+- [ ] Permission/scope cases for manager/self/HR.
+
+### Фаза 7 — `Документи` ⏳
+
+#### Settings `/settings/documents`
+
+- [ ] Add settings route.
+- [ ] Tabs `Папки` / `Шаблони`; templates can stay hidden/stub.
+- [ ] Folders table: name+description, document count, search, `+ Додати`, row actions.
+- [ ] Modal: name, description, parent folder, disabled/hidden auto-assignment toggle until advanced work.
+- [ ] CRUD folders + soft delete/active filtering.
+
+#### Profile tab
+
+- [ ] Folder/document table like `image copy 8.png`.
+- [ ] Search by document/folder name.
+- [ ] `Новий` dropdown contains only `Завантажити файл`.
+- [ ] Upload modal:
+  - folder select;
+  - drag/drop and click picker;
+  - selected files list;
+  - drag-active state;
+  - per-file progress/error;
+  - disabled save without folder/files;
+  - limits 10 files / 200MB.
+- [ ] Document actions: download/delete by permission.
+
+### Фаза 8 — `Більше` ⏳
+
+Common subpage pattern:
+
+- same profile header;
+- active item in `Більше` dropdown and URL;
+- one full-width panel;
+- `+ Додати` action on real sections;
+- empty state `Нічого не знайдено`;
+- loading/error/retry.
+
+Sections:
+
+- `Завдання` ⛔ placeholder.
+- `Воркфлоу` ⛔ placeholder.
+- `Активи` ⏳ real cards from CMMS after HR→CMMS bridge.
+- `Екстрені контакти` ⏳ list + add/edit modal from `image copy 22.png`, `image copy 23.png`.
+- `Діти` ⏳ list + add/edit modal from `image copy 24.png`, `image copy 25.png`.
+- `Примітки` ⏳ list + add modal from `image copy 26.png`; rich text + attachments require dedicated backend.
+
+## Verification checklist
+
+Backend:
+
+- `python3 manage.py check`
+- `python3 manage.py makemigrations --check --dry-run`
+- focused tests:
+  - employees: restricted profile patch, table column schema, row API concurrency/merge, document upload, More models;
+  - leave: leave type CRUD/reorder/profile filters;
+  - skud: embedded profile scope/permissions around attendance detail;
+  - assets: CMMS mapping mocked.
+
+Frontend:
+
+- `npm run build`
+- `npm run lint` if configured.
+- Browser verification with desktop and mobile screenshots:
+  - direct URLs for every profile tab;
+  - back/forward tab switching;
+  - per-block edit save/error;
+  - documents upload states;
+  - Time month navigation;
+  - mobile tabs/tables/modal footer no overlap.
+
+## Поза scope MVP
+
+- Payroll/accrual calculation.
+- Leave accrual automation/policies beyond displaying current imported balances/history.
+- Document templates (`.docx`) and auto-assignment by employee fields.
+- Real task/workflow engine.
+- Replacing JSON table rows with normalized row tables. MVP uses atomic row actions over existing `custom_fields`, with a future migration path.

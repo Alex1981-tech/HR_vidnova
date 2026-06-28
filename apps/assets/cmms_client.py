@@ -111,8 +111,8 @@ class CmmsClient:
     def create_employee(self, payload: dict) -> dict:
         return self._request("POST", "/api/employees/", json=payload).json()
 
-    def resolve_employee_id(self, hr_employee) -> int:
-        """Map an HR Employee onto a CMMS employee id (find or create)."""
+    def find_employee_id(self, hr_employee) -> int | None:
+        """Map an HR Employee onto an existing CMMS employee id without creating one."""
         peopleforce_id = None
         raw_pf = (getattr(hr_employee, "legacy_peopleforce_id", "") or "").strip()
         if raw_pf.isdigit():
@@ -128,7 +128,18 @@ class CmmsClient:
             for emp in employees:
                 if (emp.get("email") or "").strip().lower() == email:
                     return emp["id"]
+        return None
 
+    def resolve_employee_id(self, hr_employee) -> int:
+        """Map an HR Employee onto a CMMS employee id (find or create)."""
+        found = self.find_employee_id(hr_employee)
+        if found is not None:
+            return found
+        email = (getattr(hr_employee, "email", "") or getattr(hr_employee, "personal_email", "") or "").strip().lower()
+        peopleforce_id = None
+        raw_pf = (getattr(hr_employee, "legacy_peopleforce_id", "") or "").strip()
+        if raw_pf.isdigit():
+            peopleforce_id = int(raw_pf)
         position = getattr(getattr(hr_employee, "position", None), "name", None)
         department = getattr(getattr(hr_employee, "department", None), "name", None)
         created = self.create_employee(

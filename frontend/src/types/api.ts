@@ -38,6 +38,7 @@ export type AuthStatus = {
     full_name: string;
     status: string;
   };
+  preferences: UserPreferences | null;
 };
 
 export type AuthCodeResponse = {
@@ -48,6 +49,12 @@ export type AuthLoginResponse = {
   status: 'ok' | string;
   user: NonNullable<AuthStatus['user']>;
   employee: NonNullable<AuthStatus['employee']>;
+};
+
+export type UserPreferences = {
+  language: 'en' | 'uk' | 'pl';
+  theme: 'light' | 'dark' | 'auto';
+  time_zone: string;
 };
 
 export type EmployeeProfile = {
@@ -79,8 +86,59 @@ export type EmployeeDocument = {
   source_url: string;
   expires_at: string | null;
   local_file: string;
+  file_url: string;
   file_downloaded_at: string | null;
   file_download_error: string;
+};
+
+export type EmployeeDocumentFolder = {
+  id: number;
+  legacy_peopleforce_id: string;
+  name: string;
+  description: string;
+  parent: number | null;
+  parent_name: string;
+  document_count: number;
+  is_active: boolean;
+};
+
+export type EmployeeDocumentFolderPayload = {
+  name: string;
+  description?: string;
+  parent?: number | null;
+  is_active?: boolean;
+};
+
+export type EmergencyContact = {
+  id: number;
+  employee: number;
+  name: string;
+  relationship: string;
+  work_phone: string;
+  home_phone: string;
+  mobile_phone: string;
+  address: string;
+  order: number;
+};
+
+export type Dependent = {
+  id: number;
+  employee: number;
+  name: string;
+  birth_date: string | null;
+  gender: string;
+  description: string;
+  order: number;
+};
+
+export type EmployeeNote = {
+  id: number;
+  employee: number;
+  body_html: string;
+  author: number | null;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type JobLevel = {
@@ -484,7 +542,21 @@ export type LeaveType = {
   id: number;
   name: string;
   code: string;
+  unit: string;
+  icon: string;
+  color: string;
+  order: number;
   requires_hr_approval: boolean;
+  is_active: boolean;
+};
+
+export type LeaveTypePayload = {
+  name: string;
+  unit?: string;
+  icon?: string;
+  color?: string;
+  requires_hr_approval?: boolean;
+  is_active?: boolean;
 };
 
 export type LeaveRequest = {

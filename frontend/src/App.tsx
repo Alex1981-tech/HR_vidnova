@@ -19,6 +19,10 @@ import {
   ArrowUpRight,
   Eye,
   FileText,
+  Folder,
+  Download,
+  Package,
+  Pencil,
   Filter,
   GitBranch,
   Grid3X3,
@@ -81,6 +85,9 @@ import { ApiError, api, type EmployeeFormTemplatePayload, type EmployeeHirePaylo
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { ReportsView } from './views/ReportsView';
 import { PeopleDataSettingsView } from './views/settings/PeopleDataSettingsView';
+import { SettingsLeaveTypesView } from './views/settings/SettingsLeaveTypesView';
+import { SettingsDocumentsView } from './views/settings/SettingsDocumentsView';
+import { LeaveTypeIcon } from './lib/leaveIcons';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
@@ -104,6 +111,11 @@ import type {
   EmployeeFormType,
   EmployeeListItem,
   EmployeeProfile,
+  EmployeeDocument,
+  EmployeeDocumentFolder,
+  EmergencyContact,
+  Dependent,
+  EmployeeNote,
   GenderOption,
   HolidayOption,
   HolidayPolicyOption,
@@ -121,6 +133,7 @@ import type {
   SkillOption,
   TeamOption,
   TimeCorrectionRequest,
+  UserPreferences,
   WorkType,
   WorkingPatternOption,
   WorkDaySummary,
@@ -138,7 +151,11 @@ type Section =
   | 'reports'
   | 'org'
   | 'settings'
-  | 'changelog';
+  | 'changelog'
+  | 'account'
+  | 'roadmap'
+  | 'tasks'
+  | 'suggestions';
 
 type LoadState = 'idle' | 'loading' | 'ok' | 'error';
 
@@ -368,6 +385,10 @@ const sectionPaths: Record<Section, string> = {
   org: '/org',
   settings: '/settings',
   changelog: '/changelog',
+  account: '/account/settings',
+  roadmap: '/roadmap',
+  tasks: '/tasks',
+  suggestions: '/suggestions',
 };
 
 const pathSectionMap: Record<string, Section> = {
@@ -382,6 +403,10 @@ const pathSectionMap: Record<string, Section> = {
   org: 'org',
   settings: 'settings',
   changelog: 'changelog',
+  account: 'account',
+  roadmap: 'roadmap',
+  tasks: 'tasks',
+  suggestions: 'suggestions',
 };
 
 const legacyHashPaths: Record<string, string> = {
@@ -521,6 +546,18 @@ const defaultBrandingSettings: BrandingSettings = {
   employeeCoverUploadAllowed: false,
 };
 
+const defaultUserPreferences: UserPreferences = {
+  language: 'uk',
+  theme: 'light',
+  time_zone: 'Europe/Kyiv',
+};
+
+const accountTimeZoneOptions = [
+  { value: 'Europe/Kyiv', label: '(GMT+02:00) Kyiv' },
+  { value: 'Europe/Warsaw', label: '(GMT+01:00) Warsaw' },
+  { value: 'Europe/London', label: '(GMT+00:00) London' },
+];
+
 function brandingThemeStyle(settings: BrandingSettings): CSSProperties {
   return {
     '--brand-accent': settings.primaryColor,
@@ -643,6 +680,35 @@ function formatGender(value: string): string {
     male: 'Чоловік',
   };
   return labels[value] ?? value;
+}
+
+// ISO (YYYY-MM-DD) → відображення ДД.ММ.РРРР для ручного вводу дати.
+function isoToDisplayDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || '');
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : '';
+}
+
+// Сирий ручний ввід ДД.ММ.РРРР → ISO; '' якщо неповний/невалідний.
+function displayDateToIso(text: string): string {
+  const digits = (text || '').replace(/\D/g, '');
+  if (digits.length !== 8) return '';
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  const day = Number(dd);
+  const month = Number(mm);
+  const year = Number(yyyy);
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) return '';
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.getUTCMonth() !== month - 1 || probe.getUTCDate() !== day) return '';
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+// Автоформат під час набору: лишаємо цифри, ставимо крапки після дня/місяця.
+function maskDisplayDate(text: string): string {
+  const digits = (text || '').replace(/\D/g, '').slice(0, 8);
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter((p) => p.length);
+  return parts.join('.');
 }
 
 function formatTenure(hiredOn: string | null): string {
@@ -1290,39 +1356,163 @@ function Topbar({
   auth,
   employee,
   onOpenMobileMenu,
+  onNavigate,
   onLogout,
   copy,
 }: {
   auth: AuthStatus | null;
   employee: EmployeeProfile;
   onOpenMobileMenu: () => void;
+  onNavigate: (path: string) => void;
   onLogout: () => void;
   copy: AppCopy;
 }) {
+  const [openMenu, setOpenMenu] = useState<'timer' | 'quick' | 'user' | null>(null);
+  const employeeProfilePath = employee.id ? peopleEmployeePath(employee.id) : '/people';
+
+  useEffect(() => {
+    if (!openMenu) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenMenu(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [openMenu]);
+
+  function toggleMenu(menu: 'timer' | 'quick' | 'user') {
+    setOpenMenu((current) => (current === menu ? null : menu));
+  }
+
+  function go(path: string) {
+    setOpenMenu(null);
+    onNavigate(path);
+  }
+
   return (
     <header className="topbar">
+      {openMenu ? <button type="button" className="topbar-menu-backdrop" aria-label="Закрити меню" onClick={() => setOpenMenu(null)} /> : null}
       <div className="topbar-left">
         <button type="button" className="icon-button mobile-menu-button" aria-label={copy.common.openMenu} onClick={onOpenMobileMenu}>
           <Menu size={18} />
         </button>
       </div>
       <div className="top-actions">
-        <button type="button" className="icon-button" aria-label={copy.common.timeTracking}>
-          <Timer size={18} />
-        </button>
-        <button type="button" className="quick-add">
-          <Plus size={18} />
-          <span>{copy.common.quickAdd}</span>
-        </button>
+        <div className="topbar-menu-wrap">
+          <button
+            type="button"
+            className={`icon-button${openMenu === 'timer' ? ' active' : ''}`}
+            aria-label={copy.common.timeTracking}
+            aria-expanded={openMenu === 'timer'}
+            onClick={() => toggleMenu('timer')}
+          >
+            <Timer size={18} />
+          </button>
+          {openMenu === 'timer' ? (
+            <section className="topbar-popover time-tracker-popover" aria-label={copy.common.timeTracking}>
+              <h2>Відстеження часу</h2>
+              <label className="topbar-form-field">
+                <span>За бажанням</span>
+                <select defaultValue="" disabled>
+                  <option value="">Виберіть проект</option>
+                </select>
+              </label>
+              <label className="topbar-form-field">
+                <span>Коментар</span>
+                <textarea rows={4} disabled />
+              </label>
+              <button type="button" className="primary-action" disabled>
+                <Timer size={16} />
+                Почати роботу
+              </button>
+              <div className="time-tracker-empty">Не знайдено записів відстеження часу на сьогодні.</div>
+              <div className="time-tracker-summary">
+                <span>
+                  Відпрацьовано
+                  <strong>--:--</strong>
+                </span>
+                <span>
+                  Очікувано
+                  <strong>8год</strong>
+                </span>
+              </div>
+            </section>
+          ) : null}
+        </div>
+        <div className="topbar-menu-wrap">
+          <button
+            type="button"
+            className={`quick-add${openMenu === 'quick' ? ' active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={openMenu === 'quick'}
+            onClick={() => toggleMenu('quick')}
+          >
+            <Plus size={18} />
+            <span>{copy.common.quickAdd}</span>
+          </button>
+          {openMenu === 'quick' ? (
+            <div className="topbar-popover topbar-menu quick-add-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => go('/requests')}>
+                <CalendarCheck size={18} />
+                Запит на відсутність
+              </button>
+              <button type="button" role="menuitem" onClick={() => go('/people/new')}>
+                <Plus size={18} />
+                Найняти
+              </button>
+              <button type="button" role="menuitem" onClick={() => go('/tasks')}>
+                <CheckSquare size={18} />
+                Завдання
+              </button>
+              <button type="button" role="menuitem" onClick={() => go('/requests')}>
+                <Plus size={18} />
+                Запит
+              </button>
+              <span className="topbar-menu-separator" />
+              <button type="button" role="menuitem" onClick={() => go('/suggestions')}>
+                <Rocket size={18} />
+                Надіслати пропозицію
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button type="button" className="icon-button with-badge" aria-label={navLabel(copy, 'notifications')}>
           <Bell size={18} />
           <span>5</span>
         </button>
-        <button type="button" className="user-menu" onClick={onLogout} title="Вийти">
-          <Avatar name={employee.full_name || copy.common.user} src={employee.avatar_local_url || ''} accent="teal" size="sm" />
-          <strong>{employee.full_name || auth?.user?.username || copy.common.user}</strong>
-          <LogOut size={16} />
-        </button>
+        <div className="topbar-menu-wrap">
+          <button
+            type="button"
+            className={`user-menu${openMenu === 'user' ? ' active' : ''}`}
+            aria-haspopup="menu"
+            aria-expanded={openMenu === 'user'}
+            onClick={() => toggleMenu('user')}
+          >
+            <Avatar name={employee.full_name || copy.common.user} src={employee.avatar_local_url || ''} accent="teal" size="sm" />
+            <strong>{employee.full_name || auth?.user?.username || copy.common.user}</strong>
+            <ChevronDown size={16} />
+          </button>
+          {openMenu === 'user' ? (
+            <div className="topbar-popover topbar-menu user-account-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => go(employeeProfilePath)}>
+                Перейти до профілю
+              </button>
+              <button type="button" role="menuitem" onClick={() => go('/account/settings')}>
+                Налаштування облікового запису
+              </button>
+              <span className="topbar-menu-separator" />
+              <button type="button" role="menuitem" onClick={() => go('/roadmap')}>
+                Що в ваших планах?
+              </button>
+              <button type="button" role="menuitem" onClick={() => go('/requests')}>
+                Поставити запитання
+              </button>
+              <span className="topbar-menu-separator" />
+              <button type="button" role="menuitem" onClick={onLogout}>
+                Вийти
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );
@@ -1653,6 +1843,97 @@ function EmptyState({ title, text }: { title: string; text?: string }) {
       <strong>{title}</strong>
       {text ? <span>{text}</span> : null}
     </div>
+  );
+}
+
+function PlaceholderPage({ title, blank = false }: { title: string; blank?: boolean }) {
+  return (
+    <main className="workspace placeholder-page">
+      <header className="page-header compact">
+        <div>
+          <h1>{title}</h1>
+        </div>
+      </header>
+      {blank ? <section className="panel placeholder-blank" /> : <section className="panel placeholder-panel" />}
+    </main>
+  );
+}
+
+function AccountSettingsView({
+  preferences,
+  onSave,
+}: {
+  preferences: UserPreferences;
+  onSave: (preferences: UserPreferences) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<UserPreferences>(preferences);
+  const [saveState, setSaveState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+  const labels = getTranslations(normalizeLanguage(draft.language)).settingsGeneral;
+
+  useEffect(() => {
+    setDraft(preferences);
+  }, [preferences]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaveState('loading');
+    setError('');
+    try {
+      await onSave(draft);
+      setSaveState('ok');
+    } catch {
+      setError('Не вдалося зберегти налаштування. Спробуйте ще раз.');
+      setSaveState('error');
+    }
+  }
+
+  return (
+    <main className="settings-page account-settings-page">
+      <header className="settings-form-header">
+        <h1>Налаштування облікового запису</h1>
+      </header>
+      <form className="settings-form-section" onSubmit={submit}>
+        <div className="settings-form-card account-settings-card">
+          <label className="settings-field">
+            <span>Мова</span>
+            <select value={draft.language} onChange={(event) => setDraft((current) => ({ ...current, language: normalizeLanguage(event.target.value) }))}>
+              {languageOptions.map((option) => (
+                <option value={option.code} key={option.code}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="settings-field">
+            <span>Тема</span>
+            <select value={draft.theme} onChange={(event) => setDraft((current) => ({ ...current, theme: normalizeTheme(event.target.value) }))}>
+              {themeOptions.map((option) => (
+                <option value={option} key={option}>
+                  {labels.themeLabels[option]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="settings-field">
+            <span>Часовий пояс</span>
+            <select value={draft.time_zone} onChange={(event) => setDraft((current) => ({ ...current, time_zone: event.target.value }))}>
+              {accountTimeZoneOptions.map((option) => (
+                <option value={option.value} key={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error ? <p className="settings-form-error">{error}</p> : null}
+          <div className="account-settings-actions">
+            <button type="submit" className="primary-action" disabled={saveState === 'loading'}>
+              {saveState === 'loading' ? 'Збереження...' : 'Зберегти'}
+            </button>
+          </div>
+        </div>
+      </form>
+    </main>
   );
 }
 
@@ -2592,6 +2873,8 @@ function PeopleView({
           setSelectedEmployee(updated);
           setEmployees((current) => current.map((item) => (item.id === updated.id ? updated : item)));
         }}
+        onOpenOrg={selectedEmployee ? () => openOrgForPerson(selectedEmployee.id, 'subtree') : undefined}
+        onOpenDepartments={selectedEmployee ? () => openOrgForPerson(selectedEmployee.id, 'lineage') : undefined}
         copy={copy}
       />
     );
@@ -4115,6 +4398,7 @@ type ProfileFieldDef = {
   is_required: boolean;
   show_in_summary: boolean;
   options: string[];
+  help_text?: string;
   order: number;
 };
 type ProfileTableColumn = { key: string; label: string; type: string; options?: string[] };
@@ -4139,6 +4423,49 @@ const MORE_TABS: Array<{ key: string; label: string }> = [
   { key: 'more-dependents', label: 'Діти' },
   { key: 'more-notes', label: 'Примітки' },
 ];
+
+// Системні поля профілю, які можна редагувати per-block (Фаза 2). Ключ = system_key,
+// column = атрибут моделі Employee у PATCH-пейлоаді, input = тип інпуту.
+type SystemFieldInput = 'text' | 'email' | 'date' | 'tel' | 'url' | 'gender';
+const EDITABLE_SYSTEM_FIELDS: Record<string, { column: keyof EmployeeListItem; input: SystemFieldInput }> = {
+  last_name: { column: 'last_name', input: 'text' },
+  first_name: { column: 'first_name', input: 'text' },
+  middle_name: { column: 'middle_name', input: 'text' },
+  email: { column: 'email', input: 'email' },
+  personal_email: { column: 'personal_email', input: 'email' },
+  birth_date: { column: 'birth_date', input: 'date' },
+  gender: { column: 'gender', input: 'gender' },
+  phone: { column: 'phone', input: 'tel' },
+  phone2: { column: 'phone2', input: 'tel' },
+  telegram_id: { column: 'telegram_id', input: 'text' },
+  facebook_url: { column: 'facebook_url', input: 'url' },
+  instagram_url: { column: 'instagram_url', input: 'url' },
+};
+
+const GENDER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'female', label: 'Жінка' },
+  { value: 'male', label: 'Чоловік' },
+];
+
+function isProfileFieldEditable(field: ProfileFieldDef): boolean {
+  if (field.is_system) return field.system_key in EDITABLE_SYSTEM_FIELDS;
+  return true;
+}
+
+function profileDraftKey(field: ProfileFieldDef): string {
+  return field.is_system ? `sys_${field.system_key}` : `cf_${field.id}`;
+}
+
+function profileDraftInitialValue(field: ProfileFieldDef, employee: EmployeeListItem | null): string {
+  if (field.is_system) {
+    const meta = EDITABLE_SYSTEM_FIELDS[field.system_key];
+    if (!meta) return '';
+    const raw = employee ? (employee[meta.column] as unknown) : '';
+    return raw === undefined || raw === null ? '' : String(raw);
+  }
+  const raw = (employee?.custom_fields ?? {})[String(field.id)];
+  return raw === undefined || raw === null ? '' : String(raw);
+}
 
 function resolveProfileFieldValue(field: ProfileFieldDef, employee: EmployeeListItem | null): string {
   if (!employee) return '-';
@@ -4214,6 +4541,25 @@ function useEmployeeOptions(enabled: boolean): EmployeeOption[] {
   return options;
 }
 
+// Словник статей з бекенду (Gender.code → Gender.name); fallback на GENDER_OPTIONS поки порожньо.
+function useGenderOptions(enabled: boolean): Array<{ value: string; label: string }> {
+  const [options, setOptions] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    api
+      .genders({ is_active: true, page_size: 100 })
+      .then((res) => {
+        if (alive) setOptions(res.items.map((item) => ({ value: item.code, label: item.name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return options.length ? options : GENDER_OPTIONS;
+}
+
 function EmployeeAdminProfileView({
   employee,
   onBack,
@@ -4221,6 +4567,8 @@ function EmployeeAdminProfileView({
   employeeCover,
   onEmployeeCoverChange,
   onEmployeeUpdated,
+  onOpenOrg,
+  onOpenDepartments,
   copy,
 }: {
   employee: EmployeeListItem | null;
@@ -4229,6 +4577,8 @@ function EmployeeAdminProfileView({
   employeeCover: CoverCropResult | null;
   onEmployeeCoverChange?: (cover: CoverCropResult) => void;
   onEmployeeUpdated?: (employee: EmployeeListItem) => void;
+  onOpenOrg?: () => void;
+  onOpenDepartments?: () => void;
   copy: AppCopy;
 }) {
   const [coverCropOpen, setCoverCropOpen] = useState(false);
@@ -4265,20 +4615,23 @@ function EmployeeAdminProfileView({
     ['Instagram', instagram],
     ['Facebook', facebook],
   ];
-  const summaryFields = [
-    [copy.people.email || 'Email', employee?.email || '-'],
-    [copy.people.mobilePhone || 'Mobile phone', mobilePhone],
-    [copy.people.startDate, employee?.hired_on ? formatDate(employee.hired_on) : '-'],
-    [copy.people.status || 'Status', employee?.peopleforce_status || employee?.status || '-'],
-    [copy.people.workType || 'Work type', employee?.employment_type_name || '-'],
-    [copy.people.position, employee?.position_name || '-'],
-    [copy.people.department, employee?.department_name || '-'],
-    [copy.people.division || 'Division', employee?.division_name || '-'],
-    [copy.people.location, employee?.clinic_name || '-'],
-    [copy.people.level || 'Level', employee?.job_level_name || '-'],
-    [copy.people.manager, employee?.manager_name || '-'],
-    [copy.people.tenure || 'Tenure', formatTenure(employee?.hired_on ?? null)],
-    [copy.people.documents || 'Documents', employee ? String(employee.documents.length) : '-'],
+  const managerProfile = employee?.manager_profile ?? null;
+  const directReportsCount = Number(employee?.direct_reports_count || 0);
+  // Права панель «Головна» (image copy 40): label-зверху/значення-знизу, email/phone лінки.
+  const homeFields: Array<{ label: string; value: string; href?: string; structureLink?: boolean }> = [
+    { label: copy.people.email || 'Ел. пошта', value: employee?.email || '-', href: employee?.email ? `mailto:${employee.email}` : undefined },
+    {
+      label: copy.people.mobilePhone || 'Мобільний телефон',
+      value: mobilePhone,
+      href: mobilePhone && mobilePhone !== '-' ? `tel:${mobilePhone.replace(/\s/g, '')}` : undefined,
+    },
+    { label: copy.people.startDate || 'Дата початку', value: employee?.hired_on ? formatDate(employee.hired_on) : '-' },
+    { label: copy.people.workType || 'Тип роботи', value: employee?.employment_type_name || '-' },
+    { label: copy.people.position || 'Посада', value: employee?.position_name || '-' },
+    { label: copy.people.department || 'Департамент', value: employee?.department_name || '-', structureLink: Boolean(employee?.department_name) },
+    { label: copy.people.division || 'Підрозділ', value: employee?.division_name || '-' },
+    { label: copy.people.location || 'Локація', value: employee?.clinic_name || '-' },
+    { label: copy.people.tenure || 'Стаж роботи', value: formatTenure(employee?.hired_on ?? null) },
   ];
 
   const fieldGroups = useProfileFieldGroups();
@@ -4292,11 +4645,25 @@ function EmployeeAdminProfileView({
       group.tables.some((t) => t.is_enabled && t.columns.some((c) => c.type === 'employee')),
   );
   const employeeOptions = useEmployeeOptions(needsEmployeeOptions);
+  const needsGenderOptions = fieldGroups.some((group) =>
+    group.group_fields.some((f) => f.is_enabled && f.is_system && f.system_key === 'gender'),
+  );
+  const genderOptions = useGenderOptions(needsGenderOptions);
 
-  async function handleSaveCustomValues(values: Record<string, unknown>) {
+  async function handleSaveProfilePanel({
+    system,
+    custom,
+  }: {
+    system: Partial<EmployeeListItem>;
+    custom: Record<string, unknown>;
+  }) {
     if (!employee) return;
-    const merged = { ...(employee.custom_fields ?? {}), ...values };
-    const updated = await api.updateEmployee(employee.id, { custom_fields: merged });
+    // Restricted endpoint: лише allowlist системних полів + delta кастомних (merge на бекенді).
+    const payload: Partial<EmployeeListItem> & { custom_fields_delta?: Record<string, unknown> } = { ...system };
+    if (Object.keys(custom).length) {
+      payload.custom_fields_delta = custom;
+    }
+    const updated = await api.updateEmployeeProfileBlock(employee.id, payload);
     onEmployeeUpdated?.(updated);
   }
 
@@ -4307,11 +4674,6 @@ function EmployeeAdminProfileView({
     onEmployeeUpdated?.(updated);
   }
 
-  const configSummary = fieldGroups
-    .flatMap((group) => group.group_fields)
-    .filter((f) => f.is_enabled && f.show_in_summary)
-    .map((f) => [f.name, resolveProfileFieldValue(f, employee)] as string[]);
-  const effectiveSummary = configSummary.length ? configSummary : summaryFields;
 
   return (
     <main className="employee-profile-page">
@@ -4432,7 +4794,8 @@ function EmployeeAdminProfileView({
                         fields={enabledFields}
                         employee={employee}
                         employeeOptions={employeeOptions}
-                        onSaveValues={handleSaveCustomValues}
+                        genderOptions={genderOptions}
+                        onSave={handleSaveProfilePanel}
                         copy={copy}
                       />
                     ) : null}
@@ -4459,25 +4822,1118 @@ function EmployeeAdminProfileView({
             </>
           ) : activeTab === 'time' && employee ? (
             <EmployeeAttendanceDetailView employeeId={employee.id} copy={copy} />
+          ) : activeTab === 'absence' && employee ? (
+            <EmployeeAbsenceTabView employeeId={employee.id} />
+          ) : activeTab === 'documents' && employee ? (
+            <EmployeeDocumentsTabView employeeId={employee.id} />
+          ) : activeTab === 'more-assets' && employee ? (
+            <EmployeeAssetsTab employeeId={employee.id} />
+          ) : activeTab === 'more-emergency' && employee ? (
+            <EmergencyContactsTab employeeId={employee.id} />
+          ) : activeTab === 'more-dependents' && employee ? (
+            <DependentsTab employeeId={employee.id} />
+          ) : activeTab === 'more-notes' && employee ? (
+            <EmployeeNotesTab employeeId={employee.id} />
           ) : (
             <ProfileTabPlaceholder tab={activeTab} />
           )}
         </div>
         {activeTab === 'personal' ? (
-          <aside className="employee-summary">
-            <h2>{copy.people.profileHome || 'Home'}</h2>
-            <div>
-              {effectiveSummary.map(([label, value]) => (
-                <div className="summary-field" key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
+          <aside className="employee-summary-stack">
+            <section className="summary-card">
+              <header className="summary-card-head">{copy.people.profileHome || 'Головна'}</header>
+              <div className="summary-card-body">
+                {homeFields.map((row) => (
+                  <div className="summary-stack-field" key={row.label}>
+                    <span>{row.label}</span>
+                    {row.href ? (
+                      <a className="summary-link" href={row.href}>
+                        {row.value}
+                      </a>
+                    ) : (
+                      <strong>{row.value}</strong>
+                    )}
+                    {row.structureLink && onOpenDepartments ? (
+                      <button type="button" className="summary-inline-link" onClick={onOpenDepartments}>
+                        Див. повну структуру
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="summary-card">
+              <header className="summary-card-head">
+                <Users size={15} />
+                {copy.people.manager || 'Менеджер'}
+              </header>
+              <div className="summary-card-body">
+                {managerProfile ? (
+                  <div className="summary-person">
+                    <div className="summary-person-avatar">
+                      {employeeAvatarUrl(managerProfile) ? (
+                        <img src={employeeAvatarUrl(managerProfile)} alt="" />
+                      ) : (
+                        <Users size={18} />
+                      )}
+                    </div>
+                    <div className="summary-person-info">
+                      <strong>{managerProfile.full_name}</strong>
+                      <span>{managerProfile.position_name || ''}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="summary-empty">Менеджера не призначено</p>
+                )}
+              </div>
+            </section>
+
+            <section className="summary-card">
+              <header className="summary-card-head">
+                <Network size={15} />
+                Прямі підлеглі
+              </header>
+              <div className="summary-card-body">
+                {directReportsCount > 0 ? (
+                  <strong>{directReportsCount}</strong>
+                ) : (
+                  <p className="summary-empty">Немає підлеглих людей</p>
+                )}
+              </div>
+            </section>
+
+            <section className="summary-card">
+              <header className="summary-card-head">
+                <Users size={15} />
+                Команди
+              </header>
+              <div className="summary-card-body">
+                <p className="summary-empty">Людина не належить до жодної команди</p>
+              </div>
+            </section>
+
+            {onOpenOrg ? (
+              <button type="button" className="summary-wide-btn" onClick={onOpenOrg}>
+                <Network size={15} />
+                Переглянути у орг. діаграмі
+              </button>
+            ) : null}
+            {onOpenDepartments ? (
+              <button type="button" className="summary-wide-btn" onClick={onOpenDepartments}>
+                <Building2 size={15} />
+                Переглянути в структурі департаментів
+              </button>
+            ) : null}
           </aside>
         ) : null}
       </div>
     </main>
+  );
+}
+
+function leaveStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    draft: 'Чернетка',
+    submitted: 'Подано',
+    approved: 'Затверджено',
+    rejected: 'Відхилено',
+    cancelled: 'Скасовано',
+  };
+  return labels[status] ?? status;
+}
+
+function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
+  const [types, setTypes] = useState<LeaveType[]>([]);
+  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [historyType, setHistoryType] = useState<number | null>(null);
+  const [historyYear, setHistoryYear] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    setState('loading');
+    Promise.all([
+      api.leaveTypes({ page_size: 100 }),
+      api.leaveBalances({ employee: employeeId, page_size: 500 }),
+      api.leaveRequests({ employee: employeeId, page_size: 200 }),
+    ])
+      .then(([t, b, r]) => {
+        if (!alive) return;
+        setTypes(t.items);
+        setBalances(b.items);
+        setRequests(r.items);
+        setState('ok');
+      })
+      .catch(() => {
+        if (alive) setState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [employeeId]);
+
+  const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const latestByType = useMemo(() => {
+    const map = new Map<number, LeaveBalance>();
+    for (const bal of balances) {
+      const cur = map.get(bal.leave_type);
+      if (!cur || (bal.effective_on ?? '') > (cur.effective_on ?? '')) map.set(bal.leave_type, bal);
+    }
+    return map;
+  }, [balances]);
+  const cards = useMemo(
+    () => types.filter((t) => latestByType.has(t.id)).map((t) => ({ type: t, balance: latestByType.get(t.id)! })),
+    [types, latestByType],
+  );
+  const years = useMemo(
+    () =>
+      Array.from(new Set(balances.map((b) => (b.effective_on ?? '').slice(0, 4)).filter(Boolean)))
+        .sort()
+        .reverse(),
+    [balances],
+  );
+  const effectiveHistoryType = historyType ?? cards[0]?.type.id ?? null;
+  const historyRows = useMemo(
+    () =>
+      balances
+        .filter((b) => b.leave_type === effectiveHistoryType)
+        .filter((b) => !historyYear || (b.effective_on ?? '').startsWith(historyYear))
+        .slice()
+        .sort((a, b) => (a.effective_on ?? '').localeCompare(b.effective_on ?? '')),
+    [balances, effectiveHistoryType, historyYear],
+  );
+  const filteredRequests = statusFilter ? requests.filter((r) => r.status === statusFilter) : requests;
+
+  function unitSuffix(type?: LeaveType): string {
+    return type?.unit === 'hours' ? ' год' : ' дн';
+  }
+  function fmtAmount(value: string | number): string {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toFixed(1) : String(value);
+  }
+
+  if (state === 'loading' || state === 'idle') {
+    return (
+      <section className="panel employee-info-panel">
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      </section>
+    );
+  }
+  if (state === 'error') {
+    return (
+      <section className="panel employee-info-panel">
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Не вдалося завантажити" text="Спробуйте оновити сторінку." />
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="absence-tab">
+      <div className="absence-cards">
+        {cards.length ? (
+          cards.map(({ type, balance }) => (
+            <div className="absence-card" key={type.id}>
+              <div className="absence-card-head">
+                <span className="absence-card-icon" style={type.color ? { color: type.color } : undefined}>
+                  <LeaveTypeIcon iconKey={type.icon} size={18} />
+                </span>
+                <strong>{type.name}</strong>
+              </div>
+              <span className="absence-card-label">Доступно:</span>
+              <div className="absence-card-value" style={type.color ? { color: type.color } : undefined}>
+                {fmtAmount(balance.balance)}
+                <small>{unitSuffix(type)}</small>
+              </div>
+              <button type="button" className="secondary-action" disabled title="Скоро">
+                Створити запит
+              </button>
+            </div>
+          ))
+        ) : (
+          <section className="panel employee-info-panel absence-cards-empty">
+            <EmptyState title="Балансів ще немає" text="Дані з’являться після імпорту або нарахувань." />
+          </section>
+        )}
+      </div>
+
+      <section className="panel absence-block">
+        <div className="absence-block-head">
+          <h3>Запити</h3>
+          <select className="people-data-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Усі</option>
+            <option value="submitted">Подані</option>
+            <option value="approved">Затверджені</option>
+            <option value="rejected">Відхилені</option>
+            <option value="cancelled">Скасовані</option>
+          </select>
+        </div>
+        {filteredRequests.length ? (
+          <table className="absence-table">
+            <thead>
+              <tr>
+                <th>Тип</th>
+                <th>Період</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRequests.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.leave_type_name}</td>
+                  <td>
+                    {formatDate(r.date_from)} – {formatDate(r.date_to)}
+                  </td>
+                  <td>{leaveStatusLabel(r.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="profile-tab-placeholder">
+            <EmptyState title="Нічого не знайдено" />
+          </div>
+        )}
+      </section>
+
+      <section className="panel absence-block">
+        <div className="absence-block-head">
+          <h3>Історія</h3>
+          <div className="absence-block-controls">
+            <select className="people-data-input" value={historyYear} onChange={(e) => setHistoryYear(e.target.value)}>
+              <option value="">Усі роки</option>
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <select
+              className="people-data-input"
+              value={effectiveHistoryType ?? ''}
+              onChange={(e) => setHistoryType(e.target.value ? Number(e.target.value) : null)}
+            >
+              {cards.map((c) => (
+                <option key={c.type.id} value={c.type.id}>
+                  {c.type.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {historyRows.length ? (
+          <table className="absence-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Опис</th>
+                <th>Баланс</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyRows.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.effective_on ? formatDate(b.effective_on) : '-'}</td>
+                  <td>{b.policy_name || b.policy_activity_type || '-'}</td>
+                  <td>
+                    {fmtAmount(b.balance)}
+                    {unitSuffix(typeById.get(b.leave_type))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="profile-tab-placeholder">
+            <EmptyState title="Нічого не знайдено" />
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DocumentUploadModal({
+  folders,
+  defaultFolder,
+  onClose,
+  onUpload,
+}: {
+  folders: EmployeeDocumentFolder[];
+  defaultFolder: number | null;
+  onClose: () => void;
+  onUpload: (folder: number | null, files: File[]) => Promise<void>;
+}) {
+  const [folder, setFolder] = useState<string>(defaultFolder != null ? String(defaultFolder) : '');
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function addFiles(list: FileList | null) {
+    if (!list) return;
+    setFiles((current) => [...current, ...Array.from(list)].slice(0, 10));
+  }
+
+  async function submit() {
+    if (!files.length) {
+      setError('Додайте хоча б один файл');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onUpload(folder ? Number(folder) : null, files);
+    } catch {
+      setError('Не вдалося завантажити. Спробуйте ще раз.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="people-data-modal-backdrop" role="dialog" aria-modal>
+      <div className="people-data-modal">
+        <div className="people-data-modal-head">
+          <h2>Додати документ</h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрити">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="people-data-modal-body">
+          <label className="people-data-modal-field">
+            <span>Папка документів</span>
+            <select className="people-data-input" value={folder} onChange={(e) => setFolder(e.target.value)}>
+              <option value="">— Без папки —</option>
+              {folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="people-data-modal-field">
+            <span>Файли</span>
+            <button
+              type="button"
+              className={`doc-dropzone${dragActive ? ' active' : ''}`}
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragActive(true);
+              }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragActive(false);
+                addFiles(e.dataTransfer.files);
+              }}
+            >
+              <strong>Для завантаження перетягніть файл або натисніть сюди</strong>
+              <span>Макс. файлів: 10, максимальний розмір файлу: 200Мб.</span>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
+          </div>
+          {files.length ? (
+            <ul className="doc-file-list">
+              {files.map((file, index) => (
+                <li key={`${file.name}-${index}`}>
+                  <FileText size={14} />
+                  <span>{file.name}</span>
+                  <button type="button" onClick={() => setFiles((cur) => cur.filter((_, i) => i !== index))}>
+                    <X size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {error ? <p className="people-data-modal-error">{error}</p> : null}
+        </div>
+        <div className="people-data-modal-foot">
+          <button type="button" className="secondary-action" onClick={onClose} disabled={saving}>
+            Скасувати
+          </button>
+          <button type="button" className="primary-action" onClick={submit} disabled={saving}>
+            <Check size={15} />
+            {saving ? 'Завантаження…' : 'Зберегти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
+  const [folders, setFolders] = useState<EmployeeDocumentFolder[]>([]);
+  const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [newOpen, setNewOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  async function load() {
+    setState('loading');
+    try {
+      const [f, d] = await Promise.all([
+        api.documentFolders({ page_size: 200 }),
+        api.employeeDocuments({ employee: employeeId, page_size: 500 }),
+      ]);
+      setFolders(f.items);
+      setDocuments(d.items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  const term = search.trim().toLowerCase();
+  function docsInFolder(folderId: number | null): EmployeeDocument[] {
+    return documents.filter(
+      (doc) =>
+        doc.folder === folderId &&
+        (!term || doc.name.toLowerCase().includes(term)),
+    );
+  }
+  function toggle(key: string) {
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function handleUpload(folder: number | null, files: File[]) {
+    const res = await api.uploadEmployeeDocuments(employeeId, folder, files);
+    setUploadOpen(false);
+    if (res.errors?.length) {
+      setActionError(res.errors.map((e) => `${e.name}: ${e.error}`).join('; '));
+    } else {
+      setActionError('');
+    }
+    await load();
+  }
+
+  async function handleDelete(doc: EmployeeDocument) {
+    setActionError('');
+    try {
+      await api.deleteEmployeeDocument(doc.id);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Не вдалося видалити документ.');
+    }
+  }
+
+  const looseDocs = docsInFolder(null);
+  const visibleFolders = term
+    ? folders.filter((f) => f.name.toLowerCase().includes(term) || docsInFolder(f.id).length)
+    : folders;
+
+  if (state === 'loading' || state === 'idle') {
+    return (
+      <section className="panel employee-info-panel">
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel employee-info-panel documents-tab">
+      <div className="panel-title documents-tab-head">
+        <h2>Документи</h2>
+        <div className="documents-tab-actions">
+          <div className="doc-search compact">
+            <Search size={15} />
+            <input placeholder="Пошук…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="documents-new-wrap">
+            <button type="button" className="secondary-action" onClick={() => setNewOpen((v) => !v)}>
+              <Plus size={15} />
+              Новий
+              <ChevronDown size={14} />
+            </button>
+            {newOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="leave-menu-backdrop"
+                  aria-hidden
+                  tabIndex={-1}
+                  onClick={() => setNewOpen(false)}
+                />
+                <div className="leave-row-menu" role="menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewOpen(false);
+                      setUploadOpen(true);
+                    }}
+                  >
+                    <Upload size={14} />
+                    Завантажити файл
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      {actionError ? <div className="panel-edit-error">{actionError}</div> : null}
+
+      <div className="doc-folder-table profile">
+        {visibleFolders.map((folder) => {
+          const key = `f${folder.id}`;
+          const docs = docsInFolder(folder.id);
+          const isOpen = expanded.has(key);
+          return (
+            <div className="doc-folder-block" key={folder.id}>
+              <button type="button" className="doc-folder-row toggle" onClick={() => toggle(key)}>
+                {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                <Folder size={16} />
+                <div className="doc-folder-name">
+                  <strong>{folder.name}</strong>
+                  {folder.description ? <span>{folder.description}</span> : null}
+                </div>
+                <span className="doc-folder-count">{docs.length}</span>
+              </button>
+              {isOpen ? (
+                <div className="doc-list">
+                  {docs.length ? (
+                    docs.map((doc) => <DocumentRow key={doc.id} doc={doc} onDelete={handleDelete} />)
+                  ) : (
+                    <p className="doc-empty">Немає документів</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {looseDocs.length ? (
+          <div className="doc-folder-block">
+            <button type="button" className="doc-folder-row toggle" onClick={() => toggle('loose')}>
+              {expanded.has('loose') ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              <Folder size={16} />
+              <div className="doc-folder-name">
+                <strong>Без папки</strong>
+              </div>
+              <span className="doc-folder-count">{looseDocs.length}</span>
+            </button>
+            {expanded.has('loose') ? (
+              <div className="doc-list">
+                {looseDocs.map((doc) => (
+                  <DocumentRow key={doc.id} doc={doc} onDelete={handleDelete} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!visibleFolders.length && !looseDocs.length ? (
+          <div className="profile-tab-placeholder">
+            <EmptyState title="Документів не знайдено" />
+          </div>
+        ) : null}
+      </div>
+
+      {uploadOpen ? (
+        <DocumentUploadModal
+          folders={folders}
+          defaultFolder={null}
+          onClose={() => setUploadOpen(false)}
+          onUpload={handleUpload}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function DocumentRow({ doc, onDelete }: { doc: EmployeeDocument; onDelete: (doc: EmployeeDocument) => void }) {
+  const isManual = doc.legacy_peopleforce_id.startsWith('manual:');
+  return (
+    <div className="doc-row">
+      <FileText size={15} />
+      <span className="doc-row-name">{doc.name}</span>
+      <div className="doc-row-actions">
+        {doc.local_file ? (
+          <a className="icon-button" href={api.employeeDocumentDownloadUrl(doc.id)} title="Завантажити">
+            <Download size={15} />
+          </a>
+        ) : null}
+        {isManual ? (
+          <button type="button" className="icon-button" title="Видалити" onClick={() => onDelete(doc)}>
+            <Trash2 size={15} />
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MoreSubPanel({ title, onAdd, children }: { title: string; onAdd?: () => void; children: ReactNode }) {
+  return (
+    <section className="panel employee-info-panel more-subpanel">
+      <div className="panel-title">
+        <h2>{title}</h2>
+        {onAdd ? (
+          <button type="button" className="secondary-action" onClick={onAdd}>
+            <Plus size={15} />
+            Додати
+          </button>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MoreModalShell({
+  title,
+  saving,
+  error,
+  onClose,
+  onSave,
+  children,
+}: {
+  title: string;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onSave: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="people-data-modal-backdrop" role="dialog" aria-modal>
+      <div className="people-data-modal">
+        <div className="people-data-modal-head">
+          <h2>{title}</h2>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрити">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="people-data-modal-body">
+          {children}
+          {error ? <p className="people-data-modal-error">{error}</p> : null}
+        </div>
+        <div className="people-data-modal-foot">
+          <button type="button" className="secondary-action" onClick={onClose} disabled={saving}>
+            Скасувати
+          </button>
+          <button type="button" className="primary-action" onClick={onSave} disabled={saving}>
+            <Check size={15} />
+            {saving ? 'Збереження…' : 'Зберегти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmergencyContactsTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<EmergencyContact[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<Partial<EmergencyContact> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.emergencyContacts(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  async function save() {
+    if (!edit?.name?.trim()) {
+      setError('Введіть ім’я');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveEmergencyContact({ ...edit, employee: employeeId, name: edit.name.trim() });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Контактні дані на екстрений випадок" onAdd={() => setEdit({})}>
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : items.length ? (
+        <div className="more-list">
+          {items.map((c) => (
+            <div className="more-card" key={c.id}>
+              <div className="more-card-body">
+                <strong>{c.name}</strong>
+                {c.relationship ? <span className="more-card-sub">{c.relationship}</span> : null}
+                <div className="more-card-fields">
+                  {c.mobile_phone ? <span>Моб.: {c.mobile_phone}</span> : null}
+                  {c.work_phone ? <span>Роб.: {c.work_phone}</span> : null}
+                  {c.home_phone ? <span>Дім.: {c.home_phone}</span> : null}
+                  {c.address ? <span>{c.address}</span> : null}
+                </div>
+              </div>
+              <div className="more-card-actions">
+                <button type="button" className="icon-button" onClick={() => setEdit(c)} aria-label="Редагувати">
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => void api.deleteEmergencyContact(c.id).then(load)}
+                  aria-label="Видалити"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Нічого не знайдено" />
+        </div>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати контакт' : 'Додати контакт'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Ім’я</span>
+            <input className="people-data-input" value={edit.name ?? ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} autoFocus />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Відносини</span>
+            <input className="people-data-input" value={edit.relationship ?? ''} onChange={(e) => setEdit({ ...edit, relationship: e.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Мобільний телефон</span>
+            <input className="people-data-input" value={edit.mobile_phone ?? ''} onChange={(e) => setEdit({ ...edit, mobile_phone: e.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Робочий телефон</span>
+            <input className="people-data-input" value={edit.work_phone ?? ''} onChange={(e) => setEdit({ ...edit, work_phone: e.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Домашній телефон</span>
+            <input className="people-data-input" value={edit.home_phone ?? ''} onChange={(e) => setEdit({ ...edit, home_phone: e.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Адреса</span>
+            <textarea className="people-data-input" rows={2} value={edit.address ?? ''} onChange={(e) => setEdit({ ...edit, address: e.target.value })} />
+          </label>
+        </MoreModalShell>
+      ) : null}
+    </MoreSubPanel>
+  );
+}
+
+function DependentsTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<Dependent[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<Partial<Dependent> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.dependents(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  async function save() {
+    if (!edit?.name?.trim()) {
+      setError('Введіть ім’я');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveDependent({ ...edit, employee: employeeId, name: edit.name.trim(), birth_date: edit.birth_date || null });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Діти" onAdd={() => setEdit({})}>
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : items.length ? (
+        <div className="more-list">
+          {items.map((d) => (
+            <div className="more-card" key={d.id}>
+              <div className="more-card-body">
+                <strong>{d.name}</strong>
+                <div className="more-card-fields">
+                  {d.birth_date ? <span>Народження: {formatDate(d.birth_date)}</span> : null}
+                  {d.gender ? <span>{formatGender(d.gender)}</span> : null}
+                  {d.description ? <span>{d.description}</span> : null}
+                </div>
+              </div>
+              <div className="more-card-actions">
+                <button type="button" className="icon-button" onClick={() => setEdit(d)} aria-label="Редагувати">
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => void api.deleteDependent(d.id).then(load)}
+                  aria-label="Видалити"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Нічого не знайдено" />
+        </div>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати дитину' : 'Додати дитину'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Ім’я</span>
+            <input className="people-data-input" value={edit.name ?? ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} autoFocus />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Дата народження</span>
+            <input type="date" className="people-data-input" value={edit.birth_date ?? ''} onChange={(e) => setEdit({ ...edit, birth_date: e.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Стать</span>
+            <select className="people-data-input" value={edit.gender ?? ''} onChange={(e) => setEdit({ ...edit, gender: e.target.value })}>
+              <option value="">—</option>
+              <option value="female">Жінка</option>
+              <option value="male">Чоловік</option>
+            </select>
+          </label>
+          <label className="people-data-modal-field">
+            <span>Опис</span>
+            <textarea className="people-data-input" rows={2} value={edit.description ?? ''} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
+          </label>
+        </MoreModalShell>
+      ) : null}
+    </MoreSubPanel>
+  );
+}
+
+function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<EmployeeNote[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<Partial<EmployeeNote> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.employeeNotes(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  async function save() {
+    if (!edit?.body_html?.trim()) {
+      setError('Введіть текст примітки');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveEmployeeNote({ ...edit, employee: employeeId, body_html: edit.body_html.trim() });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Примітки" onAdd={() => setEdit({})}>
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : items.length ? (
+        <div className="more-list">
+          {items.map((n) => (
+            <div className="more-card note" key={n.id}>
+              <div className="more-card-body">
+                <p className="note-body">{n.body_html}</p>
+                <span className="more-card-sub">
+                  {n.author_name || 'Невідомо'} · {formatDate(n.created_at.slice(0, 10))}
+                </span>
+              </div>
+              <div className="more-card-actions">
+                <button type="button" className="icon-button" onClick={() => setEdit(n)} aria-label="Редагувати">
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => void api.deleteEmployeeNote(n.id).then(load)}
+                  aria-label="Видалити"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Нічого не знайдено" />
+        </div>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати примітку' : 'Додати примітку'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Текст</span>
+            <textarea className="people-data-input" rows={5} value={edit.body_html ?? ''} onChange={(e) => setEdit({ ...edit, body_html: e.target.value })} autoFocus />
+          </label>
+        </MoreModalShell>
+      ) : null}
+    </MoreSubPanel>
+  );
+}
+
+function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<CmmsAsset[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+
+  useEffect(() => {
+    let alive = true;
+    setState('loading');
+    api
+      .assets({ hr_employee_id: employeeId, page_size: 100 })
+      .then((res) => {
+        if (alive) {
+          setItems(res.items);
+          setState('ok');
+        }
+      })
+      .catch(() => {
+        if (alive) setState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [employeeId]);
+
+  return (
+    <MoreSubPanel title="Активи">
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : state === 'error' ? (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Не вдалося завантажити активи" text="CMMS може бути недоступний." />
+        </div>
+      ) : items.length ? (
+        <div className="asset-cards">
+          {items.map((asset) => (
+            <div className="asset-card" key={asset.id}>
+              <div className="asset-card-photo">
+                {asset.photo_url ? <img src={asset.photo_url} alt="" /> : <Package size={26} />}
+              </div>
+              <div className="asset-card-body">
+                <strong>{asset.name}</strong>
+                {asset.inventory_number ? <span>№ {asset.inventory_number}</span> : null}
+                {asset.status ? <span className="asset-card-status">{asset.status}</span> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Призначених активів немає" />
+        </div>
+      )}
+    </MoreSubPanel>
   );
 }
 
@@ -4812,15 +6268,102 @@ function EmployeeTablePanel({
   );
 }
 
+// Зручний ввід дати ДД.ММ.РРРР з автомаскою + іконка календаря (native picker через showPicker).
+function ProfileDateInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [text, setText] = useState(() => isoToDisplayDate(value));
+  const nativeRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setText(isoToDisplayDate(value));
+  }, [value]);
+  return (
+    <div className="profile-date-field">
+      <input
+        type="text"
+        inputMode="numeric"
+        className="people-data-input profile-field-input profile-date-text"
+        placeholder="дд.мм.рррр"
+        value={text}
+        onChange={(event) => {
+          const masked = maskDisplayDate(event.target.value);
+          setText(masked);
+          const iso = displayDateToIso(masked);
+          // Порожнє → очистити; валідна дата → ISO; неповний ввід не комітимо.
+          if (masked === '') onChange('');
+          else if (iso) onChange(iso);
+        }}
+      />
+      <button
+        type="button"
+        className="profile-date-trigger"
+        aria-label="Обрати дату"
+        onClick={() => {
+          const el = nativeRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+          if (!el) return;
+          if (typeof el.showPicker === 'function') el.showPicker();
+          else el.click();
+        }}
+      >
+        <Calendar size={16} />
+      </button>
+      <input
+        ref={nativeRef}
+        type="date"
+        className="profile-date-native"
+        tabIndex={-1}
+        value={value}
+        onChange={(event) => {
+          setText(isoToDisplayDate(event.target.value));
+          onChange(event.target.value);
+        }}
+      />
+    </div>
+  );
+}
+
+// Select статі з кнопкою очищення (✕), як у PF (image copy 39).
+function GenderSelectInput({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className={`profile-select-clearable${value ? ' has-value' : ''}`}>
+      <select
+        className="people-data-input profile-field-input"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">—</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {value ? (
+        <button type="button" className="profile-select-clear" aria-label="Очистити" onClick={() => onChange('')}>
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function ProfileFieldValueInput({
   field,
   value,
   employeeOptions,
+  genderOptions,
   onChange,
 }: {
   field: ProfileFieldDef;
   value: string;
   employeeOptions: EmployeeOption[];
+  genderOptions: Array<{ value: string; label: string }>;
   onChange: (value: string) => void;
 }) {
   const common = {
@@ -4829,13 +6372,30 @@ function ProfileFieldValueInput({
     onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       onChange(event.target.value),
   };
+  if (field.is_system) {
+    const meta = EDITABLE_SYSTEM_FIELDS[field.system_key];
+    switch (meta?.input) {
+      case 'gender':
+        return <GenderSelectInput value={value} options={genderOptions} onChange={onChange} />;
+      case 'date':
+        return <ProfileDateInput value={value} onChange={onChange} />;
+      case 'email':
+        return <input type="email" inputMode="email" {...common} />;
+      case 'tel':
+        return <input type="tel" inputMode="tel" {...common} />;
+      case 'url':
+        return <input type="url" inputMode="url" placeholder="https://" {...common} />;
+      default:
+        return <input type="text" {...common} />;
+    }
+  }
   switch (field.field_type) {
     case 'textarea':
       return <textarea {...common} rows={3} />;
     case 'number':
       return <input type="number" {...common} />;
     case 'date':
-      return <input type="date" {...common} />;
+      return <ProfileDateInput value={value} onChange={onChange} />;
     case 'url':
       return <input type="url" inputMode="url" placeholder="https://" {...common} />;
     case 'select':
@@ -4870,17 +6430,19 @@ function EmployeeConfigPanel({
   fields,
   employee,
   employeeOptions,
-  onSaveValues,
+  genderOptions,
+  onSave,
   copy,
 }: {
   title: string;
   fields: ProfileFieldDef[];
   employee: EmployeeListItem | null;
   employeeOptions: EmployeeOption[];
-  onSaveValues: (values: Record<string, unknown>) => Promise<void>;
+  genderOptions: Array<{ value: string; label: string }>;
+  onSave: (payload: { system: Partial<EmployeeListItem>; custom: Record<string, unknown> }) => Promise<void>;
   copy: AppCopy;
 }) {
-  const editableFields = useMemo(() => fields.filter((field) => !field.is_system), [fields]);
+  const editableFields = useMemo(() => fields.filter(isProfileFieldEditable), [fields]);
 
   function displayValue(field: ProfileFieldDef): string {
     if (!field.is_system && field.field_type === 'employee') {
@@ -4899,8 +6461,7 @@ function EmployeeConfigPanel({
   function startEdit() {
     const initial: Record<string, string> = {};
     editableFields.forEach((field) => {
-      const raw = (employee?.custom_fields ?? {})[String(field.id)];
-      initial[String(field.id)] = raw === undefined || raw === null ? '' : String(raw);
+      initial[profileDraftKey(field)] = profileDraftInitialValue(field, employee);
     });
     setDraft(initial);
     setError('');
@@ -4914,25 +6475,31 @@ function EmployeeConfigPanel({
 
   async function handleSave() {
     const missing = editableFields.find(
-      (field) => field.is_required && !(draft[String(field.id)] ?? '').trim(),
+      (field) => field.is_required && !(draft[profileDraftKey(field)] ?? '').trim(),
     );
     if (missing) {
       setError(`${copy.people.fieldRequired}: ${missing.name}`);
       return;
     }
-    const values: Record<string, unknown> = {};
+    const system: Partial<EmployeeListItem> = {};
+    const custom: Record<string, unknown> = {};
     editableFields.forEach((field) => {
-      const raw = (draft[String(field.id)] ?? '').trim();
-      if (field.field_type === 'number') {
-        values[String(field.id)] = raw === '' ? '' : Number(raw);
+      const raw = (draft[profileDraftKey(field)] ?? '').trim();
+      if (field.is_system) {
+        const meta = EDITABLE_SYSTEM_FIELDS[field.system_key];
+        if (!meta) return;
+        // Дата/стать допускають порожнє → null/'' (бекенд приймає allow_null/allow_blank).
+        (system as Record<string, unknown>)[meta.column] = meta.input === 'date' && raw === '' ? null : raw;
+      } else if (field.field_type === 'number') {
+        custom[String(field.id)] = raw === '' ? '' : Number(raw);
       } else {
-        values[String(field.id)] = raw;
+        custom[String(field.id)] = raw;
       }
     });
     setSaving(true);
     setError('');
     try {
-      await onSaveValues(values);
+      await onSave({ system, custom });
       setEditing(false);
     } catch {
       setError(copy.common.backendRetry || 'Не вдалося зберегти. Спробуйте ще раз.');
@@ -4966,29 +6533,42 @@ function EmployeeConfigPanel({
         ) : null}
       </div>
       {error ? <div className="panel-edit-error">{error}</div> : null}
-      <div className="field-grid">
-        {fields.map((field) => {
-          const editable = editing && !field.is_system;
-          return (
+      {editing ? (
+        <div className="employee-edit-form">
+          {fields.map((field) => {
+            const editable = isProfileFieldEditable(field);
+            return (
+              <div className="employee-edit-field" key={field.id}>
+                <label className="employee-edit-label">
+                  {field.name}
+                  {field.is_required && editable ? <em className="field-required-mark"> *</em> : null}
+                </label>
+                {editable ? (
+                  <ProfileFieldValueInput
+                    field={field}
+                    value={draft[profileDraftKey(field)] ?? ''}
+                    employeeOptions={employeeOptions}
+                    genderOptions={genderOptions}
+                    onChange={(value) => setDraft((current) => ({ ...current, [profileDraftKey(field)]: value }))}
+                  />
+                ) : (
+                  <div className="employee-edit-readonly">{displayValue(field)}</div>
+                )}
+                {field.help_text ? <p className="employee-edit-help">{field.help_text}</p> : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="field-grid">
+          {fields.map((field) => (
             <div className="field-row" key={field.id}>
-              <span>
-                {field.name}
-                {field.is_required && editable ? <em className="field-required-mark"> *</em> : null}
-              </span>
-              {editable ? (
-                <ProfileFieldValueInput
-                  field={field}
-                  value={draft[String(field.id)] ?? ''}
-                  employeeOptions={employeeOptions}
-                  onChange={(value) => setDraft((current) => ({ ...current, [String(field.id)]: value }))}
-                />
-              ) : (
-                <strong>{displayValue(field)}</strong>
-              )}
+              <span>{field.name}</span>
+              <strong>{displayValue(field)}</strong>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -15710,6 +17290,12 @@ function SettingsView({
   if (activeSlug === 'people-data') {
     return <PeopleDataSettingsView onBack={() => navigate('/settings')} />;
   }
+  if (activeSlug === 'leave-types') {
+    return <SettingsLeaveTypesView onBack={() => navigate('/settings')} />;
+  }
+  if (activeSlug === 'documents') {
+    return <SettingsDocumentsView onBack={() => navigate('/settings')} />;
+  }
 
   if (
     activeSlug === 'experience-levels' ||
@@ -16273,6 +17859,7 @@ export function App() {
   const [leave, setLeave] = useState<SelfLeave>(fallbackLeave);
   const [knowledge, setKnowledge] = useState<SelfKnowledge>(fallbackKnowledge);
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => readBrandingSettings());
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(defaultUserPreferences);
   const [employeeCovers, setEmployeeCovers] = useState<EmployeeCoverMap>(() => readEmployeeCovers());
   const [correctionForm, setCorrectionForm] = useState({
     date: '2026-06-24',
@@ -16288,18 +17875,20 @@ export function App() {
   });
 
   async function loadAuthenticatedData() {
-    const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
+    const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge, selfPreferences] = await Promise.all([
       api.overview(),
       api.selfProfile(),
       api.selfAttendance(),
       api.selfLeave(),
       api.selfKnowledge(),
+      api.selfPreferences(),
     ]);
     setOverview(dashboard);
     setProfile(selfProfile);
     setAttendance(selfAttendance);
     setLeave(selfLeave);
     setKnowledge(selfKnowledge);
+    setUserPreferences(selfPreferences);
     if (selfLeave.leave_types[0]) {
       setLeaveForm((current) => ({ ...current, leave_type: String(selfLeave.leave_types[0].id) }));
     }
@@ -16313,14 +17902,16 @@ export function App() {
         const authStatus = await api.authStatus();
         if (cancelled) return;
         setAuth(authStatus);
+        if (authStatus.preferences) setUserPreferences(authStatus.preferences);
 
         if (authStatus.authenticated && authStatus.employee) {
-          const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge] = await Promise.all([
+          const [dashboard, selfProfile, selfAttendance, selfLeave, selfKnowledge, selfPreferences] = await Promise.all([
             api.overview(),
             api.selfProfile(),
             api.selfAttendance(),
             api.selfLeave(),
             api.selfKnowledge(),
+            api.selfPreferences(),
           ]);
           if (cancelled) return;
           setOverview(dashboard);
@@ -16328,13 +17919,14 @@ export function App() {
           setAttendance(selfAttendance);
           setLeave(selfLeave);
           setKnowledge(selfKnowledge);
+          setUserPreferences(selfPreferences);
           if (selfLeave.leave_types[0]) {
             setLeaveForm((current) => ({ ...current, leave_type: String(selfLeave.leave_types[0].id) }));
           }
         }
       } catch {
         if (!cancelled) {
-          setAuth({ authenticated: false, user: null, employee: null });
+          setAuth({ authenticated: false, user: null, employee: null, preferences: null });
         }
       } finally {
         if (!cancelled) setAuthChecked(true);
@@ -16451,7 +18043,7 @@ export function App() {
   }
 
   async function handleLoginSuccess(response: AuthLoginResponse) {
-    setAuth({ authenticated: true, user: response.user, employee: response.employee });
+    setAuth({ authenticated: true, user: response.user, employee: response.employee, preferences: null });
     setProfile(profileFromAuthEmployee(response.employee));
     void loadAuthenticatedData().catch(() => {
       setProfile(profileFromAuthEmployee(response.employee));
@@ -16465,12 +18057,18 @@ export function App() {
     } catch {
       // Local session state is cleared even if the network request fails.
     }
-    setAuth({ authenticated: false, user: null, employee: null });
+    setAuth({ authenticated: false, user: null, employee: null, preferences: null });
     setProfile(fallbackEmployee);
     setAttendance(fallbackAttendance);
     setLeave(fallbackLeave);
     setKnowledge(fallbackKnowledge);
+    setUserPreferences(defaultUserPreferences);
     navigate('/login', { replace: true });
+  }
+
+  async function handleSaveUserPreferences(nextPreferences: UserPreferences) {
+    const saved = await api.updateSelfPreferences(nextPreferences);
+    setUserPreferences(saved);
   }
 
   function changeSection(nextSection: Section) {
@@ -16481,8 +18079,10 @@ export function App() {
     setMobileMenuOpen(false);
   }
 
-  const copy = getAppCopy(brandingSettings.language);
-  const themeMode = normalizeTheme(brandingSettings.theme);
+  const effectiveLanguage = normalizeLanguage(userPreferences.language || brandingSettings.language);
+  const themeMode = normalizeTheme(userPreferences.theme || brandingSettings.theme);
+  const userBrandingSettings = { ...brandingSettings, language: effectiveLanguage, theme: themeMode };
+  const copy = getAppCopy(effectiveLanguage);
   const content: Record<Section, ReactNode> = {
     home: (
       <HomeView
@@ -16492,14 +18092,14 @@ export function App() {
         onOpenAttendance={() => changeSection('attendance')}
         onOpenKnowledge={() => changeSection('knowledge')}
         onOpenOrg={() => changeSection('org')}
-        brandingSettings={brandingSettings}
+        brandingSettings={userBrandingSettings}
         copy={copy}
       />
     ),
     notifications: <NotificationsView />,
-    people: <PeopleView brandingSettings={brandingSettings} employeeCovers={employeeCovers} onEmployeeCoverChange={updateEmployeeCover} copy={copy} />,
+    people: <PeopleView brandingSettings={userBrandingSettings} employeeCovers={employeeCovers} onEmployeeCoverChange={updateEmployeeCover} copy={copy} />,
     calendar: <CompanyCalendarView copy={copy} />,
-    attendance: <AttendanceView copy={copy} brandingSettings={brandingSettings} employeeCovers={employeeCovers} />,
+    attendance: <AttendanceView copy={copy} brandingSettings={userBrandingSettings} employeeCovers={employeeCovers} />,
     requests: <RequestsView leave={leave} leaveForm={leaveForm} setLeaveForm={setLeaveForm} onSubmitLeave={handleLeaveSubmit} copy={copy} />,
     knowledge: <KnowledgeView knowledge={knowledge} resetToken={knowledgeResetToken} copy={copy} />,
     assets: <AssetsView copy={copy} />,
@@ -16507,6 +18107,10 @@ export function App() {
     org: <OrgView copy={copy} themeMode={themeMode} />,
     settings: <SettingsView brandingSettings={brandingSettings} onBrandingChange={setBrandingSettings} copy={copy} />,
     changelog: <ChangelogView onBack={() => changeSection('settings')} />,
+    account: <AccountSettingsView preferences={userPreferences} onSave={handleSaveUserPreferences} />,
+    roadmap: <PlaceholderPage title="Що в ваших планах?" blank />,
+    tasks: <PlaceholderPage title="Завдання" />,
+    suggestions: <PlaceholderPage title="Пропозиції" />,
   };
 
   const mobileNav = mobileItems.map((item) => sidebarItems.find((navItem) => navItem.section === item)).filter(Boolean) as Array<{
@@ -16525,12 +18129,13 @@ export function App() {
 
   return (
     <div className="app-shell" data-theme={themeMode} data-density="compact" style={appThemeStyle}>
-      <Sidebar active={section} onChange={changeSection} brandingSettings={brandingSettings} copy={copy} />
+      <Sidebar active={section} onChange={changeSection} brandingSettings={userBrandingSettings} copy={copy} />
       <div className="main-shell">
         <Topbar
           auth={auth}
           employee={profile}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          onNavigate={(path) => navigate(path)}
           onLogout={handleLogout}
           copy={copy}
         />
@@ -16541,7 +18146,7 @@ export function App() {
         isOpen={mobileMenuOpen}
         onChange={changeSection}
         onClose={() => setMobileMenuOpen(false)}
-        brandingSettings={brandingSettings}
+        brandingSettings={userBrandingSettings}
         copy={copy}
       />
       <nav className="bottom-nav" aria-label={copy.common.openMenu}>

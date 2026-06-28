@@ -10,6 +10,12 @@ import type {
   DivisionOption,
   EmployeeAttendanceDetail,
   EmployeeAttendancePeriod,
+  EmployeeDocument,
+  EmployeeDocumentFolder,
+  EmployeeDocumentFolderPayload,
+  EmergencyContact,
+  Dependent,
+  EmployeeNote,
   EmployeeFormTemplate,
   EmployeeFormTemplateSummary,
   EmployeeFormType,
@@ -25,6 +31,7 @@ import type {
   LeaveBalance,
   LeaveRequest,
   LeaveType,
+  LeaveTypePayload,
   PositionOption,
   ProbationPolicyOption,
   SelfAttendance,
@@ -34,6 +41,7 @@ import type {
   TerminationReasonOption,
   TerminationTypeOption,
   TimeCorrectionRequest,
+  UserPreferences,
   SkillOption,
   WorkType,
   WorkingPatternOption,
@@ -372,6 +380,7 @@ export const api = {
       location_ids?: number[];
       department_ids?: number[];
       responsible_ids?: number[];
+      hr_employee_id?: number;
     } = {},
   ) => {
     const sp = new URLSearchParams();
@@ -379,6 +388,7 @@ export const api = {
     if (params.page_size) sp.set('page_size', String(params.page_size));
     if (params.search) sp.set('search', params.search);
     if (params.status && params.status !== 'all') sp.set('status', params.status);
+    if (params.hr_employee_id) sp.set('hr_employee_id', String(params.hr_employee_id));
     for (const id of params.location_ids ?? []) sp.append('location_ids', String(id));
     for (const id of params.department_ids ?? []) sp.append('department_ids', String(id));
     for (const id of params.responsible_ids ?? []) sp.append('responsible_ids', String(id));
@@ -432,6 +442,14 @@ export const api = {
     ),
   updateEmployee: (id: number, payload: Partial<EmployeeListItem>) =>
     request<EmployeeListItem>(`/api/employees/employees/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  updateEmployeeProfileBlock: (
+    id: number,
+    payload: Partial<EmployeeListItem> & { custom_fields_delta?: Record<string, unknown> },
+  ) =>
+    request<EmployeeListItem>(`/api/employees/employees/${id}/profile-block/`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
@@ -759,6 +777,80 @@ export const api = {
     request<ApiList<WorkDaySummary> | WorkDaySummary[]>(`/api/skud/workdays/${buildQuery(params)}`).then(normalizeList),
   leaveTypes: (params: { page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveType> | LeaveType[]>(`/api/leave/types/${buildQuery(params)}`).then(normalizeList),
+  createLeaveType: (payload: LeaveTypePayload) =>
+    request<LeaveType>('/api/leave/types/', { method: 'POST', body: JSON.stringify(payload) }),
+  updateLeaveType: (id: number, payload: Partial<LeaveTypePayload>) =>
+    request<LeaveType>(`/api/leave/types/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteLeaveType: (id: number) => request<void>(`/api/leave/types/${id}/`, { method: 'DELETE' }),
+  reorderLeaveTypes: (ids: number[]) =>
+    request<LeaveType[]>('/api/leave/types/reorder/', { method: 'POST', body: JSON.stringify({ ids }) }),
+  documentFolders: (params: { q?: string; page?: number; page_size?: number } = {}) =>
+    request<ApiList<EmployeeDocumentFolder> | EmployeeDocumentFolder[]>(
+      `/api/employees/document-folders/${buildQuery(params)}`,
+    ).then(normalizeList),
+  createDocumentFolder: (payload: EmployeeDocumentFolderPayload) =>
+    request<EmployeeDocumentFolder>('/api/employees/document-folders/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateDocumentFolder: (id: number, payload: Partial<EmployeeDocumentFolderPayload>) =>
+    request<EmployeeDocumentFolder>(`/api/employees/document-folders/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteDocumentFolder: (id: number) =>
+    request<void>(`/api/employees/document-folders/${id}/`, { method: 'DELETE' }),
+  employeeDocuments: (params: { employee?: number; folder?: number; type?: string; page_size?: number } = {}) =>
+    request<ApiList<EmployeeDocument> | EmployeeDocument[]>(`/api/employees/documents/${buildQuery(params)}`).then(
+      normalizeList,
+    ),
+  uploadEmployeeDocuments: (employee: number, folder: number | null, files: File[]) => {
+    const form = new FormData();
+    form.append('employee', String(employee));
+    if (folder != null) form.append('folder', String(folder));
+    files.forEach((file) => form.append('files', file));
+    return request<{ created: EmployeeDocument[]; errors: Array<{ name: string; error: string }> }>(
+      '/api/employees/documents/upload/',
+      { method: 'POST', body: form },
+    );
+  },
+  deleteEmployeeDocument: (id: number) =>
+    request<void>(`/api/employees/documents/${id}/`, { method: 'DELETE' }),
+  employeeDocumentDownloadUrl: (id: number) => `/api/employees/documents/${id}/download/`,
+  emergencyContacts: (employee: number) =>
+    request<ApiList<EmergencyContact> | EmergencyContact[]>(
+      `/api/employees/emergency-contacts/${buildQuery({ employee, page_size: 200 })}`,
+    ).then(normalizeList),
+  saveEmergencyContact: (payload: Partial<EmergencyContact> & { employee: number }) =>
+    payload.id
+      ? request<EmergencyContact>(`/api/employees/emergency-contacts/${payload.id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      : request<EmergencyContact>('/api/employees/emergency-contacts/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteEmergencyContact: (id: number) =>
+    request<void>(`/api/employees/emergency-contacts/${id}/`, { method: 'DELETE' }),
+  dependents: (employee: number) =>
+    request<ApiList<Dependent> | Dependent[]>(`/api/employees/dependents/${buildQuery({ employee, page_size: 200 })}`).then(
+      normalizeList,
+    ),
+  saveDependent: (payload: Partial<Dependent> & { employee: number }) =>
+    payload.id
+      ? request<Dependent>(`/api/employees/dependents/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : request<Dependent>('/api/employees/dependents/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteDependent: (id: number) => request<void>(`/api/employees/dependents/${id}/`, { method: 'DELETE' }),
+  employeeNotes: (employee: number) =>
+    request<ApiList<EmployeeNote> | EmployeeNote[]>(
+      `/api/employees/employee-notes/${buildQuery({ employee, page_size: 200 })}`,
+    ).then(normalizeList),
+  saveEmployeeNote: (payload: Partial<EmployeeNote> & { employee: number }) =>
+    payload.id
+      ? request<EmployeeNote>(`/api/employees/employee-notes/${payload.id}/`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        })
+      : request<EmployeeNote>('/api/employees/employee-notes/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteEmployeeNote: (id: number) => request<void>(`/api/employees/employee-notes/${id}/`, { method: 'DELETE' }),
   leaveRequests: (params: { status?: string; employee?: number; page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveRequest> | LeaveRequest[]>(`/api/leave/requests/${buildQuery(params)}`).then(normalizeList),
   leaveBalances: (params: { employee?: number; leave_type?: number; page?: number; page_size?: number } = {}) =>
@@ -808,6 +900,12 @@ export const api = {
     });
   },
   selfProfile: () => request<EmployeeProfile>('/api/me/profile/'),
+  selfPreferences: () => request<UserPreferences>('/api/me/preferences/'),
+  updateSelfPreferences: (payload: Partial<UserPreferences>) =>
+    request<UserPreferences>('/api/me/preferences/', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   selfAttendance: () => request<SelfAttendance>('/api/me/attendance/'),
   createTimeCorrection: (payload: {
     date: string;

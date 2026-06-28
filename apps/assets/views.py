@@ -80,6 +80,19 @@ class AssetListView(APIView):
             values = [v for v in request.query_params.getlist(key) if v not in ("", "all")]
             if values:
                 params[key] = values
+
+        # HR→CMMS міст: фільтр активів за HR-співробітником (профіль, вкладка «Активи»).
+        hr_employee_id = request.query_params.get("hr_employee_id")
+        if hr_employee_id:
+            employee = Employee.objects.select_related("position", "department").filter(pk=hr_employee_id).first()
+            try:
+                cmms_id = cmms_client.find_employee_id(employee) if employee else None
+            except CmmsError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            if cmms_id is None:
+                # Немає відповідника в CMMS → активів немає.
+                return Response({"total": 0, "items": []})
+            params["responsible_ids"] = [str(cmms_id)]
         # CMMS /api/assets/list paginates with skip/limit, not page/page_size.
         try:
             page = max(1, int(request.query_params.get("page", 1) or 1))

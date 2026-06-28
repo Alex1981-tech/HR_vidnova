@@ -11,6 +11,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.employees.models import Employee
+from apps.selfservice.models import UserPreference
+from apps.selfservice.serializers import UserPreferenceSerializer
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
@@ -31,6 +33,9 @@ class AuthStatusView(APIView):
                 }
             except Employee.DoesNotExist:
                 employee = None
+            preferences = UserPreferenceSerializer(UserPreference.objects.get_or_create(user=user)[0]).data
+        else:
+            preferences = None
         return Response(
             {
                 "authenticated": bool(user),
@@ -43,6 +48,7 @@ class AuthStatusView(APIView):
                 if user
                 else None,
                 "employee": employee,
+                "preferences": preferences,
             }
         )
 

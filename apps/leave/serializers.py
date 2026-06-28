@@ -1,9 +1,13 @@
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import LeaveApprovalStep, LeaveBalance, LeaveRequest, LeaveType
 
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
+    # code генерується автоматично з імені, якщо не передано (модалка має лише Ім'я).
+    code = serializers.CharField(max_length=40, required=False, allow_blank=True)
+
     class Meta:
         model = LeaveType
         fields = (
@@ -12,10 +16,39 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
             "code",
             "legacy_peopleforce_id",
             "unit",
+            "icon",
             "color",
+            "order",
             "requires_hr_approval",
             "is_active",
         )
+        read_only_fields = ("legacy_peopleforce_id", "order")
+
+    def _unique_code(self, base, instance=None):
+        slug = (slugify(base) or "leave")[:36]
+        candidate = slug
+        suffix = 1
+        qs = LeaveType.objects.all()
+        if instance is not None:
+            qs = qs.exclude(pk=instance.pk)
+        while qs.filter(code=candidate).exists():
+            suffix += 1
+            candidate = f"{slug}-{suffix}"[:40]
+        return candidate
+
+    def create(self, validated_data):
+        code = (validated_data.get("code") or "").strip()
+        if not code:
+            validated_data["code"] = self._unique_code(validated_data.get("name", ""))
+        if "order" not in validated_data:
+            last = LeaveType.objects.order_by("-order").first()
+            validated_data["order"] = (last.order + 1) if last else 1
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if "code" in validated_data and not (validated_data["code"] or "").strip():
+            validated_data.pop("code")
+        return super().update(instance, validated_data)
 
 
 class LeaveBalanceSerializer(serializers.ModelSerializer):

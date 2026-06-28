@@ -492,6 +492,9 @@ class EmployeeDocumentFolder(TimestampedModel):
     legacy_peopleforce_id = models.CharField(max_length=120, blank=True, db_index=True)
     name = models.CharField(max_length=180)
     description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True, related_name="children"
+    )
     legacy_payload = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)
 
@@ -686,3 +689,55 @@ class EmployeeFieldTable(TimestampedModel):
 
     def __str__(self) -> str:
         return self.name
+
+
+class EmergencyContact(TimestampedModel):
+    """Контакт на екстрений випадок (вкладка «Більше»)."""
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="emergency_contacts")
+    name = models.CharField(max_length=200)
+    relationship = models.CharField(max_length=80, blank=True)
+    work_phone = models.CharField(max_length=40, blank=True)
+    home_phone = models.CharField(max_length=40, blank=True)
+    mobile_phone = models.CharField(max_length=40, blank=True)
+    address = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.employee}: {self.name}"
+
+
+class Dependent(TimestampedModel):
+    """Дитина/утриманець співробітника (вкладка «Більше»)."""
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="dependents")
+    name = models.CharField(max_length=200)
+    birth_date = models.DateField(null=True, blank=True)
+    gender = models.CharField(max_length=40, blank=True)
+    description = models.TextField(blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.employee}: {self.name}"
+
+
+class EmployeeNote(TimestampedModel):
+    """Примітка про співробітника (вкладка «Більше»)."""
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="notes_entries")
+    body_html = models.TextField(blank=True)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="authored_employee_notes"
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Note for {self.employee} ({self.created_at:%Y-%m-%d})"

@@ -1,4 +1,7 @@
-from rest_framework import viewsets
+from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
@@ -13,6 +16,32 @@ class LeaveModelViewSet(viewsets.ModelViewSet):
 class LeaveTypeViewSet(LeaveModelViewSet):
     queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        ids = request.data.get("ids")
+        if not isinstance(ids, list):
+            return Response({"detail": "ids must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        normalized_ids = []
+        for value in ids:
+            try:
+                normalized_ids.append(int(value))
+            except (TypeError, ValueError):
+                return Response({"detail": "ids must contain integers."}, status=status.HTTP_400_BAD_REQUEST)
+        types = {lt.id: lt for lt in LeaveType.objects.filter(id__in=normalized_ids)}
+        now = timezone.now()
+        to_update = []
+        for index, type_id in enumerate(normalized_ids, start=1):
+            lt = types.get(type_id)
+            if not lt:
+                continue
+            lt.order = index
+            lt.updated_at = now
+            to_update.append(lt)
+        if to_update:
+            LeaveType.objects.bulk_update(to_update, ["order", "updated_at"])
+        serializer = self.get_serializer(self.get_queryset(), many=True)
+        return Response(serializer.data)
 
 
 class LeaveRequestViewSet(LeaveModelViewSet):

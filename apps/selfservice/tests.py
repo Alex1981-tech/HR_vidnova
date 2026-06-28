@@ -24,6 +24,26 @@ class SelfServiceApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["id"], self.employee.id)
 
+    def test_preferences_are_current_user_specific(self):
+        response = self.client.patch(
+            reverse("self-preferences"),
+            {"language": "pl", "theme": "dark", "time_zone": "Europe/Warsaw"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["language"], "pl")
+        self.assertEqual(response.data["theme"], "dark")
+        self.assertEqual(response.data["time_zone"], "Europe/Warsaw")
+
+        other_user = get_user_model().objects.create_user(username="other", password="pass")
+        self.client.force_authenticate(other_user)
+        other_response = self.client.get(reverse("self-preferences"))
+
+        self.assertEqual(other_response.status_code, 200)
+        self.assertEqual(other_response.data["language"], "uk")
+        self.assertEqual(other_response.data["theme"], "light")
+
     def test_time_correction_request_ignores_payload_employee(self):
         response = self.client.post(
             reverse("self-time-corrections"),

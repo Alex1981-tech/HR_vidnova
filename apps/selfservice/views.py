@@ -23,7 +23,9 @@ from .serializers import (
     SelfLeaveTypeSerializer,
     SelfTimeCorrectionRequestSerializer,
     SelfWorkDaySummarySerializer,
+    UserPreferenceSerializer,
 )
+from .models import UserPreference
 
 
 MAX_ATTENDANCE_RANGE_DAYS = 92
@@ -55,6 +57,24 @@ class SelfProfileView(APIView):
     def get(self, request):
         employee = get_current_employee(request)
         return Response(SelfEmployeeSerializer(employee).data)
+
+
+class SelfPreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, request) -> UserPreference:
+        preference, _ = UserPreference.objects.get_or_create(user=request.user)
+        return preference
+
+    def get(self, request):
+        return Response(UserPreferenceSerializer(self.get_object(request)).data)
+
+    def patch(self, request):
+        preference = self.get_object(request)
+        serializer = UserPreferenceSerializer(preference, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 class SelfAttendanceView(APIView):

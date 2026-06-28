@@ -67,6 +67,21 @@ services:
       - "com.centurylinklabs.watchtower.enable=true"
     logging: *default-logging
 
+  celery-beat:
+    image: ghcr.io/alex1981-tech/hr_vidnova/web:latest
+    restart: unless-stopped
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging: *default-logging
+
   frontend:
     image: ghcr.io/alex1981-tech/hr_vidnova/frontend:latest
     restart: unless-stopped

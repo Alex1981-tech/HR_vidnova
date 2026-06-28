@@ -1,11 +1,20 @@
+import uuid
+
 from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
+
+# Дозволені типи/ліміти для ручного завантаження документів (Фаза 7).
+ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
+MAX_DOCUMENT_FILES = 10
+MAX_DOCUMENT_SIZE = 200 * 1024 * 1024  # 200 МБ
 
 from .models import (
     EmployeeField,
@@ -18,6 +27,9 @@ from .models import (
     Employee,
     EmployeeDocument,
     EmployeeDocumentFolder,
+    EmergencyContact,
+    Dependent,
+    EmployeeNote,
     EmployeeFormTemplate,
     EmploymentType,
     Gender,
@@ -35,6 +47,9 @@ from .models import (
     WorkingPattern,
 )
 from .serializers import (
+    EmergencyContactSerializer,
+    DependentSerializer,
+    EmployeeNoteSerializer,
     EmployeeFieldSerializer,
     EmployeeFieldGroupSerializer,
     EmployeeFieldTableSerializer,
@@ -47,6 +62,7 @@ from .serializers import (
     EmployeeCompactSerializer,
     EmployeeFormTemplateSerializer,
     EmployeeHireSerializer,
+    EmployeeProfileBlockSerializer,
     EmployeeSerializer,
     EmploymentTypeSerializer,
     GenderSerializer,
@@ -575,8 +591,18 @@ class TeamViewSet(EmployeeApiViewSet):
 
 
 class EmployeeDocumentFolderViewSet(EmployeeApiViewSet):
-    queryset = EmployeeDocumentFolder.objects.all()
     serializer_class = EmployeeDocumentFolderSerializer
+
+    def get_queryset(self):
+        qs = (
+            EmployeeDocumentFolder.objects.select_related("parent")
+            .annotate(doc_count=Count("documents"))
+            .order_by("name")
+        )
+        q = self.request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+        return qs
 
 
 class EmployeeDocumentViewSet(EmployeeApiViewSet):
@@ -594,6 +620,112 @@ class EmployeeDocumentViewSet(EmployeeApiViewSet):
         if document_type:
             qs = qs.filter(document_type=document_type)
         return qs
+
+    @action(detail=False, methods=["post"], url_path="upload", parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        """Ручне завантаження документів з ПК (multipart). До 10 файлів, ≤200МБ, allowlist типів."""
+        employee_id = request.data.get("employee")
+        folder_id = request.data.get("folder")
+        files = request.FILES.getlist("files")
+        if not employee_id:
+            return Response({"detail": "Не вказано співробітника."}, status=status.HTTP_400_BAD_REQUEST)
+        if not files:
+            return Response({"detail": "Не вибрано файлів."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(files) > MAX_DOCUMENT_FILES:
+            return Response(
+                {"detail": f"Максимум {MAX_DOCUMENT_FILES} файлів за раз."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            employee = Employee.objects.get(pk=employee_id)
+        except (Employee.DoesNotExist, ValueError, TypeError):
+            return Response({"detail": "Співробітника не знайдено."}, status=status.HTTP_404_NOT_FOUND)
+        folder = None
+        if folder_id:
+            folder = EmployeeDocumentFolder.objects.filter(pk=folder_id).first()
+
+        created, errors = [], []
+        for upload in files:
+            ext = (upload.name.rsplit(".", 1)[-1] if "." in upload.name else "").lower()
+            if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
+                errors.append({"name": upload.name, "error": "Тип файлу не дозволений."})
+                continue
+            if upload.size > MAX_DOCUMENT_SIZE:
+                errors.append({"name": upload.name, "error": "Файл більший за 200 МБ."})
+                continue
+            with transaction.atomic():
+                document = EmployeeDocument.objects.create(
+                    employee=employee,
+                    folder=folder,
+                    legacy_peopleforce_id=f"manual:{uuid.uuid4()}",
+                    name=upload.name[:240],
+                    document_type=EmployeeDocument.DocumentType.FILE,
+                    local_file=upload,
+                    file_downloaded_at=timezone.now(),
+                )
+            created.append(document)
+
+        data = EmployeeDocumentSerializer(created, many=True, context=self.get_serializer_context()).data
+        return Response(
+            {"created": data, "errors": errors},
+            status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST,
+        )
+
+    @action(detail=True, methods=["get"], url_path="download")
+    def download(self, request, pk=None):
+        document = self.get_object()
+        if not document.local_file:
+            return Response({"detail": "Файл відсутній."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            handle = document.local_file.open("rb")
+        except (FileNotFoundError, ValueError):
+            return Response({"detail": "Файл недоступний."}, status=status.HTTP_404_NOT_FOUND)
+        return FileResponse(handle, as_attachment=True, filename=document.name)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        # Імпортовані з PeopleForce документи не видаляємо фізично; лише ручні (manual:).
+        if not str(instance.legacy_peopleforce_id).startswith("manual:"):
+            return Response(
+                {"detail": "Імпортовані документи видаляти не можна."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+
+class _EmployeeScopedViewSet(EmployeeApiViewSet):
+    """Базовий для дочірніх записів профілю (фільтр ?employee=...)."""
+
+    model = None
+
+    def get_queryset(self):
+        qs = self.model.objects.all()
+        employee = self.request.query_params.get("employee")
+        if employee:
+            qs = qs.filter(employee_id=employee)
+        return qs
+
+
+class EmergencyContactViewSet(_EmployeeScopedViewSet):
+    model = EmergencyContact
+    serializer_class = EmergencyContactSerializer
+
+
+class DependentViewSet(_EmployeeScopedViewSet):
+    model = Dependent
+    serializer_class = DependentSerializer
+
+
+class EmployeeNoteViewSet(_EmployeeScopedViewSet):
+    model = EmployeeNote
+    serializer_class = EmployeeNoteSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("author")
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        serializer.save(author=user if getattr(user, "is_authenticated", False) else None)
 
 
 class EmployeeViewSet(EmployeeApiViewSet):
@@ -722,6 +854,22 @@ class EmployeeViewSet(EmployeeApiViewSet):
         employee = serializer.save()
         output = EmployeeSerializer(employee, context=self.get_serializer_context())
         return Response(output.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["patch"], url_path="profile-block")
+    def profile_block(self, request, pk=None):
+        """Per-block edit профілю: пише лише allowlist системних полів + custom_fields_delta."""
+        employee = self.get_object()
+        serializer = EmployeeProfileBlockSerializer(
+            employee,
+            data=request.data,
+            partial=True,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        employee.refresh_from_db()
+        output = EmployeeSerializer(employee, context=self.get_serializer_context())
+        return Response(output.data)
 
 
 class ManagerAssignmentViewSet(EmployeeApiViewSet):
