@@ -430,6 +430,11 @@ export const api = {
     request<ApiList<EmployeeListItem> | EmployeeListItem[]>(`/api/employees/employees/${buildQuery(params)}`).then(
       normalizeList,
     ),
+  updateEmployee: (id: number, payload: Partial<EmployeeListItem>) =>
+    request<EmployeeListItem>(`/api/employees/employees/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   hireEmployee: (payload: EmployeeHirePayload) =>
     request<EmployeeListItem>('/api/employees/employees/hire/', {
       method: 'POST',

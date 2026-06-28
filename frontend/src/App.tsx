@@ -72,7 +72,7 @@ import type { Graph, TBlock, TConnection, TGraphColors, TGraphConstants, TPoint,
 import { GraphBlock, GraphCanvas, useGraph } from '@gravity-ui/graph/react';
 import type { LucideIcon } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import type { CSSProperties, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { ChangeEvent, CSSProperties, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -2588,6 +2588,10 @@ function PeopleView({
         brandingSettings={brandingSettings}
         employeeCover={selectedEmployee ? employeeCovers[String(selectedEmployee.id)] ?? null : null}
         onEmployeeCoverChange={selectedEmployee ? (cover) => onEmployeeCoverChange(selectedEmployee.id, cover) : undefined}
+        onEmployeeUpdated={(updated) => {
+          setSelectedEmployee(updated);
+          setEmployees((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        }}
         copy={copy}
       />
     );
@@ -4108,16 +4112,41 @@ type ProfileFieldDef = {
   is_system: boolean;
   system_key: string;
   is_enabled: boolean;
+  is_required: boolean;
   show_in_summary: boolean;
+  options: string[];
   order: number;
 };
-type ProfileGroup = { id: number; name: string; order: number; group_fields: ProfileFieldDef[] };
+type ProfileTableColumn = { key: string; label: string; type: string; options?: string[] };
+type ProfileTable = { id: number; name: string; is_enabled: boolean; order: number; columns: ProfileTableColumn[] };
+type ProfileGroup = {
+  id: number;
+  tab: string;
+  name: string;
+  order: number;
+  group_fields: ProfileFieldDef[];
+  tables: ProfileTable[];
+};
+type TableRow = Record<string, unknown>;
+
+type EmployeeOption = { id: number; full_name: string };
+
+const MORE_TABS: Array<{ key: string; label: string }> = [
+  { key: 'more-tasks', label: 'Завдання' },
+  { key: 'more-workflow', label: 'Воркфлоу' },
+  { key: 'more-assets', label: 'Активи' },
+  { key: 'more-emergency', label: 'Контактні дані на екстрений випадок' },
+  { key: 'more-dependents', label: 'Діти' },
+  { key: 'more-notes', label: 'Примітки' },
+];
 
 function resolveProfileFieldValue(field: ProfileFieldDef, employee: EmployeeListItem | null): string {
   if (!employee) return '-';
   if (!field.is_system) {
     const raw = (employee.custom_fields ?? {})[String(field.id)];
-    return raw !== undefined && raw !== null && raw !== '' ? String(raw) : '-';
+    if (raw === undefined || raw === null || raw === '') return '-';
+    if (field.field_type === 'date') return formatDate(String(raw));
+    return String(raw);
   }
   switch (field.system_key) {
     case 'employee_number': return employee.employee_number || employee.legacy_peopleforce_id || String(employee.id);
@@ -4129,6 +4158,9 @@ function resolveProfileFieldValue(field: ProfileFieldDef, employee: EmployeeList
     case 'personal_email': return employee.personal_email || '-';
     case 'phone': return employee.phone || '-';
     case 'phone2': return employee.phone2 || '-';
+    case 'telegram_id': return employee.telegram_id || peopleforceFieldValue(employee, 'telegram_id') || peopleforceFieldValue(employee, 'telegram') || '-';
+    case 'facebook_url': return employee.facebook_url || peopleforceFieldValue(employee, 'facebook_url') || '-';
+    case 'instagram_url': return employee.instagram_url || peopleforceFieldValue(employee, 'посилання_на_instagram') || peopleforceFieldValue(employee, 'instagram_url') || '-';
     case 'birth_date': return employee.birth_date ? formatDate(employee.birth_date) : '-';
     case 'gender': return employee.gender ? formatGender(employee.gender) : '-';
     case 'hired_on': return employee.hired_on ? formatDate(employee.hired_on) : '-';
@@ -4164,12 +4196,31 @@ function useProfileFieldGroups(): ProfileGroup[] {
   return groups;
 }
 
+function useEmployeeOptions(enabled: boolean): EmployeeOption[] {
+  const [options, setOptions] = useState<EmployeeOption[]>([]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    api
+      .employees({ status: 'active', compact: true, page_size: 1000 })
+      .then((res) => {
+        if (alive) setOptions(res.items.map((item) => ({ id: item.id, full_name: item.full_name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return options;
+}
+
 function EmployeeAdminProfileView({
   employee,
   onBack,
   brandingSettings,
   employeeCover,
   onEmployeeCoverChange,
+  onEmployeeUpdated,
   copy,
 }: {
   employee: EmployeeListItem | null;
@@ -4177,9 +4228,12 @@ function EmployeeAdminProfileView({
   brandingSettings: BrandingSettings;
   employeeCover: CoverCropResult | null;
   onEmployeeCoverChange?: (cover: CoverCropResult) => void;
+  onEmployeeUpdated?: (employee: EmployeeListItem) => void;
   copy: AppCopy;
 }) {
   const [coverCropOpen, setCoverCropOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('personal');
+  const [moreOpen, setMoreOpen] = useState(false);
   const displayName = employee?.full_name || copy.people.newEmployee;
   const avatarUrl = employeeAvatarUrl(employee);
   const canEditCover = Boolean(employee && brandingSettings.employeeCoverUploadAllowed && onEmployeeCoverChange);
@@ -4228,14 +4282,31 @@ function EmployeeAdminProfileView({
   ];
 
   const fieldGroups = useProfileFieldGroups();
-  const configPanels = fieldGroups
-    .map((group) => ({
-      title: group.name,
-      fields: group.group_fields
-        .filter((f) => f.is_enabled)
-        .map((f) => [f.name, resolveProfileFieldValue(f, employee)] as string[]),
-    }))
-    .filter((panel) => panel.fields.length);
+  const CONFIG_TAB_KEYS: Record<string, string> = { personal: 'personal', work: 'work', compensation: 'compensation' };
+  const activeConfigTab = CONFIG_TAB_KEYS[activeTab];
+  const tabGroups = activeConfigTab ? fieldGroups.filter((group) => group.tab === activeConfigTab) : [];
+  const personalEmpty = activeTab === 'personal' && !tabGroups.some((g) => g.group_fields.some((f) => f.is_enabled) || g.tables.some((t) => t.is_enabled));
+  const needsEmployeeOptions = fieldGroups.some(
+    (group) =>
+      group.group_fields.some((f) => f.is_enabled && !f.is_system && f.field_type === 'employee') ||
+      group.tables.some((t) => t.is_enabled && t.columns.some((c) => c.type === 'employee')),
+  );
+  const employeeOptions = useEmployeeOptions(needsEmployeeOptions);
+
+  async function handleSaveCustomValues(values: Record<string, unknown>) {
+    if (!employee) return;
+    const merged = { ...(employee.custom_fields ?? {}), ...values };
+    const updated = await api.updateEmployee(employee.id, { custom_fields: merged });
+    onEmployeeUpdated?.(updated);
+  }
+
+  async function handleSaveTableRows(tableId: number, rows: Record<string, unknown>[]) {
+    if (!employee) return;
+    const merged = { ...(employee.custom_fields ?? {}), [`table_${tableId}`]: rows };
+    const updated = await api.updateEmployee(employee.id, { custom_fields: merged });
+    onEmployeeUpdated?.(updated);
+  }
+
   const configSummary = fieldGroups
     .flatMap((group) => group.group_fields)
     .filter((f) => f.is_enabled && f.show_in_summary)
@@ -4284,19 +4355,56 @@ function EmployeeAdminProfileView({
             </button>
           </div>
         </div>
-        <SectionTabs
-          tabs={[
-            { key: 'personal', label: copy.people.personal || 'Personal' },
-            { key: 'work', label: copy.people.work || 'Work' },
-            { key: 'compensation', label: copy.people.compensation || 'Compensation' },
-            { key: 'absence', label: copy.people.absence || 'Absence' },
-            { key: 'time', label: copy.people.time || 'Time' },
-            { key: 'documents', label: copy.people.documents || 'Documents' },
-            { key: 'more', label: copy.people.more || 'More' },
-          ]}
-          active="personal"
-          onChange={() => undefined}
-        />
+        <div className="employee-tabs-row">
+          <SectionTabs
+            tabs={[
+              { key: 'personal', label: copy.people.personal || 'Особисте' },
+              { key: 'work', label: copy.people.work || 'Робота' },
+              { key: 'compensation', label: copy.people.compensation || 'Компенсація' },
+              { key: 'absence', label: copy.people.absence || 'Відсутності' },
+              { key: 'time', label: copy.people.time || 'Time' },
+              { key: 'documents', label: copy.people.documents || 'Документи' },
+            ]}
+            active={MORE_TABS.some((t) => t.key === activeTab) ? '' : activeTab}
+            onChange={(key) => {
+              setActiveTab(key);
+              setMoreOpen(false);
+            }}
+          />
+          <div className="employee-more-wrap">
+            <button
+              type="button"
+              className={`employee-more-trigger${MORE_TABS.some((t) => t.key === activeTab) ? ' active' : ''}`}
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              {copy.people.more || 'Більше'}
+              <ChevronDown size={15} />
+            </button>
+            {moreOpen ? (
+              <>
+                <button type="button" className="employee-more-backdrop" aria-hidden tabIndex={-1} onClick={() => setMoreOpen(false)} />
+                <div className="employee-more-menu" role="menu">
+                  {MORE_TABS.map((item) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      key={item.key}
+                      className={activeTab === item.key ? 'active' : ''}
+                      onClick={() => {
+                        setActiveTab(item.key);
+                        setMoreOpen(false);
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
       </section>
       {coverCropOpen && onEmployeeCoverChange ? (
         <SettingsCoverCropModal
@@ -4309,38 +4417,92 @@ function EmployeeAdminProfileView({
         />
       ) : null}
 
-      <div className="employee-detail-layout">
+      <div className={`employee-detail-layout${activeTab === 'personal' ? '' : ' full-width'}`}>
         <div className="employee-detail-main">
-          {configPanels.length ? (
-            configPanels.map((panel) => (
-              <EmployeeInfoPanel key={panel.title} title={panel.title} fields={panel.fields} copy={copy} />
-            ))
-          ) : (
+          {activeConfigTab ? (
             <>
-              <EmployeeInfoPanel title={copy.people.personal || 'Personal'} fields={fields} copy={copy} />
-              <EmployeeInfoPanel title={copy.people.contacts || 'Contacts'} fields={contactFields} copy={copy} />
-              <EmployeeInfoPanel title={copy.people.social || 'Social networks'} fields={socialFields} copy={copy} />
+              {tabGroups.map((group) => {
+                const enabledFields = group.group_fields.filter((f) => f.is_enabled);
+                const enabledTables = group.tables.filter((t) => t.is_enabled);
+                return (
+                  <Fragment key={group.id}>
+                    {enabledFields.length ? (
+                      <EmployeeConfigPanel
+                        title={group.name}
+                        fields={enabledFields}
+                        employee={employee}
+                        employeeOptions={employeeOptions}
+                        onSaveValues={handleSaveCustomValues}
+                        copy={copy}
+                      />
+                    ) : null}
+                    {enabledTables.map((table) => (
+                      <EmployeeTablePanel
+                        key={table.id}
+                        table={table}
+                        employee={employee}
+                        employeeOptions={employeeOptions}
+                        onSaveRows={handleSaveTableRows}
+                      />
+                    ))}
+                  </Fragment>
+                );
+              })}
+              {personalEmpty ? (
+                <>
+                  <EmployeeInfoPanel title={copy.people.personal || 'Personal'} fields={fields} copy={copy} />
+                  <EmployeeInfoPanel title={copy.people.contacts || 'Contacts'} fields={contactFields} copy={copy} />
+                  <EmployeeInfoPanel title={copy.people.social || 'Social networks'} fields={socialFields} copy={copy} />
+                </>
+              ) : null}
+              {!tabGroups.length ? <ProfileTabPlaceholder tab={activeTab} /> : null}
             </>
+          ) : activeTab === 'time' && employee ? (
+            <EmployeeAttendanceDetailView employeeId={employee.id} copy={copy} />
+          ) : (
+            <ProfileTabPlaceholder tab={activeTab} />
           )}
-          <EmployeeInfoPanel
-            title={copy.people.documents || 'Documents'}
-            fields={employee?.documents.length ? employee.documents.map((document) => [document.name, document.folder_name || document.document_type]) : []}
-            copy={copy}
-          />
         </div>
-        <aside className="employee-summary">
-          <h2>{copy.people.profileHome || 'Home'}</h2>
-          <div>
-            {effectiveSummary.map(([label, value]) => (
-              <div className="summary-field" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-        </aside>
+        {activeTab === 'personal' ? (
+          <aside className="employee-summary">
+            <h2>{copy.people.profileHome || 'Home'}</h2>
+            <div>
+              {effectiveSummary.map(([label, value]) => (
+                <div className="summary-field" key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+          </aside>
+        ) : null}
       </div>
     </main>
+  );
+}
+
+function ProfileTabPlaceholder({ tab }: { tab: string }) {
+  const TITLES: Record<string, string> = {
+    work: 'Робота',
+    compensation: 'Компенсація',
+    absence: 'Відсутності',
+    documents: 'Документи',
+    'more-tasks': 'Завдання',
+    'more-workflow': 'Воркфлоу',
+    'more-assets': 'Активи',
+    'more-emergency': 'Екстрені контакти',
+    'more-dependents': 'Діти',
+    'more-notes': 'Примітки',
+  };
+  return (
+    <section className="panel employee-info-panel">
+      <div className="panel-title">
+        <h2>{TITLES[tab] ?? 'Розділ'}</h2>
+      </div>
+      <div className="profile-tab-placeholder">
+        <EmptyState title="Розділ у розробці" text="Цю вкладку буде реалізовано згодом." />
+      </div>
+    </section>
   );
 }
 
@@ -4366,6 +4528,467 @@ function EmployeeInfoPanel({ title, fields, copy }: { title: string; fields: str
       ) : (
         <EmptyState title={copy.people.dataEmptyTitle} text={copy.people.dataEmptyText} />
       )}
+    </section>
+  );
+}
+
+function formatTableCell(column: ProfileTableColumn, raw: unknown, employeeOptions: EmployeeOption[]): string {
+  if (raw === undefined || raw === null || raw === '') return '—';
+  switch (column.type) {
+    case 'date':
+      return formatDate(String(raw));
+    case 'boolean':
+      return raw === true || raw === 'true' ? 'Так' : '—';
+    case 'employee': {
+      const found = employeeOptions.find((o) => String(o.id) === String(raw));
+      return found ? found.full_name : String(raw);
+    }
+    default:
+      return String(raw);
+  }
+}
+
+function TableCellInput({
+  column,
+  value,
+  employeeOptions,
+  onChange,
+}: {
+  column: ProfileTableColumn;
+  value: string;
+  employeeOptions: EmployeeOption[];
+  onChange: (value: string) => void;
+}) {
+  const common = {
+    className: 'people-data-input profile-field-input',
+    value,
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(event.target.value),
+  };
+  switch (column.type) {
+    case 'textarea':
+      return <textarea {...common} rows={2} />;
+    case 'number':
+      return <input type="number" {...common} />;
+    case 'date':
+      return <input type="date" {...common} />;
+    case 'url':
+      return <input type="url" inputMode="url" placeholder="https://" {...common} />;
+    case 'boolean':
+      return (
+        <input
+          type="checkbox"
+          className="profile-table-check"
+          checked={value === 'true'}
+          onChange={(event) => onChange(event.target.checked ? 'true' : '')}
+        />
+      );
+    case 'select':
+      return (
+        <select {...common}>
+          <option value="">—</option>
+          {(column.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    case 'employee':
+      return (
+        <select {...common}>
+          <option value="">—</option>
+          {employeeOptions.map((option) => (
+            <option key={option.id} value={String(option.id)}>
+              {option.full_name}
+            </option>
+          ))}
+        </select>
+      );
+    default:
+      return <input type="text" {...common} />;
+  }
+}
+
+function EmployeeTableRowModal({
+  table,
+  initial,
+  employeeOptions,
+  onClose,
+  onSave,
+}: {
+  table: ProfileTable;
+  initial: TableRow | null;
+  employeeOptions: EmployeeOption[];
+  onClose: () => void;
+  onSave: (row: TableRow) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    table.columns.forEach((col) => {
+      const raw = initial?.[col.key];
+      init[col.key] = raw === undefined || raw === null ? '' : col.type === 'boolean' ? (raw ? 'true' : '') : String(raw);
+    });
+    return init;
+  });
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (busy) return;
+    const row: TableRow = {};
+    table.columns.forEach((col) => {
+      const value = draft[col.key] ?? '';
+      if (col.type === 'boolean') row[col.key] = value === 'true';
+      else if (col.type === 'number') row[col.key] = value === '' ? '' : Number(value);
+      else row[col.key] = value;
+    });
+    setBusy(true);
+    try {
+      await onSave(row);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="people-data-modal-layer" role="dialog" aria-modal="true" aria-label={table.name}>
+      <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="people-data-modal">
+        <header className="people-data-modal-head">
+          <strong>{initial ? `Редагувати: ${table.name}` : `Додати: ${table.name}`}</strong>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </header>
+        <div className="people-data-modal-body people-data-modal-body-stack">
+          {table.columns.map((col) => (
+            <label className="people-data-modal-field" key={col.key}>
+              <span>{col.label}</span>
+              <TableCellInput
+                column={col}
+                value={draft[col.key] ?? ''}
+                employeeOptions={employeeOptions}
+                onChange={(value) => setDraft((cur) => ({ ...cur, [col.key]: value }))}
+              />
+            </label>
+          ))}
+          {!table.columns.length ? <p className="people-data-empty">У таблиці немає стовпців.</p> : null}
+        </div>
+        <footer className="people-data-modal-foot">
+          <button type="button" className="secondary-action" onClick={onClose} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="primary-action" onClick={submit} disabled={busy || !table.columns.length}>
+            Зберегти
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function TableRecordCard({
+  columns,
+  row,
+  employeeOptions,
+  onEdit,
+  onDelete,
+}: {
+  columns: ProfileTableColumn[];
+  row: TableRow;
+  employeeOptions: EmployeeOption[];
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="table-record">
+      <div className="table-record-grid">
+        {columns.map((col) => (
+          <div className="table-record-item" key={col.key}>
+            <span>{col.label}</span>
+            <strong>{formatTableCell(col, row[col.key], employeeOptions)}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="table-record-actions">
+        <button type="button" className="icon-button" aria-label="Редагувати" onClick={onEdit}>
+          <FileText size={14} />
+        </button>
+        <button type="button" className="icon-button" aria-label="Видалити" onClick={onDelete}>
+          <X size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeTablePanel({
+  table,
+  employee,
+  employeeOptions,
+  onSaveRows,
+}: {
+  table: ProfileTable;
+  employee: EmployeeListItem | null;
+  employeeOptions: EmployeeOption[];
+  onSaveRows: (tableId: number, rows: TableRow[]) => Promise<void>;
+}) {
+  const rows = ((employee?.custom_fields ?? {})[`table_${table.id}`] as TableRow[] | undefined) ?? [];
+  const [rowModal, setRowModal] = useState<{ index: number | null } | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  // Часова таблиця: є колонка-дата «Діє з» → показуємо останній запис як панель, решта = історія.
+  const dateCol = table.columns.find((c) => c.key === 'die_z') || table.columns.find((c) => c.type === 'date');
+  const isTimeSeries = Boolean(dateCol);
+  const bodyColumns = isTimeSeries && dateCol ? table.columns.filter((c) => c.key !== dateCol.key) : table.columns;
+
+  const ordered = rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) =>
+      isTimeSeries && dateCol ? String(b.r[dateCol.key] ?? '').localeCompare(String(a.r[dateCol.key] ?? '')) : 0,
+    );
+  const visible = isTimeSeries && !showAll ? ordered.slice(0, 1) : ordered;
+  const latestDate = isTimeSeries && dateCol && ordered.length ? ordered[0].r[dateCol.key] : null;
+
+  const saveRow = async (row: TableRow) => {
+    const next = [...rows];
+    if (rowModal?.index == null) next.push(row);
+    else next[rowModal.index] = row;
+    await onSaveRows(table.id, next);
+    setRowModal(null);
+  };
+
+  const deleteRow = async (index: number) => {
+    await onSaveRows(table.id, rows.filter((_, idx) => idx !== index));
+  };
+
+  return (
+    <section className="panel employee-info-panel">
+      <div className="panel-title">
+        <div className="table-panel-heading">
+          <h2>{table.name}</h2>
+          {latestDate ? <span className="table-panel-sub">Діє з {formatDate(String(latestDate))}</span> : null}
+        </div>
+        <div className="table-panel-actions">
+          {isTimeSeries && ordered.length > 1 ? (
+            <button type="button" className={showAll ? 'active' : ''} onClick={() => setShowAll((v) => !v)}>
+              <ListChecks size={15} />
+              {showAll ? 'Згорнути' : `Історія (${ordered.length})`}
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setRowModal({ index: null })}>
+            <Plus size={15} />
+            Додати
+          </button>
+        </div>
+      </div>
+      {rows.length ? (
+        <div className="table-records">
+          {visible.map(({ r, i }) => (
+            <TableRecordCard
+              key={i}
+              columns={bodyColumns}
+              row={r}
+              employeeOptions={employeeOptions}
+              onEdit={() => setRowModal({ index: i })}
+              onDelete={() => void deleteRow(i)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="profile-tab-placeholder">
+          <EmptyState title="Нічого не знайдено" />
+        </div>
+      )}
+      {rowModal ? (
+        <EmployeeTableRowModal
+          table={table}
+          initial={rowModal.index == null ? null : rows[rowModal.index]}
+          employeeOptions={employeeOptions}
+          onClose={() => setRowModal(null)}
+          onSave={saveRow}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function ProfileFieldValueInput({
+  field,
+  value,
+  employeeOptions,
+  onChange,
+}: {
+  field: ProfileFieldDef;
+  value: string;
+  employeeOptions: EmployeeOption[];
+  onChange: (value: string) => void;
+}) {
+  const common = {
+    className: 'people-data-input profile-field-input',
+    value,
+    onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      onChange(event.target.value),
+  };
+  switch (field.field_type) {
+    case 'textarea':
+      return <textarea {...common} rows={3} />;
+    case 'number':
+      return <input type="number" {...common} />;
+    case 'date':
+      return <input type="date" {...common} />;
+    case 'url':
+      return <input type="url" inputMode="url" placeholder="https://" {...common} />;
+    case 'select':
+      return (
+        <select {...common}>
+          <option value="">—</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    case 'employee':
+      return (
+        <select {...common}>
+          <option value="">—</option>
+          {employeeOptions.map((option) => (
+            <option key={option.id} value={String(option.id)}>
+              {option.full_name}
+            </option>
+          ))}
+        </select>
+      );
+    default:
+      return <input type="text" {...common} />;
+  }
+}
+
+function EmployeeConfigPanel({
+  title,
+  fields,
+  employee,
+  employeeOptions,
+  onSaveValues,
+  copy,
+}: {
+  title: string;
+  fields: ProfileFieldDef[];
+  employee: EmployeeListItem | null;
+  employeeOptions: EmployeeOption[];
+  onSaveValues: (values: Record<string, unknown>) => Promise<void>;
+  copy: AppCopy;
+}) {
+  const editableFields = useMemo(() => fields.filter((field) => !field.is_system), [fields]);
+
+  function displayValue(field: ProfileFieldDef): string {
+    if (!field.is_system && field.field_type === 'employee') {
+      const raw = (employee?.custom_fields ?? {})[String(field.id)];
+      if (raw === undefined || raw === null || raw === '') return '-';
+      const found = employeeOptions.find((option) => String(option.id) === String(raw));
+      return found ? found.full_name : String(raw);
+    }
+    return resolveProfileFieldValue(field, employee);
+  }
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [draft, setDraft] = useState<Record<string, string>>({});
+
+  function startEdit() {
+    const initial: Record<string, string> = {};
+    editableFields.forEach((field) => {
+      const raw = (employee?.custom_fields ?? {})[String(field.id)];
+      initial[String(field.id)] = raw === undefined || raw === null ? '' : String(raw);
+    });
+    setDraft(initial);
+    setError('');
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setError('');
+  }
+
+  async function handleSave() {
+    const missing = editableFields.find(
+      (field) => field.is_required && !(draft[String(field.id)] ?? '').trim(),
+    );
+    if (missing) {
+      setError(`${copy.people.fieldRequired}: ${missing.name}`);
+      return;
+    }
+    const values: Record<string, unknown> = {};
+    editableFields.forEach((field) => {
+      const raw = (draft[String(field.id)] ?? '').trim();
+      if (field.field_type === 'number') {
+        values[String(field.id)] = raw === '' ? '' : Number(raw);
+      } else {
+        values[String(field.id)] = raw;
+      }
+    });
+    setSaving(true);
+    setError('');
+    try {
+      await onSaveValues(values);
+      setEditing(false);
+    } catch {
+      setError(copy.common.backendRetry || 'Не вдалося зберегти. Спробуйте ще раз.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="panel employee-info-panel">
+      <div className="panel-title">
+        <h2>{title}</h2>
+        {editableFields.length ? (
+          editing ? (
+            <div className="panel-edit-actions">
+              <button type="button" className="secondary-action" onClick={cancelEdit} disabled={saving}>
+                <X size={15} />
+                {copy.people.cancel}
+              </button>
+              <button type="button" className="primary-action" onClick={handleSave} disabled={saving}>
+                <Check size={15} />
+                {saving ? copy.people.saving : copy.people.save}
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={startEdit}>
+              <FileText size={15} />
+              {copy.people.edit || 'Edit'}
+            </button>
+          )
+        ) : null}
+      </div>
+      {error ? <div className="panel-edit-error">{error}</div> : null}
+      <div className="field-grid">
+        {fields.map((field) => {
+          const editable = editing && !field.is_system;
+          return (
+            <div className="field-row" key={field.id}>
+              <span>
+                {field.name}
+                {field.is_required && editable ? <em className="field-required-mark"> *</em> : null}
+              </span>
+              {editable ? (
+                <ProfileFieldValueInput
+                  field={field}
+                  value={draft[String(field.id)] ?? ''}
+                  employeeOptions={employeeOptions}
+                  onChange={(value) => setDraft((current) => ({ ...current, [String(field.id)]: value }))}
+                />
+              ) : (
+                <strong>{displayValue(field)}</strong>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

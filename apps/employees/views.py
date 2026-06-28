@@ -739,6 +739,15 @@ class EmployeeFieldGroupViewSet(EmployeeApiViewSet):
             qs = qs.filter(tab=tab)
         return qs
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_system:
+            return Response(
+                {"detail": "Системну групу не можна видалити."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 class EmployeeFieldViewSet(EmployeeApiViewSet):
     serializer_class = EmployeeFieldSerializer

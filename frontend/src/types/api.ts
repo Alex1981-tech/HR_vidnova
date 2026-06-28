@@ -314,6 +314,9 @@ export type EmployeeListItem = EmployeeProfile & {
   legacy_peopleforce_id: string;
   employee_number: string;
   personal_email: string;
+  telegram_id: string;
+  facebook_url: string;
+  instagram_url: string;
   birth_date: string | null;
   gender: string;
   avatar_url: string;

@@ -13,8 +13,12 @@ SEED = [
     ("personal", "Контакти", "contacts", [
         ("Мобільний телефон", "system", "phone", True, True, False),
         ("Номер робочого телефону", "system", "phone2", True, True, False),
+        ("Telegram ID", "system", "telegram_id", True, False, False),
     ]),
-    ("personal", "Соціальні мережі", "social", []),
+    ("personal", "Соціальні мережі", "social", [
+        ("URL-адреса Facebook", "system", "facebook_url", True, False, False),
+        ("URL-адреса Instagram", "system", "instagram_url", True, False, False),
+    ]),
     ("personal", "Додаткове керівництво", "extra-management", []),
     ("work", "Посада", "position", [
         ("Посада", "system", "position", True, True, False),
