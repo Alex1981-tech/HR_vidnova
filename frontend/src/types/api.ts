@@ -790,3 +790,41 @@ export type AnnouncementMediaUpload = {
   name: string;
   size: number;
 };
+
+export type ProjectMember = {
+  id: number;
+  full_name: string;
+  position_name?: string;
+  avatar_url?: string;
+  avatar_local_url?: string;
+};
+
+export type Project = {
+  id: number;
+  name: string;
+  emoji: string;
+  is_archived: boolean;
+  order: number;
+  member_count: number;
+  members?: ProjectMember[];
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type ProjectPayload = {
+  name: string;
+  emoji?: string;
+  is_archived?: boolean;
+};
+
+export type TimeEntry = {
+  id: number;
+  project: number | null;
+  project_name: string;
+  project_emoji: string;
+  comment: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number;
+  is_running: boolean;
+};

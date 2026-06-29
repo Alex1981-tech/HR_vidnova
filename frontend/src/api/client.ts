@@ -43,6 +43,9 @@ import type {
   LeaveTypePayload,
   PositionOption,
   ProbationPolicyOption,
+  Project,
+  ProjectPayload,
+  TimeEntry,
   SelfAttendance,
   SelfKnowledge,
   SelfLeave,
@@ -855,6 +858,26 @@ export const api = {
   deleteLeaveType: (id: number) => request<void>(`/api/leave/types/${id}/`, { method: 'DELETE' }),
   reorderLeaveTypes: (ids: number[]) =>
     request<LeaveType[]>('/api/leave/types/reorder/', { method: 'POST', body: JSON.stringify({ ids }) }),
+  projects: (params: { archived?: boolean; q?: string; page?: number; page_size?: number } = {}) =>
+    request<ApiList<Project> | Project[]>(`/api/projects/${buildQuery(params)}`).then(normalizeList),
+  project: (id: number) => request<Project>(`/api/projects/${id}/`),
+  createProject: (payload: ProjectPayload) =>
+    request<Project>('/api/projects/', { method: 'POST', body: JSON.stringify(payload) }),
+  updateProject: (id: number, payload: Partial<ProjectPayload>) =>
+    request<Project>(`/api/projects/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteProject: (id: number) => request<void>(`/api/projects/${id}/`, { method: 'DELETE' }),
+  archiveProject: (id: number) => request<Project>(`/api/projects/${id}/archive/`, { method: 'POST' }),
+  unarchiveProject: (id: number) => request<Project>(`/api/projects/${id}/unarchive/`, { method: 'POST' }),
+  addProjectMembers: (id: number, employee_ids: number[]) =>
+    request<Project>(`/api/projects/${id}/add-members/`, { method: 'POST', body: JSON.stringify({ employee_ids }) }),
+  removeProjectMembers: (id: number, employee_ids: number[]) =>
+    request<Project>(`/api/projects/${id}/remove-members/`, { method: 'POST', body: JSON.stringify({ employee_ids }) }),
+  timeEntries: (params: { date?: string; page_size?: number } = {}) =>
+    request<ApiList<TimeEntry> | TimeEntry[]>(`/api/projects/time-entries/${buildQuery(params)}`).then(normalizeList),
+  activeTimeEntry: () => request<TimeEntry | null>('/api/projects/time-entries/active/'),
+  startTimeEntry: (payload: { project?: number | null; comment?: string }) =>
+    request<TimeEntry>('/api/projects/time-entries/start/', { method: 'POST', body: JSON.stringify(payload) }),
+  stopTimeEntry: (id: number) => request<TimeEntry>(`/api/projects/time-entries/${id}/stop/`, { method: 'POST' }),
   documentFolders: (params: { q?: string; page?: number; page_size?: number } = {}) =>
     request<ApiList<EmployeeDocumentFolder> | EmployeeDocumentFolder[]>(
       `/api/employees/document-folders/${buildQuery(params)}`,

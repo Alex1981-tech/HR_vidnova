@@ -179,3 +179,37 @@ class PeopleForceCompatTimesheetEntry(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.legacy_peopleforce_employee_id} {self.starts_at} - {self.ends_at}"
+
+
+class PeopleForceWebhookEvent(TimestampedModel):
+    """Подія, отримана від PeopleForce через вебхук (push). Лог + диспетчеризація.
+
+    Вебхук слугує тригером: фактичне застосування даних робить
+    PeopleForce-importer (light sync), щоб не дублювати мапінг і не залежати
+    від точного формату payload.
+    """
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received"
+        QUEUED = "queued", "Queued"
+        SKIPPED = "skipped", "Skipped"
+        FAILED = "failed", "Failed"
+
+    topic = models.CharField(max_length=120, blank=True, db_index=True)
+    event_id = models.CharField(max_length=120, blank=True, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    headers = models.JSONField(default=dict, blank=True)
+    signature_valid = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.RECEIVED)
+    error = models.TextField(blank=True)
+    remote_addr = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["topic", "-created_at"], name="pfwebhook_topic_time_idx"),
+            models.Index(fields=["status", "-created_at"], name="pfwebhook_status_time_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.topic or 'unknown'} @ {self.created_at:%Y-%m-%d %H:%M}"

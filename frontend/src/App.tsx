@@ -83,7 +83,7 @@ import { GraphBlock, GraphCanvas, useGraph } from '@gravity-ui/graph/react';
 import type { LucideIcon } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { ChangeEvent, CSSProperties, DragEvent, FormEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -144,12 +144,14 @@ import type {
   LeaveType,
   PositionOption,
   ProbationPolicyOption,
+  Project,
   SelfAttendance,
   SelfKnowledge,
   SelfLeave,
   SkillOption,
   TeamOption,
   TimeCorrectionRequest,
+  TimeEntry,
   UserPreferences,
   WorkType,
   WorkingPatternOption,
@@ -510,13 +512,21 @@ function peopleEmployeeTabPath(employeeId: number, tabKey: string, search = ''):
   return `/people/employees/${employeeId}/${profileTabKeyToSlug(tabKey)}${search}`;
 }
 
-type AttendanceRoute = { mode: 'company' } | { mode: 'employee'; id: number };
+type AttendanceRoute =
+  | { mode: 'company' }
+  | { mode: 'employee'; id: number }
+  | { mode: 'projects' }
+  | { mode: 'project'; id: number };
 
 function attendanceRouteFromPathname(pathname: string): AttendanceRoute {
   const [sectionName, resource, idSegment] = pathname.split('/').filter(Boolean);
   if (sectionName === 'attendance' && resource === 'employees') {
     const id = positiveRouteId(idSegment);
     return id ? { mode: 'employee', id } : { mode: 'company' };
+  }
+  if (sectionName === 'attendance' && resource === 'projects') {
+    const id = positiveRouteId(idSegment);
+    return id ? { mode: 'project', id } : { mode: 'projects' };
   }
   return { mode: 'company' };
 }
@@ -537,6 +547,14 @@ function monthFromAttendanceSearch(search: string): Date {
 
 function attendanceEmployeePath(employeeId: number, month?: string): string {
   return `/attendance/employees/${employeeId}${month ? `?month=${month}` : ''}`;
+}
+
+function attendanceProjectsPath(): string {
+  return '/attendance/projects';
+}
+
+function attendanceProjectPath(projectId: number): string {
+  return `/attendance/projects/${projectId}`;
 }
 
 type SettingsItem = {
@@ -1423,6 +1441,170 @@ function MobileMenu({
   );
 }
 
+function formatElapsedClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function clockHM(iso: string | null): string {
+  if (!iso) return '…';
+  const date = new Date(iso);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function TimeTracker({ copy }: { copy: AppCopy }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState<TimeEntry | null>(null);
+  const [today, setToday] = useState<TimeEntry[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState('');
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [, setTick] = useState(0);
+
+  const refresh = useCallback(async () => {
+    const [act, list] = await Promise.all([
+      api.activeTimeEntry().catch(() => null),
+      api.timeEntries({ date: 'today', page_size: 100 }).catch(() => ({ items: [] as TimeEntry[], total: 0, next: null, previous: null })),
+    ]);
+    setActive(act);
+    setToday(list.items ?? []);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    const id = window.setInterval(() => setTick((value) => value + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  useEffect(() => {
+    if (!open || projects.length) return;
+    api.projects({ archived: false, page_size: 200 }).then((result) => setProjects(result.items)).catch(() => undefined);
+  }, [open, projects.length]);
+
+  const elapsed = active ? Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000) : 0;
+  const todayTotalSeconds = today.reduce((sum, entry) => sum + (entry.id === active?.id ? elapsed : entry.duration_seconds), 0);
+
+  async function start() {
+    setBusy(true);
+    try {
+      await api.startTimeEntry({ project: projectId ? Number(projectId) : null, comment: comment.trim() });
+      setComment('');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function stop() {
+    if (!active) return;
+    setBusy(true);
+    try {
+      await api.stopTimeEntry(active.id);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="topbar-menu-wrap">
+      {open ? <button type="button" className="topbar-menu-backdrop" aria-label="Закрити" onClick={() => setOpen(false)} /> : null}
+      <button
+        type="button"
+        className={`icon-button time-tracker-trigger${active ? ' running' : ''}${open ? ' active' : ''}`}
+        aria-label={copy.common.timeTracking}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {active ? (
+          <span className="time-tracker-clock">
+            <i className="time-tracker-dot" />
+            {formatElapsedClock(elapsed)}
+          </span>
+        ) : (
+          <Timer size={18} />
+        )}
+      </button>
+      {open ? (
+        <section className="topbar-popover time-tracker-popover" aria-label={copy.common.timeTracking}>
+          <h2>Відстеження часу</h2>
+          {active ? (
+            <div className="time-tracker-running">
+              <div className="time-tracker-running-head">
+                <span className="project-emoji">{active.project_emoji || '📁'}</span>
+                <strong>{active.project_name || 'Без проєкту'}</strong>
+              </div>
+              {active.comment ? <p className="time-tracker-running-comment">{active.comment}</p> : null}
+              <div className="time-tracker-big">{formatElapsedClock(elapsed)}</div>
+              <button type="button" className="primary-action time-tracker-stop" onClick={() => void stop()} disabled={busy}>
+                {busy ? 'Зупинення…' : 'Зупинити роботу'}
+              </button>
+            </div>
+          ) : (
+            <>
+              <label className="topbar-form-field">
+                <span>Проєкт</span>
+                <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+                  <option value="">Без проєкту</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.emoji} {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="topbar-form-field">
+                <span>Коментар</span>
+                <textarea rows={3} value={comment} onChange={(event) => setComment(event.target.value)} />
+              </label>
+              <button type="button" className="primary-action" onClick={() => void start()} disabled={busy}>
+                <Timer size={16} />
+                {busy ? 'Запуск…' : 'Почати роботу'}
+              </button>
+            </>
+          )}
+          {today.length ? (
+            <div className="time-tracker-list">
+              {today.map((entry) => (
+                <div key={entry.id} className="time-tracker-item">
+                  <span className="project-emoji">{entry.project_emoji || '📁'}</span>
+                  <span className="time-tracker-item-info">
+                    <strong>{entry.project_name || 'Без проєкту'}</strong>
+                    <span>
+                      {clockHM(entry.started_at)} – {entry.id === active?.id ? '…' : clockHM(entry.ended_at)}
+                    </span>
+                  </span>
+                  <span className="time-tracker-item-dur">{minutesToText(Math.round((entry.id === active?.id ? elapsed : entry.duration_seconds) / 60))}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="time-tracker-empty">Не знайдено записів відстеження часу на сьогодні.</div>
+          )}
+          <div className="time-tracker-summary">
+            <span>
+              Відпрацьовано
+              <strong>{minutesToText(Math.round(todayTotalSeconds / 60))}</strong>
+            </span>
+            <span>
+              Очікувано
+              <strong>8год</strong>
+            </span>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function Topbar({
   auth,
   employee,
@@ -1468,47 +1650,7 @@ function Topbar({
         </button>
       </div>
       <div className="top-actions">
-        <div className="topbar-menu-wrap">
-          <button
-            type="button"
-            className={`icon-button${openMenu === 'timer' ? ' active' : ''}`}
-            aria-label={copy.common.timeTracking}
-            aria-expanded={openMenu === 'timer'}
-            onClick={() => toggleMenu('timer')}
-          >
-            <Timer size={18} />
-          </button>
-          {openMenu === 'timer' ? (
-            <section className="topbar-popover time-tracker-popover" aria-label={copy.common.timeTracking}>
-              <h2>Відстеження часу</h2>
-              <label className="topbar-form-field">
-                <span>За бажанням</span>
-                <select defaultValue="" disabled>
-                  <option value="">Виберіть проект</option>
-                </select>
-              </label>
-              <label className="topbar-form-field">
-                <span>Коментар</span>
-                <textarea rows={4} disabled />
-              </label>
-              <button type="button" className="primary-action" disabled>
-                <Timer size={16} />
-                Почати роботу
-              </button>
-              <div className="time-tracker-empty">Не знайдено записів відстеження часу на сьогодні.</div>
-              <div className="time-tracker-summary">
-                <span>
-                  Відпрацьовано
-                  <strong>--:--</strong>
-                </span>
-                <span>
-                  Очікувано
-                  <strong>8год</strong>
-                </span>
-              </div>
-            </section>
-          ) : null}
-        </div>
+        <TimeTracker copy={copy} />
         <div className="topbar-menu-wrap">
           <button
             type="button"
@@ -8351,6 +8493,12 @@ function AttendanceView(props: {
   if (attendanceRoute.mode === 'employee') {
     return <EmployeeAttendanceDetailView {...props} employeeId={attendanceRoute.id} />;
   }
+  if (attendanceRoute.mode === 'projects') {
+    return <ProjectsListView copy={props.copy} />;
+  }
+  if (attendanceRoute.mode === 'project') {
+    return <ProjectDetailView copy={props.copy} projectId={attendanceRoute.id} brandingSettings={props.brandingSettings} employeeCovers={props.employeeCovers} />;
+  }
   return <CompanyAttendanceView {...props} />;
 }
 
@@ -8453,7 +8601,7 @@ function CompanyAttendanceView({
           />
         </div>
         <div className="header-actions">
-          <button type="button" className="secondary-action">
+          <button type="button" className="secondary-action" onClick={() => navigate(attendanceProjectsPath())}>
             <Settings size={18} />
             {copyValue(copy.attendance.projectManagement, 'Управління проектами')}
           </button>
@@ -8549,6 +8697,785 @@ function CompanyAttendanceView({
         onOpenOrg={() => navigate('/people/org')}
       />
     </main>
+  );
+}
+
+const PROJECT_EMOJI_OPTIONS = ['📁', '📊', '🚀', '🎯', '🛠️', '💼', '📦', '🧪', '🩺', '💡', '🗂️', '⭐'];
+
+// Переюзовний emoji-пікер (ті самі дані/стилі, що в Базі знань) — типовий елемент.
+function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [activeGroup, setActiveGroup] = useState(knowledgeEmojiGroups[0].id);
+  const activeSet = knowledgeEmojiGroups.find((group) => group.id === activeGroup) ?? knowledgeEmojiGroups[0];
+  return (
+    <div className="knowledge-emoji-field">
+      <button type="button" className={`knowledge-emoji-trigger ${open ? 'active' : ''}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+        <span>{value || '📁'}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open ? (
+        <div className="knowledge-emoji-popover">
+          <div className="knowledge-emoji-tabs" role="tablist" aria-label="Групи emoji">
+            {knowledgeEmojiGroups.map((group) => (
+              <button
+                type="button"
+                key={group.id}
+                className={group.id === activeGroup ? 'active' : ''}
+                title={group.label}
+                aria-label={group.label}
+                onClick={() => setActiveGroup(group.id)}
+              >
+                {group.icon}
+              </button>
+            ))}
+          </div>
+          <div className="knowledge-emoji-title">{activeSet.label}</div>
+          <div className="knowledge-emoji-grid">
+            {activeSet.emojis.map((emoji) => (
+              <button
+                type="button"
+                key={emoji}
+                className={value === emoji ? 'active' : ''}
+                aria-label={`Обрати ${emoji}`}
+                onClick={() => {
+                  onChange(emoji);
+                  setOpen(false);
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProjectsListView({ copy }: { copy: AppCopy }) {
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<'active' | 'archived'>('active');
+  const [search, setSearch] = useState('');
+  const [rows, setRows] = useState<Project[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [menuFor, setMenuFor] = useState<number | null>(null);
+  const [editProject, setEditProject] = useState<Project | null>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  const loadProjects = useCallback(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    api
+      .projects({ archived: tab === 'archived', q: search, page_size: 200 })
+      .then((result) => {
+        if (cancelled) return;
+        setRows(result.items);
+        setTotal(result.total);
+        setLoadState('ok');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRows([]);
+        setTotal(0);
+        setLoadState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, search, refreshToken]);
+
+  useEffect(() => loadProjects(), [loadProjects]);
+
+  async function handleCopy(project: Project) {
+    setMenuFor(null);
+    await api.createProject({ name: `${project.name} (копія)`, emoji: project.emoji });
+    setRefreshToken((token) => token + 1);
+  }
+
+  async function handleArchiveToggle(project: Project) {
+    setMenuFor(null);
+    if (project.is_archived) await api.unarchiveProject(project.id);
+    else await api.archiveProject(project.id);
+    setRefreshToken((token) => token + 1);
+  }
+
+  return (
+    <main className="workspace attendance-page projects-page">
+      <header className="page-header compact">
+        <div>
+          <button type="button" className="project-back" onClick={() => navigate('/attendance')}>
+            <ChevronLeft size={16} />
+            {copyValue(copy.common.back, 'Назад')}
+          </button>
+          <h1>Проєкти</h1>
+        </div>
+        <div className="header-actions">
+          <button type="button" className="primary-action" onClick={() => setCreateOpen(true)}>
+            <Plus size={16} />
+            Новий проект
+          </button>
+        </div>
+      </header>
+
+      <SectionTabs
+        tabs={[
+          { key: 'active', label: 'Активний' },
+          { key: 'archived', label: 'Архівні' },
+        ]}
+        active={tab}
+        onChange={(key) => setTab(key as 'active' | 'archived')}
+      />
+
+      <div className="attendance-search-row">
+        <label className="wide-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder={copyValue(copy.common.search, 'Пошук...')}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="result-meta">
+        <span>{loadState === 'loading' ? copyValue(copy.common.loading, 'Завантаження…') : `Відображено ${rows.length} з ${total}`}</span>
+      </div>
+
+      {rows.length ? (
+        <div className="table-shell projects-table-shell">
+          <table className="projects-table">
+            <thead>
+              <tr>
+                <th>Ім'я</th>
+                <th className="num">Співробітники</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((project) => (
+                <tr key={project.id} className="clickable-row" tabIndex={0} onClick={() => navigate(attendanceProjectPath(project.id))}>
+                  <td>
+                    <span className="project-name-cell">
+                      <span className="project-emoji">{project.emoji || '📁'}</span>
+                      {project.name}
+                    </span>
+                  </td>
+                  <td className="num">{project.member_count}</td>
+                  <td className="row-actions">
+                    <div className="project-menu-wrap">
+                      <button
+                        type="button"
+                        className="toolbar-icon"
+                        aria-label="Дії"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMenuFor((current) => (current === project.id ? null : project.id));
+                        }}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+                      {menuFor === project.id ? (
+                        <>
+                          <button
+                            type="button"
+                            className="employee-more-backdrop"
+                            aria-hidden
+                            tabIndex={-1}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setMenuFor(null);
+                            }}
+                          />
+                          <div className="employee-more-menu project-row-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+                            <button type="button" role="menuitem" onClick={() => { setEditProject(project); setMenuFor(null); }}>
+                              Редагувати
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => void handleCopy(project)}>
+                              Копіювати
+                            </button>
+                            <button type="button" role="menuitem" className="danger" onClick={() => void handleArchiveToggle(project)}>
+                              {project.is_archived ? 'Розархівувати' : 'Архівувати'}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : loadState === 'error' ? (
+        <EmptyState title="Не вдалося завантажити" text={copy.common.backendRetry} />
+      ) : loadState === 'ok' ? (
+        <EmptyState title={tab === 'archived' ? 'Архівних проєктів немає' : 'Проєктів ще немає'} text={tab === 'archived' ? '' : 'Створіть перший проєкт кнопкою «Новий проект».'} />
+      ) : null}
+
+      {createOpen ? (
+        <CreateProjectModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(project) => {
+            setCreateOpen(false);
+            navigate(attendanceProjectPath(project.id));
+          }}
+        />
+      ) : null}
+      {editProject ? (
+        <CreateProjectModal
+          project={editProject}
+          onClose={() => setEditProject(null)}
+          onCreated={() => {
+            setEditProject(null);
+            setRefreshToken((token) => token + 1);
+          }}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function CreateProjectModal({ project, onClose, onCreated }: { project?: Project; onClose: () => void; onCreated: (project: Project) => void }) {
+  const isEdit = Boolean(project);
+  const [name, setName] = useState(project?.name ?? '');
+  const [emoji, setEmoji] = useState(project?.emoji || PROJECT_EMOJI_OPTIONS[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSave() {
+    if (!name.trim()) {
+      setError("Введіть ім'я проєкту.");
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const saved = isEdit && project
+        ? await api.updateProject(project.id, { name: name.trim(), emoji })
+        : await api.createProject({ name: name.trim(), emoji });
+      onCreated(saved);
+    } catch {
+      setError(isEdit ? 'Не вдалося зберегти зміни.' : 'Не вдалося створити проєкт. Спробуйте ще раз.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-option-modal-layer project-modal-layer" role="dialog" aria-modal="true" aria-label={isEdit ? 'Редагувати проєкт' : 'Новий проект'}>
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="settings-option-modal project-create-modal">
+        <header className="settings-option-modal-head">
+          <strong>{isEdit ? 'Редагувати проєкт' : 'Новий проект'}</strong>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="project-create-body">
+          <label className="project-field project-field-name">
+            <span>Ім'я</span>
+            <input
+              className="profile-field-input"
+              value={name}
+              autoFocus
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleSave();
+              }}
+            />
+          </label>
+          <div className="project-field project-field-emoji">
+            <span>Емодзі</span>
+            <EmojiPicker value={emoji} onChange={setEmoji} />
+          </div>
+        </div>
+        {error ? <p className="project-modal-error">{error}</p> : null}
+        <footer className="project-modal-footer">
+          <button type="button" className="primary-action" onClick={handleSave} disabled={saving}>
+            <Check size={15} />
+            {saving ? 'Збереження…' : 'Зберегти'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ProjectDetailView({
+  copy,
+  projectId,
+}: {
+  copy: AppCopy;
+  projectId: number;
+  brandingSettings: BrandingSettings;
+  employeeCovers: EmployeeCoverMap;
+}) {
+  const navigate = useNavigate();
+  const [project, setProject] = useState<Project | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [month, setMonth] = useState(getInitialMonth);
+  const [search, setSearch] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [memberMenuFor, setMemberMenuFor] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    api
+      .project(projectId)
+      .then((result) => {
+        if (cancelled) return;
+        setProject(result);
+        setLoadState('ok');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProject(null);
+        setLoadState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const members = project?.members ?? [];
+  const memberKey = members.map((member) => member.id).join(',');
+  const [stats, setStats] = useState<{ byMember: Record<number, { actual: number; brk: number }>; byDay: Record<string, number>; total: number }>({
+    byMember: {},
+    byDay: {},
+    total: 0,
+  });
+
+  useEffect(() => {
+    const ids = memberKey ? memberKey.split(',').map(Number) : [];
+    if (!ids.length) {
+      setStats({ byMember: {}, byDay: {}, total: 0 });
+      return;
+    }
+    let cancelled = false;
+    const range = getMonthRange(month);
+    Promise.all(
+      ids.map((id) =>
+        api
+          .employeeAttendance(id, range)
+          .then((detail) => ({ id, detail }))
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const byMember: Record<number, { actual: number; brk: number }> = {};
+      const byDay: Record<string, number> = {};
+      let total = 0;
+      for (const row of results) {
+        if (!row) continue;
+        const actual = row.detail.summary?.actual_minutes ?? 0;
+        const brk = row.detail.summary?.break_minutes ?? 0;
+        byMember[row.id] = { actual, brk };
+        total += actual;
+        for (const day of row.detail.days ?? []) {
+          byDay[day.date] = (byDay[day.date] ?? 0) + (day.actual_minutes ?? 0);
+        }
+      }
+      setStats({ byMember, byDay, total });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [memberKey, month]);
+
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const chartDays = Array.from({ length: daysInMonth }, (_, index) => {
+    const date = new Date(month.getFullYear(), month.getMonth(), index + 1);
+    const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const weekday = date.getDay();
+    return { day: index + 1, iso, minutes: stats.byDay[iso] ?? 0, weekend: weekday === 0 || weekday === 6 };
+  });
+  const chartMax = Math.max(1, ...chartDays.map((entry) => entry.minutes));
+  const avgMinutes = members.length ? Math.round(stats.total / members.length) : 0;
+
+  const visibleMembers = search.trim()
+    ? members.filter((member) => member.full_name.toLowerCase().includes(search.trim().toLowerCase()))
+    : members;
+
+  async function removeMember(employeeId: number) {
+    const updated = await api.removeProjectMembers(projectId, [employeeId]);
+    setProject(updated);
+  }
+
+  async function toggleArchive() {
+    if (!project) return;
+    const updated = project.is_archived ? await api.unarchiveProject(projectId) : await api.archiveProject(projectId);
+    setProject(updated);
+    setMenuOpen(false);
+  }
+
+  async function deleteProject() {
+    setMenuOpen(false);
+    await api.deleteProject(projectId);
+    navigate(attendanceProjectsPath());
+  }
+
+  return (
+    <main className="workspace attendance-page projects-page project-detail-page">
+      <header className="page-header compact">
+        <div>
+          <button type="button" className="project-back" onClick={() => navigate(attendanceProjectsPath())}>
+            <ChevronLeft size={16} />
+            {copyValue(copy.common.back, 'Назад')}
+          </button>
+          <h1>
+            <span className="project-emoji">{project?.emoji || '📁'}</span>
+            {project?.name || (loadState === 'loading' ? copyValue(copy.common.loading, 'Завантаження…') : 'Проєкт')}
+          </h1>
+        </div>
+        <div className="header-actions">
+          <div className="project-menu-wrap">
+            <button type="button" className="toolbar-icon" aria-label="Дії" onClick={() => setMenuOpen((value) => !value)}>
+              <MoreHorizontal size={18} />
+            </button>
+            {menuOpen ? (
+              <>
+                <button type="button" className="employee-more-backdrop" aria-hidden tabIndex={-1} onClick={() => setMenuOpen(false)} />
+                <div className="employee-more-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={toggleArchive}>
+                    {project?.is_archived ? 'Розархівувати' : 'Архівувати'}
+                  </button>
+                  <button type="button" role="menuitem" className="danger" onClick={deleteProject}>
+                    Видалити проєкт
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <button type="button" className="primary-action" onClick={() => setPickerOpen(true)}>
+            <Plus size={16} />
+            Людина
+          </button>
+        </div>
+      </header>
+
+      <div className="attendance-detail-toolbar">
+        <div className="month-controls">
+          <button type="button" className="toolbar-button strong" onClick={() => setMonth(getInitialMonth())}>
+            Поточний місяць
+          </button>
+          <button type="button" className="toolbar-icon" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="Попередній місяць">
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" className="toolbar-icon" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} aria-label="Наступний місяць">
+            <ChevronRight size={16} />
+          </button>
+          <span>{formatMonthTitle(month, copy)}</span>
+        </div>
+        <label className="wide-search project-member-search">
+          <Search size={18} />
+          <input type="search" placeholder="Пошук за ім'ям..." value={search} onChange={(event) => setSearch(event.target.value)} />
+        </label>
+      </div>
+
+      <div className="project-detail-metrics">
+        <section className="project-chart-card">
+          <header>Відстежено годин / днів ({formatMonthTitle(month, copy)})</header>
+          {stats.total > 0 ? (
+            <div className="project-chart-plot">
+              <div className="project-chart-yaxis">
+                <span>{(chartMax / 60).toFixed(1)}</span>
+                <span>{(chartMax / 120).toFixed(1)}</span>
+                <span>0</span>
+              </div>
+              <div className="project-chart-area-wrap">
+                <svg className="project-chart-svg" viewBox={`0 0 ${Math.max(daysInMonth - 1, 1)} 100`} preserveAspectRatio="none" aria-hidden>
+                  <polygon
+                    className="project-chart-fill"
+                    points={`0,100 ${chartDays.map((entry, index) => `${index},${100 - (entry.minutes / chartMax) * 100}`).join(' ')} ${daysInMonth - 1},100`}
+                  />
+                  <polyline
+                    className="project-chart-stroke"
+                    points={chartDays.map((entry, index) => `${index},${100 - (entry.minutes / chartMax) * 100}`).join(' ')}
+                  />
+                </svg>
+                <div className="project-chart-xaxis">
+                  {chartDays.map((entry) => (
+                    <span key={entry.iso}>{entry.day % 5 === 0 ? entry.day : ''}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="project-chart-empty">Немає даних</div>
+          )}
+        </section>
+        <div className="project-kpi-column">
+          <MetricCard label="Загальна кількість годин" value={minutesToText(stats.total)} />
+          <MetricCard label="Середнє по співробітниках" value={minutesToText(avgMinutes)} />
+        </div>
+      </div>
+
+      {members.length ? (
+        <div className="table-shell projects-table-shell">
+          <table className="projects-table project-members-table">
+            <thead>
+              <tr>
+                <th>Повне ім'я</th>
+                <th className="num">Відпрацьовано</th>
+                <th className="num">Перерва</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {visibleMembers.map((member) => (
+                <tr key={member.id}>
+                  <td>
+                    <span className="project-member-cell">
+                      <Avatar name={member.full_name} src={employeeAvatarUrl(member)} accent={employeeAccentClasses[member.id % employeeAccentClasses.length]} size="sm" />
+                      <span className="project-member-info">
+                        <strong>{member.full_name}</strong>
+                        {member.position_name ? <span>{member.position_name}</span> : null}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="num">{minutesToText(stats.byMember[member.id]?.actual ?? 0)}</td>
+                  <td className="num">{minutesToText(stats.byMember[member.id]?.brk ?? 0)}</td>
+                  <td className="row-actions">
+                    <div className="project-menu-wrap">
+                      <button
+                        type="button"
+                        className="toolbar-icon"
+                        aria-label="Дії"
+                        onClick={() => setMemberMenuFor((current) => (current === member.id ? null : member.id))}
+                      >
+                        <MoreHorizontal size={18} />
+                      </button>
+                      {memberMenuFor === member.id ? (
+                        <>
+                          <button type="button" className="employee-more-backdrop" aria-hidden tabIndex={-1} onClick={() => setMemberMenuFor(null)} />
+                          <div className="employee-more-menu project-row-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="danger"
+                              onClick={() => {
+                                setMemberMenuFor(null);
+                                void removeMember(member.id);
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              Видалити
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : loadState === 'error' ? (
+        <EmptyState title="Не вдалося завантажити" text={copy.common.backendRetry} />
+      ) : loadState === 'ok' ? (
+        <div className="project-empty-members">
+          <EmptyState title="Немає людей, призначених для проєкту" text="Призначте співробітника для запуску проєкту" />
+          <button type="button" className="primary-action" onClick={() => setPickerOpen(true)}>
+            <Plus size={16} />
+            Люди
+          </button>
+        </div>
+      ) : null}
+
+      {pickerOpen ? (
+        <ProjectMembersPicker
+          projectId={projectId}
+          existingIds={members.map((member) => member.id)}
+          copy={copy}
+          onClose={() => setPickerOpen(false)}
+          onAdded={(updated) => {
+            setProject(updated);
+            setPickerOpen(false);
+          }}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function ProjectMembersPicker({
+  projectId,
+  existingIds,
+  copy,
+  onClose,
+  onAdded,
+}: {
+  projectId: number;
+  existingIds: number[];
+  copy: AppCopy;
+  onClose: () => void;
+  onAdded: (project: Project) => void;
+}) {
+  const [mode, setMode] = useState<'employee' | 'team'>('employee');
+  const [search, setSearch] = useState('');
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [saving, setSaving] = useState(false);
+  const existing = useMemo(() => new Set(existingIds), [existingIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadState('loading');
+    if (mode === 'employee') {
+      api
+        .employees({ status: 'active', q: search, page_size: 50 })
+        .then((result) => {
+          if (cancelled) return;
+          setEmployees(result.items.filter((employee) => !existing.has(employee.id)));
+          setLoadState('ok');
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setEmployees([]);
+          setLoadState('error');
+        });
+    } else {
+      api
+        .teams({ q: search, is_active: true, page_size: 50 })
+        .then((result) => {
+          if (cancelled) return;
+          setTeams(result.items);
+          setLoadState('ok');
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setTeams([]);
+          setLoadState('error');
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, search, existing]);
+
+  function switchMode(next: 'employee' | 'team') {
+    setMode(next);
+    setSearch('');
+    setSelected(new Set());
+  }
+
+  function toggle(id: number) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleAdd() {
+    if (!selected.size) return;
+    setSaving(true);
+    try {
+      const updated = await api.addProjectMembers(projectId, [...selected]);
+      onAdded(updated);
+    } catch {
+      setSaving(false);
+    }
+  }
+
+  async function addTeam(team: TeamOption) {
+    const ids = team.members.map((member) => member.id).filter((id) => !existing.has(id));
+    if (!ids.length) return;
+    setSaving(true);
+    try {
+      const updated = await api.addProjectMembers(projectId, ids);
+      onAdded(updated);
+    } catch {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="settings-option-modal-layer project-modal-layer" role="dialog" aria-modal="true" aria-label="Додати співробітника до проєкту">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="settings-option-modal project-picker-modal">
+        <header className="settings-option-modal-head">
+          <strong>Додати співробітника до проєкту</strong>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="segmented project-picker-tabs">
+          <button type="button" className={mode === 'employee' ? 'active' : ''} onClick={() => switchMode('employee')}>
+            Співробітник
+          </button>
+          <button type="button" className={mode === 'team' ? 'active' : ''} onClick={() => switchMode('team')}>
+            Команда
+          </button>
+        </div>
+        <label className="settings-search project-picker-search">
+          <Search size={18} />
+          <input
+            value={search}
+            placeholder={mode === 'team' ? 'Пошук команди...' : copyValue(copy.common.search, 'Пошук...')}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <div className="project-picker-list">
+          {loadState === 'loading' ? (
+            <p className="project-picker-empty">{copyValue(copy.common.loading, 'Завантаження…')}</p>
+          ) : mode === 'employee' ? (
+            employees.length ? (
+              employees.map((employee) => (
+                <label key={employee.id} className="project-picker-row">
+                  <input type="checkbox" checked={selected.has(employee.id)} onChange={() => toggle(employee.id)} />
+                  <Avatar name={employee.full_name} src={employeeAvatarUrl(employee)} accent={employeeAccentClasses[employee.id % employeeAccentClasses.length]} size="sm" />
+                  <span className="project-picker-info">
+                    <strong>{employee.full_name}</strong>
+                    {employee.position_name ? <span>{employee.position_name}</span> : null}
+                  </span>
+                </label>
+              ))
+            ) : (
+              <p className="project-picker-empty">Нікого не знайдено</p>
+            )
+          ) : teams.length ? (
+            teams.map((team) => (
+              <button key={team.id} type="button" className="project-team-row" onClick={() => void addTeam(team)} disabled={saving}>
+                <span className="project-team-icon">
+                  <Users size={16} />
+                </span>
+                <span className="project-picker-info">
+                  <strong>{team.name}</strong>
+                  <span>{team.member_count} осіб</span>
+                </span>
+                <span className="project-team-add">
+                  <Plus size={14} />
+                  Додати всіх
+                </span>
+              </button>
+            ))
+          ) : (
+            <p className="project-picker-empty">Команд не знайдено</p>
+          )}
+        </div>
+        <footer className="project-modal-footer">
+          <button type="button" className="secondary-action" onClick={onClose}>
+            Скасувати
+          </button>
+          {mode === 'employee' ? (
+            <button type="button" className="primary-action" onClick={handleAdd} disabled={saving || !selected.size}>
+              <Check size={15} />
+              {saving ? 'Додавання…' : `Додати${selected.size ? ` (${selected.size})` : ''}`}
+            </button>
+          ) : null}
+        </footer>
+      </section>
+    </div>
   );
 }
 

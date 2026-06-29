@@ -13358,7 +13358,7 @@ button.org-graph-card-body {
 .settings-option-modal-layer {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: var(--z-modal);
   display: grid;
   place-items: start center;
   overflow: hidden;
@@ -19455,5 +19455,488 @@ textarea:focus-visible {
 
   .home-aside {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ===== Таймер відстеження часу (топбар) ===== */
+.time-tracker-trigger.running {
+  width: auto;
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+}
+.time-tracker-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.time-tracker-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success, #0f9d6c);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, #0f9d6c) 22%, transparent);
+}
+.time-tracker-running {
+  display: grid;
+  gap: var(--space-3);
+}
+.time-tracker-running-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-body);
+  font-weight: 600;
+}
+.time-tracker-running-comment {
+  margin: 0;
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+.time-tracker-big {
+  font-size: var(--font-display);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  color: var(--text);
+}
+.time-tracker-popover .time-tracker-stop.primary-action {
+  background: var(--danger, #dc4b56);
+  box-shadow: none;
+}
+.time-tracker-popover .time-tracker-stop.primary-action:hover {
+  background: var(--danger, #dc4b56);
+  filter: brightness(0.95);
+}
+.time-tracker-list {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  max-height: 200px;
+  overflow-y: auto;
+}
+.time-tracker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.time-tracker-item-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.time-tracker-item-info strong {
+  font-size: var(--font-sm);
+  font-weight: 500;
+}
+.time-tracker-item-info span {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.time-tracker-item-dur {
+  flex: 0 0 auto;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Проєкти (time tracking) ===== */
+.projects-page {
+  width: min(1090px, calc(100% - 32px));
+  margin: 0 auto 48px;
+  padding-top: 24px;
+}
+.projects-page .page-header > div:first-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.project-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: var(--space-2);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.project-back:hover {
+  color: var(--text);
+}
+.projects-page .page-header h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.project-emoji {
+  font-size: var(--font-h2);
+  line-height: 1;
+}
+.projects-table-shell {
+  margin-top: var(--space-3);
+  overflow: visible;
+}
+.projects-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.projects-table thead th {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.projects-table thead th.num,
+.projects-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.projects-table tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-body);
+  color: var(--text);
+  height: 40px;
+}
+.projects-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.projects-table tbody tr.clickable-row {
+  cursor: pointer;
+}
+.projects-table tbody tr.clickable-row:hover {
+  background: var(--bg-hover, var(--panel-soft));
+}
+.project-name-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 500;
+}
+.projects-table td.row-actions {
+  width: 44px;
+  text-align: right;
+}
+.projects-table .project-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.project-row-menu {
+  left: auto;
+  right: 0;
+}
+
+/* Модалка створення / пікер людей */
+.project-create-modal,
+.project-picker-modal {
+  width: min(520px, 100%);
+}
+.settings-option-modal-layer.project-modal-layer {
+  place-items: start center;
+  padding-top: 56px;
+}
+.project-create-modal {
+  overflow: visible;
+}
+.project-field-emoji {
+  position: relative;
+}
+.project-field-emoji .knowledge-emoji-field {
+  position: relative;
+}
+.project-field-emoji .knowledge-emoji-trigger {
+  width: 100%;
+}
+.project-create-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.project-field {
+  display: grid;
+  gap: 6px;
+}
+.project-field > span {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--muted);
+}
+.project-field .profile-field-input {
+  width: 100%;
+  height: 36px;
+}
+.project-modal-error {
+  margin: 0;
+  padding: 0 var(--space-4);
+  font-size: var(--font-sm);
+  color: var(--danger);
+}
+.project-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+/* Сторінка проєкту */
+.project-detail-page .page-header h1 {
+  font-size: var(--font-h1);
+}
+.project-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.project-member-search {
+  max-width: 280px;
+}
+.project-detail-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  align-items: stretch;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.project-kpi-column .metric-card span {
+  white-space: normal;
+  word-break: break-word;
+}
+.project-kpi-column {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: var(--space-3);
+}
+.project-chart-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: var(--space-4);
+}
+.project-chart-card header {
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+}
+.project-chart-empty {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  color: var(--muted-2, var(--muted));
+  font-size: var(--font-sm);
+}
+/* Area-графік по днях */
+.project-chart-plot {
+  display: flex;
+  gap: var(--space-2);
+  height: 140px;
+}
+.project-chart-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 16px;
+  font-size: 9px;
+  color: var(--muted-2, var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+.project-chart-area-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.project-chart-svg {
+  width: 100%;
+  height: 120px;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow: visible;
+}
+.project-chart-fill {
+  fill: color-mix(in srgb, var(--primary) 16%, transparent);
+  stroke: none;
+}
+.project-chart-stroke {
+  fill: none;
+  stroke: var(--primary, #7f74df);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.project-chart-xaxis {
+  display: flex;
+  height: 16px;
+}
+.project-chart-xaxis > span {
+  flex: 1 1 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--muted-2, var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+.project-member-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.project-member-info {
+  display: grid;
+  gap: 1px;
+}
+.project-member-info strong {
+  font-size: var(--font-body);
+  font-weight: 500;
+  color: var(--text);
+}
+.project-member-info span {
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+.project-empty-members {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+.project-picker-tabs {
+  margin: 0 var(--space-4) var(--space-2);
+}
+.project-picker-search {
+  margin: 0 var(--space-4);
+}
+.project-picker-modal .project-team-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.project-picker-modal .project-team-row:hover {
+  background: var(--panel-soft);
+}
+.project-team-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--primary-soft, var(--panel-soft));
+  color: var(--primary);
+}
+.project-team-row .project-picker-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.project-team-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--primary);
+}
+.project-picker-list {
+  display: grid;
+  gap: 2px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+}
+.project-picker-modal .project-picker-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: 400;
+  cursor: pointer;
+}
+.project-picker-modal .project-picker-row:hover {
+  background: var(--panel-soft);
+}
+.project-picker-modal .project-picker-row > input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+.project-picker-modal .project-picker-row .avatar {
+  flex: 0 0 auto;
+}
+.project-picker-modal .project-picker-row .project-picker-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.project-picker-info {
+  display: grid;
+  gap: 1px;
+}
+.project-picker-info strong {
+  font-size: var(--font-body);
+  font-weight: 500;
+}
+.project-picker-info span {
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+.project-picker-empty {
+  margin: 0;
+  padding: var(--space-4);
+  text-align: center;
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+.employee-more-menu button.danger {
+  color: var(--danger);
+}
+.project-row-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.project-members-table td.row-actions {
+  width: 44px;
+  text-align: right;
+}
+.project-members-table .project-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+@media (max-width: 640px) {
+  .project-create-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-detail-metrics {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

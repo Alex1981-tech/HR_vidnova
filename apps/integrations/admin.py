@@ -6,7 +6,16 @@ from .models import (
     PeopleForceEntity,
     PeopleForceImportIssue,
     PeopleForceImportRun,
+    PeopleForceWebhookEvent,
 )
+
+
+@admin.register(PeopleForceWebhookEvent)
+class PeopleForceWebhookEventAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "topic", "event_id", "signature_valid", "status")
+    list_filter = ("status", "signature_valid", "topic")
+    search_fields = ("topic", "event_id")
+    readonly_fields = ("created_at", "updated_at")
 
 
 class PeopleForceImportIssueInline(admin.TabularInline):

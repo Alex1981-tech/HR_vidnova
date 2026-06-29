@@ -16,7 +16,9 @@
 
 ---
 
-## Фаза 1 — Бекенд (app `apps.projects`)
+## Фаза 1 — Бекенд (app `apps.projects`) — ✅ ЗРОБЛЕНО 2026-06-29
+
+> Готово: app створено й зареєстровано, міграція `0001_initial` застосована, 9/9 тестів зелені, API перевірено наживо (`/api/projects/`). Фінальний URL колекції: **`/api/projects/`** (router на порожньому префіксі — працює). Примітка: у dev `HR_PUBLIC_WRITE_API=true`, тож запис доступний без аутентифікації (тест на 403 прибрано як env-залежний). `Employee.full_name` = «Прізвище Ім'я».
 
 Створюється новий каталог `apps/projects/` за структурою `apps/leave/`.
 
@@ -68,7 +70,9 @@
 
 ---
 
-## Фаза 2 — Фронт: список проєктів + модалка створення
+## Фаза 2 — Фронт: список проєктів + модалка створення — ✅ ЗРОБЛЕНО 2026-06-29
+
+> Готово: типи + методи api-клієнта, роути `/attendance/projects` і `/attendance/projects/:id`, кнопка «Управління проектами» → перехід, `ProjectsListView` (вкладки Активний/Архівні, пошук, таблиця, «...» меню в рядку: Редагувати/Копіювати/Архівувати), `CreateProjectModal` (create + edit) з **переюзаним emoji-пікером Бази знань** (`EmojiPicker` на `knowledgeEmojiGroups`). Модалки центровано (`project-modal-layer`). i18n — поки україномовні літерали (TODO винести в locales).
 
 ### Типи та API-клієнт
 
@@ -129,7 +133,9 @@
 
 ---
 
-## Фаза 3 — Фронт: сторінка проєкту + учасники
+## Фаза 3 — Фронт: сторінка проєкту + учасники — ✅ ЗРОБЛЕНО 2026-06-29
+
+> Готово: `ProjectDetailView` (header емодзі+назва, «...» меню archive/delete, «+ Людина», місячні контролі, **SVG area-графік по днях**, KPI у стовпчик «Загальна/Середнє», таблиця учасників з годинами), `ProjectMembersPicker` (горизонтальні компактні рядки checkbox+аватар+ім'я/посада, заголовок «Додати співробітника до проєкту»). **Години per-project = агрегат відвідуваності учасників** (`api.employeeAttendance` за місяць) — реальні дані, не нове сховище. Модалки центровано, emoji-popover overflow виправлено.
 
 ### Компонент `ProjectDetailView`
 
@@ -177,6 +183,12 @@
 4. Набір емодзі в селекті — фіксований список чи повний picker.
 5. Права: усі автентифіковані чи лише HR/admin (зараз `ConfiguredReadOnlyOrAuthenticated`).
 
+## Фаза 4 — Таймер відстеження часу — ✅ ЗРОБЛЕНО 2026-06-29
+
+> Бекенд: модель `TimeEntry` (employee/project/comment/started_at/ended_at, props duration_seconds/is_running), міграція `0002_timeentry`, `TimeEntryViewSet` (IsAuthenticated, employee=request.user.employee_profile) з actions `active`/`start`/`stop` + список `?date=today`. Фронт: компонент `TimeTracker` у топбарі — вибір проєкту + коментар + «Почати/Зупинити роботу», **живий лічильник у топбарі (🟢 H:MM:SS)**, список записів за сьогодні з інтервалами, підсумок Відпрацьовано/Очікувано. API-методи `timeEntries/activeTimeEntry/startTimeEntry/stopTimeEntry`.
+
+> ⏳ **ВІДКРИТО (наступне):** час із таймера має додаватися у **Присутність** (агрегат у WorkDaySummary або накладання інтервалів на день), а на інтервалі — позначка «проект» з тултіпом деталей проєкту при наведенні (у `EmployeeAttendanceDetailView` / day drawer). Потребує рішення по підходу.
+
 ## Майбутні кроки (поза MVP)
 
 - [ ] Per-project облік годин: прив'язка attendance-періодів (`apps.skud`) до проєкту → реальні «Відпрацьовано/Перерва», KPI, графік.
@@ -189,4 +201,5 @@
 
 ## Журнал
 
-- 2026-06-29 — план створено (Plan-агент), збережено. Бекенд-конвенції звірені (`apps/leave`, DRF router, `ConfiguredReadOnlyOrAuthenticated`, пагінація `{count,results}`→`{items,total}`). Початок реалізації — за командою.
+- 2026-06-29 — план створено (Plan-агент), збережено. Бекенд-конвенції звірені (`apps/leave`, DRF router, `ConfiguredReadOnlyOrAuthenticated`, пагінація `{count,results}`→`{items,total}`).
+- 2026-06-29 — ✅ Фаза 1 завершена: `apps.projects` (models/serializers/views/urls/admin/tests), міграція `0001_initial`, реєстрація у settings+urls. 9/9 тестів. Backend baked в образ — для змін потрібен `docker compose build backend` (код НЕ bind-mount, лише staticfiles/media). Наступне — Фаза 2 (фронт: список + модалка).
