@@ -8807,7 +8807,7 @@ function ProjectsListView({ copy }: { copy: AppCopy }) {
         <div>
           <button type="button" className="project-back" onClick={() => navigate('/attendance')}>
             <ChevronLeft size={16} />
-            {copyValue(copy.common.back, 'Назад')}
+            {'Назад'}
           </button>
           <h1>Проєкти</h1>
         </div>
@@ -9125,7 +9125,7 @@ function ProjectDetailView({
         <div>
           <button type="button" className="project-back" onClick={() => navigate(attendanceProjectsPath())}>
             <ChevronLeft size={16} />
-            {copyValue(copy.common.back, 'Назад')}
+            {'Назад'}
           </button>
           <h1>
             <span className="project-emoji">{project?.emoji || '📁'}</span>

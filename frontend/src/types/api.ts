@@ -795,8 +795,8 @@ export type ProjectMember = {
   id: number;
   full_name: string;
   position_name?: string;
-  avatar_url?: string;
-  avatar_local_url?: string;
+  avatar_url: string;
+  avatar_local_url: string;
 };
 
 export type Project = {
