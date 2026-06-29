@@ -47,6 +47,40 @@ class SkudReadOnlyViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [ConfiguredReadOnlyOrAuthenticated]
 
 
+def _merged_minutes(periods) -> int:
+    """Сумарні хвилини з ОБ'ЄДНАННЯ (union) інтервалів, а не наївної суми.
+
+    PeopleForce шле перекривні «working»-записи за день (повний проміжок +
+    під-сегменти всередині нього). Наївний Sum(duration) подвійно рахує
+    перекриття → завищені години. Зливаємо інтервали [start_at, end_at] і
+    рахуємо непересічну тривалість. Для записів без часу — fallback на duration.
+    """
+    intervals = []
+    loose = 0
+    for p in periods:
+        start = getattr(p, "start_at", None)
+        end = getattr(p, "end_at", None)
+        if start and end and end > start:
+            intervals.append((start, end))
+        else:
+            loose += getattr(p, "duration_minutes", 0) or 0
+    intervals.sort(key=lambda pair: pair[0])
+    total = 0
+    cur_start = cur_end = None
+    for start, end in intervals:
+        if cur_end is None:
+            cur_start, cur_end = start, end
+        elif start <= cur_end:
+            if end > cur_end:
+                cur_end = end
+        else:
+            total += int((cur_end - cur_start).total_seconds() // 60)
+            cur_start, cur_end = start, end
+    if cur_end is not None:
+        total += int((cur_end - cur_start).total_seconds() // 60)
+    return total + loose
+
+
 class CompanyAttendanceSummaryView(APIView):
     permission_classes = [ConfiguredReadOnlyOrAuthenticated]
 
@@ -93,16 +127,31 @@ class CompanyAttendanceSummaryView(APIView):
                 summary_count=Count("id"),
             )
         }
+        # Union по (employee, date), щоб не подвійно рахувати перекривні інтервали PeopleForce.
+        period_rows = AttendancePeriod.objects.filter(
+            employee_id__in=employee_ids, date__gte=date_from, date__lte=date_to
+        ).order_by("employee_id", "date", "start_at")
+        by_emp_day = defaultdict(list)
+        emp_meta = defaultdict(lambda: {"first": None, "last": None, "count": 0})
+        for p in period_rows:
+            by_emp_day[(p.employee_id, p.date)].append(p)
+            meta = emp_meta[p.employee_id]
+            meta["count"] += 1
+            if p.start_at and (meta["first"] is None or p.start_at < meta["first"]):
+                meta["first"] = p.start_at
+            if p.end_at and (meta["last"] is None or p.end_at > meta["last"]):
+                meta["last"] = p.end_at
+        emp_minutes = defaultdict(int)
+        for (emp_id, _day), plist in by_emp_day.items():
+            emp_minutes[emp_id] += _merged_minutes(plist)
         periods = {
-            row["employee_id"]: row
-            for row in AttendancePeriod.objects.filter(employee_id__in=employee_ids, date__gte=date_from, date__lte=date_to)
-            .values("employee_id")
-            .annotate(
-                actual_minutes=Sum("duration_minutes"),
-                first_entry_at=Min("start_at"),
-                last_exit_at=Max("end_at"),
-                period_count=Count("id"),
-            )
+            emp_id: {
+                "actual_minutes": emp_minutes[emp_id],
+                "first_entry_at": emp_meta[emp_id]["first"],
+                "last_exit_at": emp_meta[emp_id]["last"],
+                "period_count": emp_meta[emp_id]["count"],
+            }
+            for emp_id in emp_minutes
         }
         planned_fallbacks = planned_working_time_for_employees(employee_ids, date_from, date_to)
 
@@ -190,7 +239,7 @@ class EmployeeAttendanceDetailView(APIView):
             planned_minutes = (summary.planned_minutes if summary and summary.planned_minutes else None) or (
                 planned_fallback.minutes if planned_fallback else 0
             )
-            period_minutes = sum(period.duration_minutes for period in day_periods)
+            period_minutes = _merged_minutes(day_periods)
             actual_minutes = period_minutes or (summary.actual_minutes if summary else 0)
             difference_minutes = actual_minutes - planned_minutes
             total_planned += planned_minutes
