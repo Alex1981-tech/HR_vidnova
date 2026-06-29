@@ -61,6 +61,7 @@ export type EmployeeProfile = {
   id: number;
   full_name: string;
   avatar_local_url?: string;
+  avatar_url?: string;
   first_name: string;
   last_name: string;
   middle_name: string;
@@ -548,6 +549,7 @@ export type LeaveType = {
   order: number;
   requires_hr_approval: boolean;
   is_active: boolean;
+  balance?: number | null;
 };
 
 export type LeaveTypePayload = {
@@ -679,4 +681,79 @@ export type CmmsAssetOptions = {
   locations: CmmsLocation[];
   departments: Array<{ id: number; name: string }>;
   employees: Array<{ id: number; full_name: string }>;
+};
+
+export type AnnouncementCondition = {
+  field: string;
+  operator: '' | 'is' | 'is_not' | 'is_empty' | 'is_not_empty';
+  value: number[];
+};
+
+export type AnnouncementReactionSummary = {
+  emoji: string;
+  count: number;
+  reacted: boolean;
+  users: string[];
+};
+
+export type AnnouncementComment = {
+  id: number;
+  announcement: number;
+  author: number | null;
+  author_name: string;
+  author_avatar: string;
+  employee: number | null;
+  body: string;
+  created_at: string;
+};
+
+export type Announcement = {
+  id: number;
+  title: string;
+  body_html: string;
+  author: number | null;
+  author_name: string;
+  author_avatar: string;
+  author_role: string;
+  audience_type: 'all' | 'conditions';
+  conditions: AnnouncementCondition[];
+  notify_telegram: boolean;
+  notify_web: boolean;
+  allow_comments: boolean;
+  scheduled_at: string | null;
+  status: 'draft' | 'scheduled' | 'published';
+  published_at: string | null;
+  recipients_count: number;
+  tg_sent_count: number;
+  tg_failed_count: number;
+  tg_dispatched_at: string | null;
+  comments_count: number;
+  comments: AnnouncementComment[];
+  reactions: AnnouncementReactionSummary[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type AnnouncementPayload = {
+  title: string;
+  body_html: string;
+  audience_type: 'all' | 'conditions';
+  conditions: AnnouncementCondition[];
+  notify_telegram: boolean;
+  notify_web: boolean;
+  allow_comments: boolean;
+  scheduled_at?: string | null;
+};
+
+export type AnnouncementAudiencePreview = {
+  count: number;
+  sample: Array<{ id: number; full_name: string; avatar_url: string }>;
+};
+
+export type AnnouncementMediaUpload = {
+  url: string;
+  kind: 'image' | 'video';
+  content_type: string;
+  name: string;
+  size: number;
 };

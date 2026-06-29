@@ -50,6 +50,7 @@ class SelfEmployeeSerializer(serializers.ModelSerializer):
             "id",
             "full_name",
             "avatar_local_url",
+            "avatar_url",
             "first_name",
             "last_name",
             "middle_name",
@@ -131,9 +132,16 @@ class SelfTimeCorrectionRequestSerializer(serializers.ModelSerializer):
 
 
 class SelfLeaveTypeSerializer(serializers.ModelSerializer):
+    balance = serializers.SerializerMethodField()
+
     class Meta:
         model = LeaveType
-        fields = ("id", "name", "code", "requires_hr_approval")
+        fields = ("id", "name", "code", "icon", "color", "unit", "requires_hr_approval", "balance")
+
+    def get_balance(self, obj):
+        balances = self.context.get("balances") or {}
+        value = balances.get(obj.id)
+        return float(value) if value is not None else None
 
 
 class SelfLeaveRequestSerializer(serializers.ModelSerializer):

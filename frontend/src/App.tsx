@@ -7,6 +7,7 @@ import {
   Building2,
   Calendar,
   CalendarCheck,
+  CalendarPlus,
   Check,
   CheckSquare,
   ChevronDown,
@@ -53,7 +54,13 @@ import {
   Rocket,
   Save,
   Search,
+  Send,
   Settings,
+  SmilePlus,
+  Sunrise,
+  Sun,
+  Sunset,
+  Moon,
   ShieldCheck,
   Smile,
   Sparkles,
@@ -86,10 +93,12 @@ import { ReportsView } from './views/ReportsView';
 import { PeopleDataSettingsView } from './views/settings/PeopleDataSettingsView';
 import { SettingsLeaveTypesView } from './views/settings/SettingsLeaveTypesView';
 import { SettingsDocumentsView } from './views/settings/SettingsDocumentsView';
+import { CreateAnnouncementModal } from './components/CreateAnnouncementModal';
 import { LeaveTypeIcon } from './lib/leaveIcons';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
+  Announcement,
   AuthLoginResponse,
   AuthStatus,
   ClinicLocation,
@@ -339,6 +348,20 @@ function profileFromAuthEmployee(employee: NonNullable<AuthStatus['employee']>):
     full_name: employee.full_name || fallbackEmployee.full_name,
     status: employee.status,
   };
+}
+
+function normalizeAccessName(value: string | null | undefined): string {
+  return (value || '')
+    .toLocaleLowerCase('uk-UA')
+    .replace(/ё/g, 'е')
+    .replace(/ґ/g, 'г')
+    .trim();
+}
+
+function canAccessChangelog(auth: AuthStatus | null): boolean {
+  if (!auth?.user?.is_superuser) return false;
+  const accessName = normalizeAccessName(`${auth.employee?.full_name || ''} ${auth.user.username || ''}`);
+  return accessName.includes('кузьменко') && (accessName.includes('олександр') || accessName.includes('александр'));
 }
 
 const fallbackLeaveTypes: LeaveType[] = [];
@@ -1095,6 +1118,15 @@ function leaveAmountLabel(value?: string, unit?: string): string {
   return `${amount} ${unit === 'hours' ? 'год' : 'дн.'}`;
 }
 
+function leaveWidgetBalanceValue(value?: number | null): string {
+  if (value == null) return '-';
+  return Number.isFinite(value) ? value.toFixed(1) : String(value);
+}
+
+function leaveWidgetBalanceLabel(unit?: string): string {
+  return unit === 'hours' ? 'доступні години' : 'доступні дні';
+}
+
 function readBrandingSettings(): BrandingSettings {
   if (typeof window === 'undefined') return defaultBrandingSettings;
   try {
@@ -1244,11 +1276,13 @@ function Sidebar({
   onChange,
   brandingSettings,
   copy,
+  canViewChangelog,
 }: {
   active: Section;
   onChange: (section: Section) => void;
   brandingSettings: BrandingSettings;
   copy: AppCopy;
+  canViewChangelog: boolean;
 }) {
   return (
     <aside className="sidebar" aria-label={copy.common.openMenu}>
@@ -1282,15 +1316,22 @@ function Sidebar({
         <span>{copy.common.settings}</span>
         <PanelLeftClose size={18} />
       </button>
-      <button
-        type="button"
-        className={`sidebar-version ${active === 'changelog' ? 'active' : ''}`}
-        onClick={() => onChange('changelog')}
-        title="Історія версій"
-      >
-        <span className="sidebar-version-date">{APP_VERSION_DATE}</span>
-        <strong className="sidebar-version-num">v{APP_VERSION}</strong>
-      </button>
+      {canViewChangelog ? (
+        <button
+          type="button"
+          className={`sidebar-version ${active === 'changelog' ? 'active' : ''}`}
+          onClick={() => onChange('changelog')}
+          title="Історія версій"
+        >
+          <span className="sidebar-version-date">{APP_VERSION_DATE}</span>
+          <strong className="sidebar-version-num">v{APP_VERSION}</strong>
+        </button>
+      ) : (
+        <div className="sidebar-version readonly" title="Поточна версія" aria-label={`Поточна версія v${APP_VERSION}`}>
+          <span className="sidebar-version-date">{APP_VERSION_DATE}</span>
+          <strong className="sidebar-version-num">v{APP_VERSION}</strong>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1957,10 +1998,425 @@ function AccountSettingsView({
   );
 }
 
+function getDayGreeting(): { text: string; Icon: LucideIcon } {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return { text: 'Доброго ранку', Icon: Sunrise };
+  if (h >= 12 && h < 17) return { text: 'Доброго дня', Icon: Sun };
+  if (h >= 17 && h < 22) return { text: 'Доброго вечора', Icon: Sunset };
+  return { text: 'Доброї ночі', Icon: Moon };
+}
+
+function LeaveRequestModal({
+  leaveType,
+  employeeId,
+  onClose,
+  onSubmitted,
+}: {
+  leaveType: LeaveType;
+  employeeId: number;
+  onClose: () => void;
+  onSubmitted: () => void;
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
+  const [reason, setReason] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = () => {
+    if (saving) return;
+    if (!dateFrom || !dateTo) {
+      setError('Вкажіть дати.');
+      return;
+    }
+    if (dateTo < dateFrom) {
+      setError('Дата «по» не може бути раніше за «з».');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    api.createLeaveRequest({ leave_type: leaveType.id, date_from: dateFrom, date_to: dateTo, reason })
+      .then(() => onSubmitted())
+      .catch(() => setError('Не вдалося подати заявку.'))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <div className="ann-modal-layer" role="dialog" aria-modal="true" aria-label="Подати заявку">
+      <button type="button" className="ann-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="ann-modal" style={{ width: 'min(440px, 100%)' }}>
+        <header className="ann-modal-head">
+          <strong>
+            <span className="leave-type-ico" style={{ color: leaveType.color || 'var(--primary-strong)' }}>
+              <LeaveTypeIcon iconKey={leaveType.icon} size={16} />
+            </span>{' '}
+            {leaveType.name}
+          </strong>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </header>
+        <div className="ann-modal-body">
+          <label className="ann-field">
+            <span>Дата з</span>
+            <input type="date" className="people-data-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          </label>
+          <label className="ann-field">
+            <span>Дата по</span>
+            <input type="date" className="people-data-input" value={dateTo} min={dateFrom} onChange={(e) => setDateTo(e.target.value)} />
+          </label>
+          <label className="ann-field">
+            <span>Коментар</span>
+            <textarea className="people-data-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+          </label>
+          {error ? <p className="ann-error">{error}</p> : null}
+        </div>
+        <footer className="ann-modal-foot">
+          <button type="button" className="ann-save" onClick={submit} disabled={saving}>
+            {saving ? 'Подання…' : 'Подати заявку'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diff = Math.max(0, Date.now() - then);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'щойно';
+  if (min < 60) return `${min} хв тому`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} год тому`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} дн тому`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} міс тому`;
+  return `${Math.floor(months / 12)} р тому`;
+}
+
+const ANNOUNCEMENT_EMOJIS = [
+  '👍', '👎', '❤️', '🔥', '🎉', '😂', '😮', '🥰', '👏', '🙏',
+  '😢', '😡', '🤔', '👀', '💯', '🚀', '⭐', '✅', '💪', '🤝',
+  '😍', '🤩', '😎', '🙌', '👌', '💜', '🌟', '☕', '🍾', '🎂',
+  '😅', '🤗', '😇', '🤣', '😉', '🫶', '💐', '🏆', '⚡', '✍️',
+];
+
+function prepareAnnouncementHtml(html: string): string {
+  if (!html.includes('data-ann-gallery') || typeof document === 'undefined') return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  template.content.querySelectorAll<HTMLElement>('[data-ann-gallery]').forEach((gallery) => {
+    let track = gallery.querySelector<HTMLElement>('[data-ann-gallery-track]');
+    if (!track) {
+      const directSlides = Array.from(gallery.querySelectorAll<HTMLElement>(':scope > .announcement-gallery-slide'));
+      if (!directSlides.length) return;
+      track = document.createElement('div');
+      track.className = 'announcement-gallery-track';
+      track.setAttribute('data-ann-gallery-track', 'true');
+      directSlides.forEach((slide) => track?.appendChild(slide));
+      gallery.appendChild(track);
+    }
+    const slides = Array.from(track.querySelectorAll<HTMLElement>('.announcement-gallery-slide'));
+    if (!slides.length) return;
+    if (slides.length <= 1) return;
+    if (!gallery.querySelector('[data-ann-gallery-prev]')) {
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'announcement-gallery-arrow prev';
+      prev.setAttribute('data-ann-gallery-prev', 'true');
+      prev.setAttribute('aria-label', 'Попереднє фото');
+    prev.textContent = '‹';
+      gallery.insertBefore(prev, track);
+    }
+    if (!gallery.querySelector('[data-ann-gallery-next]')) {
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'announcement-gallery-arrow next';
+      next.setAttribute('data-ann-gallery-next', 'true');
+      next.setAttribute('aria-label', 'Наступне фото');
+    next.textContent = '›';
+      gallery.appendChild(next);
+    }
+    if (!gallery.querySelector('[data-ann-gallery-dots]')) {
+      const dots = document.createElement('div');
+      dots.className = 'announcement-gallery-dots';
+      dots.setAttribute('data-ann-gallery-dots', 'true');
+      slides.forEach((_, index) => {
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = `announcement-gallery-dot${index === 0 ? ' active' : ''}`;
+        dot.setAttribute('data-ann-gallery-dot', String(index));
+        dot.setAttribute('aria-label', `Фото ${index + 1}`);
+        dots.appendChild(dot);
+      });
+      gallery.appendChild(dots);
+    }
+  });
+  return template.innerHTML;
+}
+
+function AnnouncementCard({
+  post,
+  onEdit,
+  onDelete,
+}: {
+  post: Announcement;
+  onEdit: (post: Announcement) => void;
+  onDelete: (post: Announcement) => void;
+}) {
+  const articleRef = useRef<HTMLElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [reactions, setReactions] = useState(post.reactions ?? []);
+  const [comments, setComments] = useState(post.comments ?? []);
+  const [commentText, setCommentText] = useState('');
+  const [posting, setPosting] = useState(false);
+  const when = post.published_at || post.created_at;
+  const timeAgo = when ? formatRelativeTime(when) : '';
+  const subtitle = [post.author_role, timeAgo].filter(Boolean).join(' · ');
+  const preparedBodyHtml = useMemo(() => prepareAnnouncementHtml(post.body_html), [post.body_html]);
+
+  useEffect(() => {
+    const root = articleRef.current;
+    if (!root) return;
+    const cleanups: Array<() => void> = [];
+    root.querySelectorAll<HTMLElement>('[data-ann-gallery]').forEach((gallery) => {
+      const track = gallery.querySelector<HTMLElement>('[data-ann-gallery-track]') || gallery;
+      const slides = Array.from(track.querySelectorAll<HTMLElement>('.announcement-gallery-slide'));
+      if (slides.length <= 1) return;
+      const dots = Array.from(gallery.querySelectorAll<HTMLElement>('[data-ann-gallery-dot]'));
+
+      let paused = false;
+      let raf = 0;
+      const slideLeft = (index: number) => {
+        const firstLeft = slides[0]?.offsetLeft ?? 0;
+        return Math.max(0, (slides[index]?.offsetLeft ?? firstLeft) - firstLeft);
+      };
+      const getActiveIndex = () => {
+        const currentLeft = track.scrollLeft;
+        return slides.reduce((best, slide, index) => {
+          const bestDistance = Math.abs(slideLeft(best) - currentLeft);
+          const distance = Math.abs(slideLeft(index) - currentLeft);
+          return distance < bestDistance ? index : best;
+        }, 0);
+      };
+      const updateDots = () => {
+        const active = getActiveIndex();
+        dots.forEach((dot, index) => {
+          dot.classList.toggle('active', index === active);
+          dot.setAttribute('aria-current', index === active ? 'true' : 'false');
+        });
+      };
+      const scrollToIndex = (index: number, behavior: ScrollBehavior = 'smooth') => {
+        track.scrollTo({ left: slideLeft(index), behavior });
+        dots.forEach((dot, dotIndex) => {
+          dot.classList.toggle('active', dotIndex === index);
+          dot.setAttribute('aria-current', dotIndex === index ? 'true' : 'false');
+        });
+      };
+      const scrollStep = (direction: 1 | -1) => {
+        const active = getActiveIndex();
+        let nextIndex = active + direction;
+        let behavior: ScrollBehavior = 'smooth';
+        if (nextIndex >= slides.length) {
+          nextIndex = 0;
+          behavior = 'auto';
+        }
+        if (nextIndex < 0) {
+          nextIndex = slides.length - 1;
+          behavior = 'auto';
+        }
+        scrollToIndex(nextIndex, behavior);
+      };
+      const onScroll = () => {
+        if (raf) return;
+        raf = window.requestAnimationFrame(() => {
+          raf = 0;
+          updateDots();
+        });
+      };
+
+      const prev = gallery.querySelector<HTMLElement>('[data-ann-gallery-prev]');
+      const next = gallery.querySelector<HTMLElement>('[data-ann-gallery-next]');
+      const onPrev = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollStep(-1);
+      };
+      const onNext = (event: Event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        scrollStep(1);
+      };
+      prev?.addEventListener('click', onPrev);
+      next?.addEventListener('click', onNext);
+      track.addEventListener('scroll', onScroll, { passive: true });
+      const dotHandlers = dots.map((dot, index) => {
+        const handler = (event: Event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          scrollToIndex(index);
+        };
+        dot.addEventListener('click', handler);
+        return { dot, handler };
+      });
+      const pause = () => { paused = true; };
+      const resume = () => { paused = false; };
+      gallery.addEventListener('pointerenter', pause);
+      gallery.addEventListener('pointerleave', resume);
+      gallery.addEventListener('focusin', pause);
+      gallery.addEventListener('focusout', resume);
+      updateDots();
+      const timer = window.setInterval(() => {
+        if (!paused && document.visibilityState === 'visible') scrollStep(1);
+      }, 4500);
+      cleanups.push(() => {
+        window.clearInterval(timer);
+        if (raf) window.cancelAnimationFrame(raf);
+        prev?.removeEventListener('click', onPrev);
+        next?.removeEventListener('click', onNext);
+        track.removeEventListener('scroll', onScroll);
+        dotHandlers.forEach(({ dot, handler }) => dot.removeEventListener('click', handler));
+        gallery.removeEventListener('pointerenter', pause);
+        gallery.removeEventListener('pointerleave', resume);
+        gallery.removeEventListener('focusin', pause);
+        gallery.removeEventListener('focusout', resume);
+      });
+    });
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [preparedBodyHtml]);
+
+  const copyLink = () => {
+    const link = `${window.location.origin}/#announcement-${post.id}`;
+    navigator.clipboard?.writeText(link).catch(() => undefined);
+    setMenuOpen(false);
+  };
+
+  const toggleReaction = (emoji: string) => {
+    setPickerOpen(false);
+    api.reactAnnouncement(post.id, emoji).then((res) => setReactions(res.reactions)).catch(() => undefined);
+  };
+
+  const submitComment = () => {
+    const body = commentText.trim();
+    if (!body || posting) return;
+    setPosting(true);
+    api.addAnnouncementComment(post.id, body)
+      .then((comment) => {
+        setComments((cur) => [...cur, comment]);
+        setCommentText('');
+      })
+      .catch(() => undefined)
+      .finally(() => setPosting(false));
+  };
+
+  return (
+    <article ref={articleRef} className="feed-post announcement-card" id={`announcement-${post.id}`}>
+      <header className="announcement-head">
+        <div className="announcement-author">
+          <Avatar name={post.author_name || 'HR Vidnova'} src={post.author_avatar} size="sm" />
+          <div className="announcement-meta">
+            <strong>{post.author_name || 'HR Vidnova'}</strong>
+            <span>
+              {subtitle}
+              {post.notify_telegram ? (
+                <span className="announcement-tg" title={`Надіслано в Telegram: ${post.tg_sent_count}`}>
+                  <Send size={12} /> {post.tg_sent_count}
+                </span>
+              ) : null}
+            </span>
+          </div>
+        </div>
+        <div className="announcement-menu-wrap">
+          <button type="button" className="announcement-menu-trigger" aria-label="Дії" onClick={() => setMenuOpen((v) => !v)}>
+            <MoreHorizontal size={18} />
+          </button>
+          {menuOpen ? (
+            <>
+              <button type="button" className="announcement-menu-backdrop" aria-hidden onClick={() => setMenuOpen(false)} />
+              <div className="announcement-menu" role="menu">
+                <button type="button" onClick={copyLink}>Копіювати посилання</button>
+                <button type="button" onClick={() => { setMenuOpen(false); onEdit(post); }}>Редагувати</button>
+                <button type="button" className="danger" onClick={() => { setMenuOpen(false); onDelete(post); }}>Видалити</button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      <h3 className="announcement-title">{post.title}</h3>
+      {post.body_html ? (
+        <div className="announcement-body" dangerouslySetInnerHTML={{ __html: preparedBodyHtml }} />
+      ) : null}
+
+      <div className="announcement-reactions">
+        {reactions.map((r) => (
+          <button
+            key={r.emoji}
+            type="button"
+            className={`reaction-chip${r.reacted ? ' reacted' : ''}`}
+            title={(r.users ?? []).join(', ')}
+            onClick={() => toggleReaction(r.emoji)}
+          >
+            <span>{r.emoji}</span> {r.count}
+          </button>
+        ))}
+        <div className="reaction-add-wrap">
+          <button type="button" className="reaction-add" title="Додати реакцію…" onClick={() => setPickerOpen((v) => !v)}>
+            <SmilePlus size={16} />
+          </button>
+          {pickerOpen ? (
+            <>
+              <button type="button" className="announcement-menu-backdrop" aria-hidden onClick={() => setPickerOpen(false)} />
+              <div className="reaction-picker">
+                {ANNOUNCEMENT_EMOJIS.map((e) => (
+                  <button key={e} type="button" onClick={() => toggleReaction(e)}>{e}</button>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {post.allow_comments ? (
+        <div className="announcement-comments">
+          {comments.map((c) => (
+            <div key={c.id} className="announcement-comment">
+              <Avatar name={c.author_name || '—'} src={c.author_avatar} size="sm" />
+              <div className="announcement-comment-body">
+                <strong>{c.author_name || 'Користувач'}</strong>
+                <p>{c.body}</p>
+              </div>
+            </div>
+          ))}
+          <div className="announcement-comment-form">
+            <input
+              type="text"
+              className="people-data-input"
+              placeholder="Додати коментар…"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submitComment(); }}
+            />
+            <button type="button" className="announcement-comment-send" onClick={submitComment} disabled={posting || !commentText.trim()}>
+              <Send size={15} />
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function HomeView({
   employee,
   leaveRequests,
+  leaveTypes,
   onOpenLeave,
+  onLeaveSubmitted,
   onOpenAttendance,
   onOpenKnowledge,
   onOpenOrg,
@@ -1969,13 +2425,78 @@ function HomeView({
 }: {
   employee: EmployeeProfile;
   leaveRequests: LeaveRequest[];
+  leaveTypes: LeaveType[];
   onOpenLeave: () => void;
+  onLeaveSubmitted: () => void;
   onOpenAttendance: () => void;
   onOpenKnowledge: () => void;
   onOpenOrg: () => void;
   brandingSettings: BrandingSettings;
   copy: AppCopy;
 }) {
+  const navigate = useNavigate();
+  const [leaveRequestType, setLeaveRequestType] = useState<LeaveType | null>(null);
+  const [leaveWidgetIndex, setLeaveWidgetIndex] = useState(0);
+  const greeting = getDayGreeting();
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [deleteAnnouncementTarget, setDeleteAnnouncementTarget] = useState<Announcement | null>(null);
+  const [deletingAnnouncement, setDeletingAnnouncement] = useState(false);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    api.announcements({ page_size: 20 }).then((res) => {
+      if (alive) setAnnouncements(res.items);
+    }).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (leaveTypes.length && leaveWidgetIndex >= leaveTypes.length) {
+      setLeaveWidgetIndex(0);
+    }
+  }, [leaveTypes.length, leaveWidgetIndex]);
+
+  const activeLeaveType = leaveTypes.length ? leaveTypes[leaveWidgetIndex % leaveTypes.length] : null;
+  const showPreviousLeaveType = () => {
+    if (!leaveTypes.length) return;
+    setLeaveWidgetIndex((index) => (index - 1 + leaveTypes.length) % leaveTypes.length);
+  };
+  const showNextLeaveType = () => {
+    if (!leaveTypes.length) return;
+    setLeaveWidgetIndex((index) => (index + 1) % leaveTypes.length);
+  };
+
+  const handleDeleteAnnouncement = (post: Announcement) => {
+    setDeleteAnnouncementTarget(post);
+  };
+
+  const confirmDeleteAnnouncement = async () => {
+    if (!deleteAnnouncementTarget || deletingAnnouncement) return;
+    setDeletingAnnouncement(true);
+    try {
+      await api.deleteAnnouncement(deleteAnnouncementTarget.id);
+      setAnnouncements((cur) => cur.filter((a) => a.id !== deleteAnnouncementTarget.id));
+      setDeleteAnnouncementTarget(null);
+    } catch {
+      // Залишаємо модалку відкритою, щоб користувач міг повторити або скасувати.
+    } finally {
+      setDeletingAnnouncement(false);
+    }
+  };
+
+  const upsertAnnouncement = (saved: Announcement) => {
+    setAnnouncements((cur) => {
+      const exists = cur.some((a) => a.id === saved.id);
+      return exists ? cur.map((a) => (a.id === saved.id ? saved : a)) : [saved, ...cur];
+    });
+    setAnnounceOpen(false);
+    setEditingAnnouncement(null);
+  };
+
   return (
     <main className="home-page">
       {!brandingSettings.homeCoverDisabled ? (
@@ -1988,9 +2509,19 @@ function HomeView({
 
       <section className="home-welcome">
         <div className="welcome-person">
-          <Avatar name={employee.full_name} accent="teal" size="lg" />
+          <button
+            type="button"
+            className="welcome-profile-link"
+            onClick={() => navigate(peopleEmployeePath(employee.id))}
+            title="Перейти до профілю"
+          >
+            <Avatar name={employee.full_name} src={employee.avatar_local_url || employee.avatar_url || ''} accent="teal" size="lg" />
+          </button>
           <div>
-            <h1>{copy.home.greeting}, {employee.full_name}</h1>
+            <h1 className="welcome-greeting" onClick={() => navigate(peopleEmployeePath(employee.id))}>
+              {greeting.text}, {employee.full_name}
+              <greeting.Icon size={22} className="welcome-greeting-icon" />
+            </h1>
             <div className="quick-chips">
               <button type="button" onClick={onOpenLeave}>
                 <CalendarCheck size={16} />
@@ -2004,12 +2535,45 @@ function HomeView({
           </div>
         </div>
         <div className="welcome-actions">
-          <button type="button" className="primary-action">
+          <button type="button" className="primary-action" onClick={() => setAnnounceOpen(true)}>
             <MegaphoneIcon />
             {copy.home.createAnnouncement}
           </button>
         </div>
       </section>
+
+      {announceOpen || editingAnnouncement ? (
+        <CreateAnnouncementModal
+          announcement={editingAnnouncement}
+          onClose={() => {
+            setAnnounceOpen(false);
+            setEditingAnnouncement(null);
+          }}
+          onCreated={upsertAnnouncement}
+        />
+      ) : null}
+      {deleteAnnouncementTarget ? (
+        <AnnouncementDeleteConfirmModal
+          post={deleteAnnouncementTarget}
+          busy={deletingAnnouncement}
+          onCancel={() => {
+            if (!deletingAnnouncement) setDeleteAnnouncementTarget(null);
+          }}
+          onConfirm={() => void confirmDeleteAnnouncement()}
+        />
+      ) : null}
+
+      {leaveRequestType ? (
+        <LeaveRequestModal
+          leaveType={leaveRequestType}
+          employeeId={employee.id}
+          onClose={() => setLeaveRequestType(null)}
+          onSubmitted={() => {
+            setLeaveRequestType(null);
+            onLeaveSubmitted();
+          }}
+        />
+      ) : null}
 
       <div className="home-content">
         <div className="home-main">
@@ -2021,41 +2585,85 @@ function HomeView({
             <EmptyState title={copy.home.noTasksTitle} text={copy.home.noTasksText} />
           </section>
 
-          <article className="feed-post">
-            <EmptyState title={copy.home.noAnnouncementsTitle} text={copy.home.noAnnouncementsText} />
-          </article>
+          {announcements.length ? (
+            announcements.map((post) => (
+              <AnnouncementCard
+                key={post.id}
+                post={post}
+                onEdit={(p) => { setAnnounceOpen(false); setEditingAnnouncement(p); }}
+                onDelete={handleDeleteAnnouncement}
+              />
+            ))
+          ) : (
+            <article className="feed-post">
+              <EmptyState title={copy.home.noAnnouncementsTitle} text={copy.home.noAnnouncementsText} />
+            </article>
+          )}
         </div>
 
         <aside className="home-aside">
           <section className="panel leave-widget">
-            <div className="widget-title">
-              <div>
-                <CalendarCheck size={19} />
-                <h2>{copy.home.leave}</h2>
-              </div>
-            </div>
-            <strong>-</strong>
-            <p>{copy.home.availableDaysMissing}</p>
-            <div className="widget-actions">
-              <button type="button" onClick={onOpenLeave}>
-                {copy.home.requestTimeOff}
-              </button>
-              <button type="button" aria-label={copy.home.calendar}>
-                <Calendar size={15} />
-              </button>
-            </div>
-            {leaveRequests.length ? (
-              leaveRequests.slice(0, 1).map((item) => (
-                <div className="mini-request" key={item.id}>
-                  <span>
-                    {formatDate(item.date_from)} - {formatDate(item.date_to)}
-                  </span>
-                  <StatusPill status={item.status} />
+            {activeLeaveType ? (
+              <div className="leave-carousel-card">
+                <header className="leave-carousel-head">
+                  <div className="leave-carousel-title">
+                    <span className="leave-carousel-icon" style={{ color: activeLeaveType.color || 'var(--primary-strong)' }}>
+                      <LeaveTypeIcon iconKey={activeLeaveType.icon} size={24} />
+                    </span>
+                    <h2>{activeLeaveType.name}</h2>
+                  </div>
+                  <div className="leave-carousel-nav">
+                    <span>{(leaveWidgetIndex % leaveTypes.length) + 1} з {leaveTypes.length}</span>
+                    <button type="button" onClick={showPreviousLeaveType} disabled={leaveTypes.length <= 1} aria-label="Попередній тип відсутності">
+                      <ChevronLeft size={21} />
+                    </button>
+                    <button type="button" onClick={showNextLeaveType} disabled={leaveTypes.length <= 1} aria-label="Наступний тип відсутності">
+                      <ChevronRight size={21} />
+                    </button>
+                  </div>
+                </header>
+                <div className="leave-carousel-body">
+                  <strong>{leaveWidgetBalanceValue(activeLeaveType.balance)}</strong>
+                  <span>{leaveWidgetBalanceLabel(activeLeaveType.unit)}</span>
                 </div>
-              ))
+                <footer className="leave-carousel-foot">
+                  <button
+                    type="button"
+                    className="leave-carousel-request"
+                    onClick={() => setLeaveRequestType(activeLeaveType)}
+                    title={`Подати заявку: ${activeLeaveType.name}`}
+                  >
+                    {copy.home.requestTimeOff}
+                  </button>
+                  <button
+                    type="button"
+                    className="leave-carousel-calendar"
+                    onClick={() => setLeaveRequestType(activeLeaveType)}
+                    aria-label={`Подати заявку: ${activeLeaveType.name}`}
+                  >
+                    <CalendarPlus size={20} />
+                  </button>
+                </footer>
+              </div>
             ) : (
-              <EmptyState title={copy.home.noRequestsTitle} text={copy.home.noRequestsText} />
+              <>
+                <strong>-</strong>
+                <p>{copy.home.availableDaysMissing}</p>
+                <div className="widget-actions">
+                  <button type="button" onClick={onOpenLeave}>
+                    {copy.home.requestTimeOff}
+                  </button>
+                </div>
+              </>
             )}
+            {leaveRequests.length ? (
+              <div className="mini-request" key={leaveRequests[0].id}>
+                <span>
+                  {formatDate(leaveRequests[0].date_from)} - {formatDate(leaveRequests[0].date_to)}
+                </span>
+                <StatusPill status={leaveRequests[0].status} />
+              </div>
+            ) : null}
           </section>
 
           <section className="panel week-widget">
@@ -2103,6 +2711,45 @@ function HomeView({
         </aside>
       </div>
     </main>
+  );
+}
+
+function AnnouncementDeleteConfirmModal({
+  post,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  post: Announcement;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="settings-option-modal-layer announcement-delete-layer" role="dialog" aria-modal="true" aria-label="Видалити оголошення">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
+      <section className="settings-option-modal settings-delete-modal">
+        <header className="settings-option-modal-head">
+          <strong>Видалити оголошення?</strong>
+          <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="settings-delete-body">
+          <p>
+            Оголошення <strong>«{post.title}»</strong> буде видалено з ленти.
+          </p>
+        </div>
+        <footer className="settings-option-modal-foot">
+          <button type="button" className="secondary-action" onClick={onCancel} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="danger-action" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Видалення…' : 'Видалити'}
+          </button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -2811,10 +3458,18 @@ function PeopleView({
     }
 
     const employee = employees.find((item) => item.id === peopleRoute.id) ?? null;
-    if (!employee && loadState !== 'ok' && loadState !== 'error') return;
     setTab('people');
     setShowNewProfile(false);
-    setSelectedEmployee(employee);
+    if (employee) {
+      setSelectedEmployee(employee);
+    } else {
+      // Прямий перехід (напр. з головної) — співробітника може не бути на завантаженій
+      // сторінці списку. Дотягуємо його по id, щоб відкрити саме профіль, а не список.
+      setSelectedEmployee((current) => (current && current.id === peopleRoute.id ? current : null));
+      api.employee(peopleRoute.id)
+        .then((fetched) => setSelectedEmployee((current) => (current && current.id !== peopleRoute.id ? current : fetched)))
+        .catch(() => undefined);
+    }
   }, [employees, loadState, location.pathname, peopleRoute]);
 
   function changePeopleTab(nextTab: string) {
@@ -5236,7 +5891,10 @@ function DocumentUploadModal({
 
   function addFiles(list: FileList | null) {
     if (!list) return;
-    setFiles((current) => [...current, ...Array.from(list)].slice(0, 10));
+    const picked = Array.from(list);
+    if (!picked.length) return;
+    setFiles((current) => [...current, ...picked].slice(0, 10));
+    setError('');
   }
 
   async function submit() {
@@ -5248,21 +5906,22 @@ function DocumentUploadModal({
     setError('');
     try {
       await onUpload(folder ? Number(folder) : null, files);
-    } catch {
-      setError('Не вдалося завантажити. Спробуйте ще раз.');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не вдалося завантажити. Спробуйте ще раз.');
       setSaving(false);
     }
   }
 
   return (
-    <div className="people-data-modal-backdrop" role="dialog" aria-modal>
-      <div className="people-data-modal">
-        <div className="people-data-modal-head">
-          <h2>Додати документ</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрити">
+    <div className="people-data-modal-layer document-upload-layer" role="dialog" aria-modal="true" aria-label="Додати документ">
+      <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="people-data-modal document-upload-modal">
+        <header className="people-data-modal-head">
+          <strong>Додати документ</strong>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Закрити">
             <X size={18} />
           </button>
-        </div>
+        </header>
         <div className="people-data-modal-body">
           <label className="people-data-modal-field">
             <span>Папка документів</span>
@@ -5277,10 +5936,8 @@ function DocumentUploadModal({
           </label>
           <div className="people-data-modal-field">
             <span>Файли</span>
-            <button
-              type="button"
+            <div
               className={`doc-dropzone${dragActive ? ' active' : ''}`}
-              onClick={() => inputRef.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault();
                 setDragActive(true);
@@ -5292,19 +5949,23 @@ function DocumentUploadModal({
                 addFiles(e.dataTransfer.files);
               }}
             >
-              <strong>Для завантаження перетягніть файл або натисніть сюди</strong>
-              <span>Макс. файлів: 10, максимальний розмір файлу: 200Мб.</span>
-            </button>
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles(e.target.files);
-                e.target.value = '';
-              }}
-            />
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                className="doc-file-input"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <strong>Для завантаження перетягніть файл у цю область</strong>
+              <span>Документи, зображення, відео, аудіо та інші файли. До 10 файлів, до 200 МБ кожен.</span>
+              <button type="button" className="secondary-action doc-pick-files" onClick={() => inputRef.current?.click()}>
+                <Upload size={15} />
+                Обрати файли
+              </button>
+            </div>
           </div>
           {files.length ? (
             <ul className="doc-file-list">
@@ -5330,7 +5991,7 @@ function DocumentUploadModal({
             {saving ? 'Завантаження…' : 'Зберегти'}
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
@@ -5341,8 +6002,10 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
   const [state, setState] = useState<LoadState>('idle');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [newOpen, setNewOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<EmployeeDocument | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeDocument | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [actionError, setActionError] = useState('');
 
   async function load() {
@@ -5392,13 +6055,19 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
     await load();
   }
 
-  async function handleDelete(doc: EmployeeDocument) {
+  async function confirmDeleteDocument() {
+    if (!deleteTarget) return;
+    const doc = deleteTarget;
+    setDeleteBusy(true);
     setActionError('');
     try {
       await api.deleteEmployeeDocument(doc.id);
+      setDeleteTarget(null);
       await load();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Не вдалося видалити документ.');
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -5426,36 +6095,10 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
             <Search size={15} />
             <input placeholder="Пошук…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="documents-new-wrap">
-            <button type="button" className="secondary-action" onClick={() => setNewOpen((v) => !v)}>
-              <Plus size={15} />
-              Новий
-              <ChevronDown size={14} />
-            </button>
-            {newOpen ? (
-              <>
-                <button
-                  type="button"
-                  className="leave-menu-backdrop"
-                  aria-hidden
-                  tabIndex={-1}
-                  onClick={() => setNewOpen(false)}
-                />
-                <div className="leave-row-menu" role="menu">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewOpen(false);
-                      setUploadOpen(true);
-                    }}
-                  >
-                    <Upload size={14} />
-                    Завантажити файл
-                  </button>
-                </div>
-              </>
-            ) : null}
-          </div>
+          <button type="button" className="secondary-action document-upload-action" onClick={() => setUploadOpen(true)}>
+            <Upload size={15} />
+            Завантажити файл
+          </button>
         </div>
       </div>
 
@@ -5480,7 +6123,9 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
               {isOpen ? (
                 <div className="doc-list">
                   {docs.length ? (
-                    docs.map((doc) => <DocumentRow key={doc.id} doc={doc} onDelete={handleDelete} />)
+                    docs.map((doc) => (
+                      <DocumentRow key={doc.id} doc={doc} onDelete={setDeleteTarget} onPreview={setPreviewDoc} />
+                    ))
                   ) : (
                     <p className="doc-empty">Немає документів</p>
                   )}
@@ -5503,7 +6148,7 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
             {expanded.has('loose') ? (
               <div className="doc-list">
                 {looseDocs.map((doc) => (
-                  <DocumentRow key={doc.id} doc={doc} onDelete={handleDelete} />
+                  <DocumentRow key={doc.id} doc={doc} onDelete={setDeleteTarget} onPreview={setPreviewDoc} />
                 ))}
               </div>
             ) : null}
@@ -5517,25 +6162,112 @@ function EmployeeDocumentsTabView({ employeeId }: { employeeId: number }) {
         ) : null}
       </div>
 
-      {uploadOpen ? (
-        <DocumentUploadModal
-          folders={folders}
-          defaultFolder={null}
-          onClose={() => setUploadOpen(false)}
-          onUpload={handleUpload}
-        />
-      ) : null}
+      {uploadOpen
+        ? createPortal(
+            <DocumentUploadModal
+              folders={folders}
+              defaultFolder={null}
+              onClose={() => setUploadOpen(false)}
+              onUpload={handleUpload}
+            />,
+            document.body,
+          )
+        : null}
+      {previewDoc
+        ? createPortal(<DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />, document.body)
+        : null}
+      {deleteTarget
+        ? createPortal(
+            <DocumentDeleteConfirmModal
+              doc={deleteTarget}
+              busy={deleteBusy}
+              onCancel={() => setDeleteTarget(null)}
+              onConfirm={() => void confirmDeleteDocument()}
+            />,
+            document.body,
+          )
+        : null}
     </section>
   );
 }
 
-function DocumentRow({ doc, onDelete }: { doc: EmployeeDocument; onDelete: (doc: EmployeeDocument) => void }) {
+type DocumentPreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'text';
+
+const DOCUMENT_IMAGE_EXTENSIONS = new Set(['avif', 'bmp', 'gif', 'ico', 'jpeg', 'jpg', 'png', 'tif', 'tiff', 'webp']);
+const DOCUMENT_VIDEO_EXTENSIONS = new Set(['m4v', 'mov', 'mp4', 'mpeg', 'mpg', 'ogv', 'webm']);
+const DOCUMENT_AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav', 'webm']);
+const DOCUMENT_TEXT_EXTENSIONS = new Set([
+  'cfg',
+  'conf',
+  'csv',
+  'css',
+  'htm',
+  'html',
+  'ini',
+  'js',
+  'json',
+  'jsx',
+  'log',
+  'md',
+  'markdown',
+  'php',
+  'py',
+  'sql',
+  'ts',
+  'tsx',
+  'txt',
+  'xml',
+  'yaml',
+  'yml',
+]);
+
+function documentExtension(name: string): string {
+  const parts = name.toLowerCase().split('.');
+  return parts.length > 1 ? parts[parts.length - 1] : '';
+}
+
+function documentPreviewKind(doc: EmployeeDocument): DocumentPreviewKind | null {
+  if (!doc.local_file) return null;
+  const ext = documentExtension(doc.name);
+  if (DOCUMENT_IMAGE_EXTENSIONS.has(ext)) return 'image';
+  if (DOCUMENT_VIDEO_EXTENSIONS.has(ext)) return 'video';
+  if (DOCUMENT_AUDIO_EXTENSIONS.has(ext)) return 'audio';
+  if (ext === 'pdf') return 'pdf';
+  if (DOCUMENT_TEXT_EXTENSIONS.has(ext)) return 'text';
+  return null;
+}
+
+function DocumentRow({
+  doc,
+  onDelete,
+  onPreview,
+}: {
+  doc: EmployeeDocument;
+  onDelete: (doc: EmployeeDocument) => void;
+  onPreview: (doc: EmployeeDocument) => void;
+}) {
   const isManual = doc.legacy_peopleforce_id.startsWith('manual:');
+  const previewKind = documentPreviewKind(doc);
   return (
     <div className="doc-row">
       <FileText size={15} />
       <span className="doc-row-name">{doc.name}</span>
       <div className="doc-row-actions">
+        {previewKind === 'pdf' ? (
+          <a
+            className="icon-button"
+            href={api.employeeDocumentPreviewUrl(doc.id)}
+            target="_blank"
+            rel="noreferrer"
+            title="Відкрити PDF"
+          >
+            <Eye size={15} />
+          </a>
+        ) : previewKind ? (
+          <button type="button" className="icon-button" title="Переглянути" onClick={() => onPreview(doc)}>
+            <Eye size={15} />
+          </button>
+        ) : null}
         {doc.local_file ? (
           <a className="icon-button" href={api.employeeDocumentDownloadUrl(doc.id)} title="Завантажити">
             <Download size={15} />
@@ -5547,6 +6279,85 @@ function DocumentRow({ doc, onDelete }: { doc: EmployeeDocument; onDelete: (doc:
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function DocumentPreviewModal({ doc, onClose }: { doc: EmployeeDocument; onClose: () => void }) {
+  const kind = documentPreviewKind(doc);
+  const previewUrl = api.employeeDocumentPreviewUrl(doc.id);
+  const downloadUrl = api.employeeDocumentDownloadUrl(doc.id);
+
+  return (
+    <div className="people-data-modal-layer document-preview-layer" role="dialog" aria-modal="true" aria-label="Перегляд документа">
+      <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="people-data-modal document-preview-modal">
+        <header className="people-data-modal-head">
+          <strong>{doc.name}</strong>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Закрити">
+            <X size={18} />
+          </button>
+        </header>
+        <div className="document-preview-body">
+          {kind === 'image' ? <img src={previewUrl} alt={doc.name} /> : null}
+          {kind === 'video' ? <video src={previewUrl} controls /> : null}
+          {kind === 'audio' ? <audio src={previewUrl} controls /> : null}
+          {kind === 'text' ? <iframe src={previewUrl} title={doc.name} /> : null}
+          {!kind || kind === 'pdf' ? (
+            <div className="document-preview-unavailable">
+              <FileText size={32} />
+              <p>{kind === 'pdf' ? 'PDF відкривається в окремій вкладці.' : 'Попередній перегляд недоступний для цього типу файлу.'}</p>
+            </div>
+          ) : null}
+        </div>
+        <div className="people-data-modal-foot">
+          <a className="secondary-action" href={downloadUrl}>
+            <Download size={15} />
+            Завантажити
+          </a>
+          <button type="button" className="primary-action" onClick={onClose}>
+            Закрити
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DocumentDeleteConfirmModal({
+  doc,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  doc: EmployeeDocument;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="settings-option-modal-layer document-delete-layer" role="dialog" aria-modal="true" aria-label="Видалити документ">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
+      <section className="settings-option-modal settings-delete-modal">
+        <header>
+          <strong>Видалити документ?</strong>
+          <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="settings-delete-body">
+          <p>Файл буде видалено з профілю співробітника. Цю дію не можна скасувати.</p>
+          <strong>{doc.name}</strong>
+        </div>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onCancel} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="danger-action" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Видалення…' : 'Видалити'}
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -18000,7 +18811,29 @@ function assetStatusClass(status: string): string {
   return 'neutral';
 }
 
-function ChangelogView({ onBack }: { onBack: () => void }) {
+function ChangelogView({ canView, onBack }: { canView: boolean; onBack: () => void }) {
+  if (!canView) {
+    return (
+      <main className="workspace changelog-page">
+        <header className="page-header">
+          <div>
+            <button type="button" className="settings-back-link" onClick={onBack}>
+              <ChevronLeft size={17} />
+              Назад
+            </button>
+            <h1>Версія HR Vidnova</h1>
+          </div>
+        </header>
+        <section className="changelog-restricted panel" aria-label="Поточна версія">
+          <span className="changelog-restricted-label">Поточна версія</span>
+          <strong>v{APP_VERSION}</strong>
+          <span>{APP_VERSION_DATE}</span>
+          <p>Доступ до повної історії змін обмежено.</p>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="workspace changelog-page">
       <header className="page-header">
@@ -18055,6 +18888,7 @@ export function App() {
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings>(() => readBrandingSettings());
   const [userPreferences, setUserPreferences] = useState<UserPreferences>(defaultUserPreferences);
   const [employeeCovers, setEmployeeCovers] = useState<EmployeeCoverMap>(() => readEmployeeCovers());
+  const canViewChangelog = canAccessChangelog(auth);
   const [correctionForm, setCorrectionForm] = useState({
     date: '2026-06-24',
     requested_start_at: '',
@@ -18146,6 +18980,13 @@ export function App() {
       navigate(loginRedirectPath, { replace: true, state: null });
     }
   }, [authChecked, auth?.authenticated, location.hash, location.pathname, location.search, loginRedirectPath, navigate]);
+
+  useEffect(() => {
+    if (!authChecked || !auth?.authenticated) return;
+    if (sectionFromPathname(location.pathname) === 'changelog' && !canViewChangelog) {
+      navigate(sectionPaths.home, { replace: true });
+    }
+  }, [authChecked, auth?.authenticated, canViewChangelog, location.pathname, navigate]);
 
   useEffect(() => {
     const legacyPath = legacyHashPaths[location.hash];
@@ -18266,6 +19107,7 @@ export function App() {
   }
 
   function changeSection(nextSection: Section) {
+    if (nextSection === 'changelog' && !canViewChangelog) return;
     if (nextSection === 'knowledge') {
       setKnowledgeResetToken((current) => current + 1);
     }
@@ -18282,6 +19124,8 @@ export function App() {
       <HomeView
         employee={profile}
         leaveRequests={leave.requests}
+        leaveTypes={leave.leave_types}
+        onLeaveSubmitted={() => { void api.selfLeave().then(setLeave); }}
         onOpenLeave={() => changeSection('requests')}
         onOpenAttendance={() => changeSection('attendance')}
         onOpenKnowledge={() => changeSection('knowledge')}
@@ -18300,7 +19144,7 @@ export function App() {
     reports: <ReportsView />,
     org: <OrgView copy={copy} themeMode={themeMode} />,
     settings: <SettingsView brandingSettings={brandingSettings} onBrandingChange={setBrandingSettings} copy={copy} />,
-    changelog: <ChangelogView onBack={() => changeSection('settings')} />,
+    changelog: <ChangelogView canView={canViewChangelog} onBack={() => changeSection('settings')} />,
     account: <AccountSettingsView preferences={userPreferences} onSave={handleSaveUserPreferences} />,
     roadmap: <PlaceholderPage title="Що в ваших планах?" blank />,
     tasks: <PlaceholderPage title="Завдання" />,
@@ -18323,7 +19167,13 @@ export function App() {
 
   return (
     <div className="app-shell" data-theme={themeMode} data-density="compact" style={appThemeStyle}>
-      <Sidebar active={section} onChange={changeSection} brandingSettings={userBrandingSettings} copy={copy} />
+      <Sidebar
+        active={section}
+        onChange={changeSection}
+        brandingSettings={userBrandingSettings}
+        copy={copy}
+        canViewChangelog={canViewChangelog}
+      />
       <div className="main-shell">
         <Topbar
           auth={auth}

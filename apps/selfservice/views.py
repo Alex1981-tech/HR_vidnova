@@ -11,7 +11,7 @@ from rest_framework.views import APIView
 
 from apps.employees.models import Employee
 from apps.knowledge.models import KnowledgeCategory, KnowledgeDocument
-from apps.leave.models import LeaveRequest, LeaveType
+from apps.leave.models import LeaveBalance, LeaveRequest, LeaveType
 from apps.skud.models import AccessEvent, TimeCorrectionRequest, WorkDaySummary
 
 from .serializers import (
@@ -131,10 +131,24 @@ class SelfLeaveView(APIView):
     def get(self, request):
         employee = get_current_employee(request)
         requests = LeaveRequest.objects.select_related("leave_type").filter(employee=employee).order_by("-created_at")
-        leave_types = LeaveType.objects.filter(is_active=True).order_by("name")
+        # Лише типи, призначені співробітнику (через нараховані баланси PeopleForce-політик).
+        assigned_type_ids = list(
+            LeaveBalance.objects.filter(employee=employee).values_list("leave_type_id", flat=True).distinct()
+        )
+        leave_types = LeaveType.objects.filter(is_active=True, id__in=assigned_type_ids).order_by("name")
+
+        # Найсвіжіший баланс на кожен тип (за effective_on).
+        balance_by_type = {}
+        for bal in LeaveBalance.objects.filter(
+            employee=employee, leave_type_id__in=assigned_type_ids
+        ).order_by("leave_type_id", "-effective_on", "-id"):
+            balance_by_type.setdefault(bal.leave_type_id, bal.balance)
+
         return Response(
             {
-                "leave_types": SelfLeaveTypeSerializer(leave_types, many=True).data,
+                "leave_types": SelfLeaveTypeSerializer(
+                    leave_types, many=True, context={"balances": balance_by_type}
+                ).data,
                 "requests": SelfLeaveRequestSerializer(requests, many=True).data,
             }
         )

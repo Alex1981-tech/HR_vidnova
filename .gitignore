@@ -17,6 +17,7 @@ dist/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+.playwright-cli/
 *.tsbuildinfo
 *.log
 .DS_Store

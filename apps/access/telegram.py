@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import urllib.parse
 import urllib.request
 from html import escape
@@ -27,6 +28,15 @@ def build_login_code_text(code: str, employee: Employee) -> str:
     )
 
 
+def send_message(telegram_chat_id: int, text: str, reply_markup: dict | None = None) -> None:
+    """Універсальне надсилання HTML-повідомлення через сконфігурований бекенд."""
+    backend = settings.HR_TELEGRAM_SENDER_BACKEND
+    if backend == "telegram_bot_api":
+        _send_via_telegram_bot_api(telegram_chat_id, text, reply_markup=reply_markup)
+        return
+    raise TelegramSendError("Unsupported Telegram sender backend")
+
+
 def send_login_code(telegram_chat_id: int, code: str, employee: Employee) -> None:
     backend = settings.HR_TELEGRAM_SENDER_BACKEND
     if backend == "telegram_bot_api":
@@ -35,19 +45,20 @@ def send_login_code(telegram_chat_id: int, code: str, employee: Employee) -> Non
     raise TelegramSendError("Unsupported Telegram sender backend")
 
 
-def _send_via_telegram_bot_api(telegram_chat_id: int, text: str) -> None:
+def _send_via_telegram_bot_api(telegram_chat_id: int, text: str, reply_markup: dict | None = None) -> None:
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
         raise TelegramSendError("TELEGRAM_BOT_TOKEN is not configured")
 
-    data = urllib.parse.urlencode(
-        {
-            "chat_id": telegram_chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true",
-        }
-    ).encode()
+    payload = {
+        "chat_id": telegram_chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }
+    if reply_markup:
+        payload["reply_markup"] = json.dumps(reply_markup)
+    data = urllib.parse.urlencode(payload).encode()
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         request = urllib.request.Request(url, data=data, method="POST")

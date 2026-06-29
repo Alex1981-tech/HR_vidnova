@@ -1,6 +1,9 @@
 from datetime import date
+from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from apps.employees.models import (
@@ -8,6 +11,7 @@ from apps.employees.models import (
     Department,
     Division,
     Employee,
+    EmployeeDocument,
     EmployeeEmploymentStatus,
     EmployeeField,
     EmployeeFieldGroup,
@@ -72,6 +76,62 @@ class EmployeeHireApiTests(APITestCase):
         status = EmployeeEmploymentStatus.objects.get(employee=employee)
         self.assertEqual(status.employment_type, employment_type)
         self.assertEqual(status.working_pattern_name, working_pattern.name)
+
+
+class EmployeeDocumentUploadApiTests(APITestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_media = TemporaryDirectory()
+        cls._override = override_settings(MEDIA_ROOT=cls._tmp_media.name)
+        cls._override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._override.disable()
+        cls._tmp_media.cleanup()
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="hr-docs", password="test")
+        self.client.force_authenticate(self.user)
+        self.employee = Employee.objects.create(first_name="Наталія", last_name="Документ")
+
+    def test_upload_accepts_media_file_and_serves_inline_preview(self):
+        upload = SimpleUploadedFile("video.mov", b"fake video", content_type="video/quicktime")
+
+        response = self.client.post(
+            "/api/employees/documents/upload/",
+            {"employee": self.employee.id, "files": [upload]},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(response.data["errors"], [])
+        document = EmployeeDocument.objects.get(employee=self.employee, name="video.mov")
+        self.assertEqual(document.legacy_payload["manual_upload"]["content_type"], "video/quicktime")
+
+        preview = self.client.get(f"/api/employees/documents/{document.id}/preview/")
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview["Content-Type"], "video/quicktime")
+        self.assertIn("inline", preview["Content-Disposition"])
+
+    def test_text_preview_is_served_as_plain_text(self):
+        upload = SimpleUploadedFile("note.html", b"<script>alert(1)</script>", content_type="text/html")
+
+        response = self.client.post(
+            "/api/employees/documents/upload/",
+            {"employee": self.employee.id, "files": [upload]},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        document = EmployeeDocument.objects.get(employee=self.employee, name="note.html")
+
+        preview = self.client.get(f"/api/employees/documents/{document.id}/preview/")
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview["Content-Type"], "text/plain")
+        self.assertIn("inline", preview["Content-Disposition"])
 
 
 class EmployeeFormTemplateApiTests(APITestCase):

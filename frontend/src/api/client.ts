@@ -1,4 +1,11 @@
 import type {
+  Announcement,
+  AnnouncementAudiencePreview,
+  AnnouncementComment,
+  AnnouncementCondition,
+  AnnouncementMediaUpload,
+  AnnouncementPayload,
+  AnnouncementReactionSummary,
   ApiList,
   AuthCodeResponse,
   AuthLoginResponse,
@@ -447,6 +454,7 @@ export const api = {
     request<ApiList<EmployeeListItem> | EmployeeListItem[]>(`/api/employees/employees/${buildQuery(params)}`).then(
       normalizeList,
     ),
+  employee: (id: number) => request<EmployeeListItem>(`/api/employees/employees/${id}/`),
   updateEmployee: (id: number, payload: Partial<EmployeeListItem>) =>
     request<EmployeeListItem>(`/api/employees/employees/${id}/`, {
       method: 'PATCH',
@@ -841,6 +849,7 @@ export const api = {
   deleteEmployeeDocument: (id: number) =>
     request<void>(`/api/employees/documents/${id}/`, { method: 'DELETE' }),
   employeeDocumentDownloadUrl: (id: number) => `/api/employees/documents/${id}/download/`,
+  employeeDocumentPreviewUrl: (id: number) => `/api/employees/documents/${id}/preview/`,
   emergencyContacts: (employee: number) =>
     request<ApiList<EmergencyContact> | EmergencyContact[]>(
       `/api/employees/emergency-contacts/${buildQuery({ employee, page_size: 200 })}`,
@@ -948,4 +957,45 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   selfKnowledge: () => request<SelfKnowledge>('/api/me/knowledge/'),
+
+  // --- Оголошення ---
+  announcements: (params: { page?: number; page_size?: number } = {}) =>
+    request<ApiList<Announcement> | Announcement[]>(`/api/announcements/announcements/${buildQuery(params)}`).then(
+      normalizeList,
+    ),
+  createAnnouncement: (payload: AnnouncementPayload) =>
+    request<Announcement>('/api/announcements/announcements/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateAnnouncement: (id: number, payload: Partial<AnnouncementPayload>) =>
+    request<Announcement>(`/api/announcements/announcements/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteAnnouncement: (id: number) =>
+    request<void>(`/api/announcements/announcements/${id}/`, { method: 'DELETE' }),
+  announcementAudiencePreview: (payload: { audience_type: string; conditions: AnnouncementCondition[] }) =>
+    request<AnnouncementAudiencePreview>('/api/announcements/announcements/audience-preview/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  uploadAnnouncementMedia: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<AnnouncementMediaUpload>('/api/announcements/announcements/media-upload/', {
+      method: 'POST',
+      body: form,
+    });
+  },
+  reactAnnouncement: (id: number, emoji: string) =>
+    request<{ reactions: AnnouncementReactionSummary[] }>(`/api/announcements/announcements/${id}/react/`, {
+      method: 'POST',
+      body: JSON.stringify({ emoji }),
+    }),
+  addAnnouncementComment: (id: number, body: string) =>
+    request<AnnouncementComment>(`/api/announcements/announcements/${id}/comments/`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
 };

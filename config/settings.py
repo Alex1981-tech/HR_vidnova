@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.selfservice",
     "apps.integrations",
     "apps.assets",
+    "apps.announcements",
 ]
 
 MIDDLEWARE = [

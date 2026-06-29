@@ -1,3 +1,4 @@
+import mimetypes
 import uuid
 
 from django.db import transaction
@@ -12,10 +13,72 @@ from rest_framework.response import Response
 
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
-# Дозволені типи/ліміти для ручного завантаження документів (Фаза 7).
-ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "png", "jpg", "jpeg"}
+# Ліміти для ручного завантаження документів (Фаза 7).
 MAX_DOCUMENT_FILES = 10
 MAX_DOCUMENT_SIZE = 200 * 1024 * 1024  # 200 МБ
+PREVIEWABLE_DOCUMENT_MIME_TYPES = {"application/pdf"}
+PREVIEWABLE_DOCUMENT_TEXT_MIME_TYPES = {
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+}
+PREVIEWABLE_DOCUMENT_TEXT_EXTENSIONS = {
+    "cfg",
+    "conf",
+    "csv",
+    "css",
+    "htm",
+    "html",
+    "ini",
+    "js",
+    "json",
+    "jsx",
+    "log",
+    "md",
+    "markdown",
+    "php",
+    "py",
+    "sql",
+    "ts",
+    "tsx",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+}
+
+
+def _document_extension(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
+
+
+def _is_previewable_content_type(content_type: str) -> bool:
+    base = content_type.split(";", 1)[0].strip().lower()
+    return (
+        base in PREVIEWABLE_DOCUMENT_MIME_TYPES
+        or base.startswith("image/")
+        or base.startswith("video/")
+        or base.startswith("audio/")
+        or base.startswith("text/")
+    )
+
+
+def _document_preview_content_type(document: "EmployeeDocument") -> str | None:
+    payload = document.legacy_payload if isinstance(document.legacy_payload, dict) else {}
+    manual_upload = payload.get("manual_upload") if isinstance(payload.get("manual_upload"), dict) else {}
+    stored_type = str(manual_upload.get("content_type") or "").strip().lower()
+    guessed_type = (mimetypes.guess_type(document.name)[0] or "").strip().lower()
+    if _document_extension(document.name) in PREVIEWABLE_DOCUMENT_TEXT_EXTENSIONS:
+        return "text/plain"
+    for content_type in (stored_type, guessed_type):
+        base = content_type.split(";", 1)[0].strip().lower()
+        if base in PREVIEWABLE_DOCUMENT_TEXT_MIME_TYPES or base.startswith("text/"):
+            return "text/plain"
+        if base == "image/svg+xml":
+            continue
+        if base and _is_previewable_content_type(base):
+            return base
+    return None
 
 from .models import (
     EmployeeField,
@@ -625,10 +688,10 @@ class EmployeeDocumentViewSet(EmployeeApiViewSet):
 
     @action(detail=False, methods=["post"], url_path="upload", parser_classes=[MultiPartParser, FormParser])
     def upload(self, request):
-        """Ручне завантаження документів з ПК (multipart). До 10 файлів, ≤200МБ, allowlist типів."""
+        """Ручне завантаження документів з ПК (multipart). До 10 файлів, ≤200МБ, будь-які типи."""
         employee_id = request.data.get("employee")
         folder_id = request.data.get("folder")
-        files = request.FILES.getlist("files")
+        files = request.FILES.getlist("files") or request.FILES.getlist("file")
         if not employee_id:
             return Response({"detail": "Не вказано співробітника."}, status=status.HTTP_400_BAD_REQUEST)
         if not files:
@@ -648,10 +711,6 @@ class EmployeeDocumentViewSet(EmployeeApiViewSet):
 
         created, errors = [], []
         for upload in files:
-            ext = (upload.name.rsplit(".", 1)[-1] if "." in upload.name else "").lower()
-            if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
-                errors.append({"name": upload.name, "error": "Тип файлу не дозволений."})
-                continue
             if upload.size > MAX_DOCUMENT_SIZE:
                 errors.append({"name": upload.name, "error": "Файл більший за 200 МБ."})
                 continue
@@ -664,14 +723,42 @@ class EmployeeDocumentViewSet(EmployeeApiViewSet):
                     document_type=EmployeeDocument.DocumentType.FILE,
                     local_file=upload,
                     file_downloaded_at=timezone.now(),
+                    legacy_payload={
+                        "manual_upload": {
+                            "content_type": getattr(upload, "content_type", "") or "",
+                            "size": upload.size,
+                        }
+                    },
                 )
             created.append(document)
 
         data = EmployeeDocumentSerializer(created, many=True, context=self.get_serializer_context()).data
+        response_data = {"created": data, "errors": errors}
+        if not created and errors:
+            response_data["detail"] = "Файли не завантажено: " + "; ".join(
+                f"{item['name']}: {item['error']}" for item in errors
+            )
         return Response(
-            {"created": data, "errors": errors},
+            response_data,
             status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST,
         )
+
+    @action(detail=True, methods=["get"], url_path="preview")
+    def preview(self, request, pk=None):
+        document = self.get_object()
+        if not document.local_file:
+            return Response({"detail": "Файл відсутній."}, status=status.HTTP_404_NOT_FOUND)
+        content_type = _document_preview_content_type(document)
+        if not content_type:
+            return Response(
+                {"detail": "Попередній перегляд для цього типу файлу недоступний."},
+                status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            )
+        try:
+            handle = document.local_file.open("rb")
+        except (FileNotFoundError, ValueError):
+            return Response({"detail": "Файл недоступний."}, status=status.HTTP_404_NOT_FOUND)
+        return FileResponse(handle, as_attachment=False, filename=document.name, content_type=content_type)
 
     @action(detail=True, methods=["get"], url_path="download")
     def download(self, request, pk=None):
