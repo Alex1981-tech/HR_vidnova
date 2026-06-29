@@ -625,6 +625,7 @@ export type KnowledgeCategory = {
   visibility_mode: string;
   audience_employee_ids: number[];
   audience_filters: Record<string, unknown>;
+  conditions: AnnouncementCondition[];
   position: number;
   parent: number | null;
   is_active: boolean;

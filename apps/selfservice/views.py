@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.announcements.audience import resolve_audience
 from apps.employees.models import Employee
 from apps.knowledge.models import KnowledgeCategory, KnowledgeDocument
 from apps.leave.models import LeaveBalance, LeaveRequest, LeaveType
@@ -49,6 +50,27 @@ def parse_bounded_date_range(request):
     if (date_to - date_from).days > MAX_ATTENDANCE_RANGE_DAYS:
         raise ValidationError({"to": f"Период не должен превышать {MAX_ATTENDANCE_RANGE_DAYS + 1} дней."})
     return date_from, date_to
+
+
+def knowledge_category_conditions(category: KnowledgeCategory) -> list[dict]:
+    filters = category.audience_filters if isinstance(category.audience_filters, dict) else {}
+    conditions = filters.get("conditions")
+    return conditions if isinstance(conditions, list) else []
+
+
+def knowledge_category_visible_for_employee(category: KnowledgeCategory, employee: Employee) -> bool:
+    if category.visibility_mode == KnowledgeCategory.VisibilityMode.ALL:
+        return True
+    employee_ids = category.audience_employee_ids if isinstance(category.audience_employee_ids, list) else []
+    if employee_ids:
+        try:
+            return employee.pk in {int(value) for value in employee_ids}
+        except (TypeError, ValueError):
+            return False
+    conditions = knowledge_category_conditions(category)
+    if not conditions:
+        return False
+    return resolve_audience("conditions", conditions).filter(pk=employee.pk).exists()
 
 
 class SelfProfileView(APIView):
@@ -168,10 +190,21 @@ class SelfKnowledgeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        categories = KnowledgeCategory.objects.filter(is_active=True).order_by("name")
+        employee = get_current_employee(request)
+        categories = list(KnowledgeCategory.objects.filter(is_active=True).order_by("name"))
+        visible_category_ids = {
+            category.pk
+            for category in categories
+            if knowledge_category_visible_for_employee(category, employee)
+        }
+        categories = [category for category in categories if category.pk in visible_category_ids]
         documents = (
             KnowledgeDocument.objects.select_related("category")
-            .filter(status=KnowledgeDocument.Status.PUBLISHED, category__is_active=True)
+            .filter(
+                status=KnowledgeDocument.Status.PUBLISHED,
+                category__is_active=True,
+                category_id__in=visible_category_ids,
+            )
             .order_by("-updated_at")
         )
         category = request.query_params.get("category")

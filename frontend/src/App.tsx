@@ -391,7 +391,7 @@ const leaveBands: LeaveBand[] = [];
 
 const sidebarItems: Array<{ section: Section; icon: LucideIcon; badge?: number; expandable?: boolean }> = [
   { section: 'home', icon: Home },
-  { section: 'notifications', icon: Bell, badge: 3 },
+  { section: 'notifications', icon: Bell },
   { section: 'people', icon: Users },
   { section: 'calendar', icon: Calendar },
   { section: 'attendance', icon: Clock3 },
@@ -1546,9 +1546,8 @@ function Topbar({
             </div>
           ) : null}
         </div>
-        <button type="button" className="icon-button with-badge" aria-label={navLabel(copy, 'notifications')}>
+        <button type="button" className="icon-button" aria-label={navLabel(copy, 'notifications')}>
           <Bell size={18} />
-          <span>5</span>
         </button>
         <div className="topbar-menu-wrap">
           <button
@@ -8345,6 +8344,7 @@ function AttendanceView(props: {
   copy: AppCopy;
   brandingSettings: BrandingSettings;
   employeeCovers: EmployeeCoverMap;
+  currentEmployeeId: number;
 }) {
   const location = useLocation();
   const attendanceRoute = useMemo(() => attendanceRouteFromPathname(location.pathname), [location.pathname]);
@@ -8358,10 +8358,12 @@ function CompanyAttendanceView({
   copy,
   brandingSettings,
   employeeCovers,
+  currentEmployeeId,
 }: {
   copy: AppCopy;
   brandingSettings: BrandingSettings;
   employeeCovers: EmployeeCoverMap;
+  currentEmployeeId: number;
 }) {
   const navigate = useNavigate();
   const [month, setMonth] = useState(getInitialMonth);
@@ -8430,7 +8432,15 @@ function CompanyAttendanceView({
               <button type="button" className="active">
                 {copyValue(copy.attendance.company, 'Компанія')}
               </button>
-              <button type="button">{copyValue(copy.attendance.mine, 'Мої')}</button>
+              <button
+                type="button"
+                disabled={currentEmployeeId <= 0}
+                onClick={() => {
+                  if (currentEmployeeId > 0) navigate(attendanceEmployeePath(currentEmployeeId, monthQueryValue(month)));
+                }}
+              >
+                {copyValue(copy.attendance.mine, 'Мої')}
+              </button>
             </div>
           </div>
           <SectionTabs
@@ -8676,10 +8686,12 @@ function EmployeeAttendanceDetailView({
   employeeId,
   copy,
   embedded = false,
+  currentEmployeeId,
 }: {
   employeeId: number;
   copy: AppCopy;
   embedded?: boolean;
+  currentEmployeeId?: number;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -8811,9 +8823,25 @@ function EmployeeAttendanceDetailView({
   const absenceMinutes = (summary?.paid_absence_minutes ?? 0) + (summary?.unpaid_absence_minutes ?? 0);
   const DetailShell = embedded ? 'section' : 'main';
 
+  const isOwnTimesheet = !embedded && currentEmployeeId !== undefined && employeeId === currentEmployeeId;
+
   return (
     <DetailShell className={`workspace attendance-page attendance-detail-page${embedded ? ' embedded' : ''}`}>
-      {!embedded ? (
+      {isOwnTimesheet ? (
+        <header className="page-header compact attendance-company-header">
+          <div className="title-with-segment">
+            <h1>{copyValue(copy.attendance.title, 'Відвідуваність')}</h1>
+            <div className="segmented">
+              <button type="button" onClick={() => navigate('/attendance')}>
+                {copyValue(copy.attendance.company, 'Компанія')}
+              </button>
+              <button type="button" className="active">
+                {copyValue(copy.attendance.mine, 'Мої')}
+              </button>
+            </div>
+          </div>
+        </header>
+      ) : !embedded ? (
         <header className="page-header compact profile-header attendance-detail-header">
           <div className="profile-back">
             <button type="button" onClick={() => navigate('/attendance')}>
@@ -9587,7 +9615,7 @@ type KnowledgeCategoryDraft = {
   parent: string;
   icon_emoji: string;
   visibility_mode: string;
-  audience_employee_ids: string;
+  conditions: AnnouncementCondition[];
 };
 
 type KnowledgeCategoryTreeNode = {
@@ -9658,95 +9686,57 @@ const knowledgeEmojiGroups = [
     id: 'frequent',
     label: 'Часті',
     icon: '🕘',
-    emojis: ['🧑‍💼', '📄', '🧾', '📋', '🛡', '💼', '🩺', '🦷', '💻', '☎', '📊', '📈', '📚', '📌', '❤️', '🎯', '⚕️', '🏥', '📍', '✨'],
+    emojis: ['🧑‍💼', '📄', '🧾', '📋', '🛡', '💼', '🩺', '🦷', '💻', '☎', '📊', '📈', '📚', '📌', '❤️', '🎯', '⚕️', '🏥', '📍', '✨', '✅', '⚠️', '🔔', '🔒', '🚀', '💡', '👥', '🗂️', '📎', '📝'],
   },
   {
     id: 'smiles',
     label: 'Усмішки',
     icon: '🙂',
-    emojis: ['🙂', '😊', '😀', '😁', '😌', '😉', '🤗', '🤝', '👍', '👏', '🙏', '💬', '💡', '⭐', '✨', '🌟', '🎉', '🎁', '💜', '❤️'],
+    emojis: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '😘', '😗', '😙', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🫢', '🫣', '🤫', '🤔', '🫡', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '😮‍💨', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🥳'],
   },
   {
     id: 'people',
     label: 'Люди',
     icon: '👥',
-    emojis: ['👥', '🧑‍💼', '👩‍💼', '👨‍💼', '👩‍⚕️', '👨‍⚕️', '🧑‍⚕️', '🧑‍🏫', '🙋', '🧑‍💻', '👩‍💻', '👨‍💻', '🧑‍🔬', '👩‍🔬', '👨‍🔬', '🧑‍🔧', '👩‍🔧', '👨‍🔧'],
+    emojis: ['👤', '👥', '🫂', '👶', '👧', '🧒', '👦', '👩', '🧑', '👨', '👩‍🦱', '🧑‍🦱', '👨‍🦱', '👩‍🦰', '🧑‍🦰', '👨‍🦰', '👱‍♀️', '👱', '👱‍♂️', '👩‍🦳', '🧑‍🦳', '👨‍🦳', '👩‍⚕️', '🧑‍⚕️', '👨‍⚕️', '👩‍🎓', '🧑‍🎓', '👨‍🎓', '👩‍🏫', '🧑‍🏫', '👨‍🏫', '👩‍💻', '🧑‍💻', '👨‍💻', '👩‍💼', '🧑‍💼', '👨‍💼', '👩‍🔬', '🧑‍🔬', '👨‍🔬', '👩‍🔧', '🧑‍🔧', '👨‍🔧', '🙋', '🙋‍♀️', '🙋‍♂️', '🤝', '👍', '👏', '🙏'],
   },
   {
     id: 'clinic',
     label: 'Клініка',
     icon: '🩺',
-    emojis: ['🩺', '⚕️', '🏥', '🦷', '💊', '💉', '🧬', '🧪', '🔬', '🩹', '🧴', '🧼', '😷', '🫶', '❤️', '💜', '🛡', '🧯'],
+    emojis: ['🩺', '⚕️', '🏥', '🚑', '🦷', '🦴', '👁️', '🧠', '🫀', '🫁', '💊', '💉', '🩸', '🧬', '🧪', '🔬', '🧫', '🧯', '🩹', '🩼', '🦽', '🦼', '🧴', '🧼', '😷', '🤒', '🤕', '🫶', '❤️', '💜', '🛡', '📋', '📄', '✅', '⚠️'],
   },
   {
     id: 'documents',
     label: 'Документи',
     icon: '📄',
-    emojis: ['📄', '📃', '📑', '📋', '📝', '🧾', '📚', '📖', '📘', '📗', '📙', '🗂️', '📁', '📎', '🔖', '🏷️', '✅', '☑️', '✍️', '🖊️'],
+    emojis: ['📄', '📃', '📑', '📜', '📋', '📝', '🧾', '📚', '📖', '📕', '📗', '📘', '📙', '📓', '📔', '📒', '🗂️', '📁', '📂', '🗃️', '🗄️', '📎', '🖇️', '🔖', '🏷️', '✉️', '📨', '📧', '📥', '📤', '✅', '☑️', '✔️', '✍️', '🖊️', '🖋️', '✏️', '🔍'],
   },
   {
     id: 'work',
     label: 'Робота',
     icon: '💼',
-    emojis: ['💼', '🖥️', '💻', '⌨️', '🖱️', '☎', '📞', '📧', '📅', '🗓️', '⏱️', '⏰', '⚙️', '🔒', '🔑', '🚀', '🎯', '🏆', '📌', '📎'],
+    emojis: ['💼', '🖥️', '💻', '⌨️', '🖱️', '🖨️', '☎', '📞', '📱', '📧', '📅', '🗓️', '⏱️', '⏰', '🕘', '⚙️', '🛠️', '🔧', '🔩', '🔒', '🔓', '🔑', '🚀', '🎯', '🏆', '🥇', '🏅', '📌', '📎', '📣', '💬', '💡', '🧩', '🧭', '🏢'],
   },
   {
     id: 'analytics',
     label: 'Аналітика',
     icon: '📊',
-    emojis: ['📊', '📈', '📉', '💹', '🧮', '🎯', '🏅', '🥇', '📣', '📢', '💬', '🧠', '💡', '🔍', '🔎', '🧭', '🧩', '🗃️'],
+    emojis: ['📊', '📈', '📉', '💹', '🧮', '🔢', '💯', '🎯', '🏅', '🥇', '📣', '📢', '💬', '🧠', '💡', '🔍', '🔎', '🧭', '🧩', '🗃️', '🗂️', '✅', '⚠️', '❗', '❓', 'ℹ️', '🔔', '📌', '🟢', '🟡', '🔴', '🔵', '🟣'],
   },
   {
     id: 'places',
     label: 'Локації',
     icon: '📍',
-    emojis: ['📍', '🗺️', '🧭', '🏥', '🏢', '🏠', '🚪', '🌆', '🌇', '🏙️', '🚗', '🚕', '🚌', '🚎', '🚆', '✈️', '🚲', '🚶'],
+    emojis: ['📍', '📌', '🗺️', '🧭', '🏥', '🏢', '🏬', '🏠', '🏡', '🚪', '🌆', '🌇', '🏙️', '🌍', '🌎', '🌏', '🚗', '🚕', '🚌', '🚎', '🚆', '🚊', '🚇', '✈️', '🚲', '🛴', '🚶', '🚶‍♀️', '🚶‍♂️'],
   },
   {
     id: 'symbols',
     label: 'Позначки',
     icon: '🔣',
-    emojis: ['✅', '☑️', '✔️', '❌', '⚠️', '❗', '❓', 'ℹ️', '🔔', '📣', '🔒', '🔓', '🟢', '🟡', '🔴', '🔵', '🟣', '⚪', '⚫', '⬆️', '⬇️'],
+    emojis: ['✅', '☑️', '✔️', '✳️', '❌', '⭕', '🚫', '⚠️', '❗', '❓', 'ℹ️', '🔔', '📣', '🔒', '🔓', '🔐', '🟢', '🟡', '🔴', '🔵', '🟣', '🟠', '⚪', '⚫', '⬆️', '⬇️', '➡️', '⬅️', '↗️', '↘️', '⭐', '🌟', '✨', '💜', '❤️'],
   },
 ];
-const allKnowledgeEmojiOptions = Array.from(new Set(knowledgeEmojiGroups.flatMap((group) => group.emojis)));
-const knowledgeEmojiKeywords: Record<string, string> = {
-  '🧑‍💼': 'hr персонал люди менеджер керівник',
-  '📄': 'документ сторінка файл',
-  '🛡': 'безпека захист страховий',
-  '💼': 'робота директор керівник бізнес',
-  '🩺': 'медицина лікар клініка',
-  '💻': 'baf компʼютер система інструкція',
-  '☎': 'контакт центр телефон',
-  '📊': 'маркетинг аналітика звіти',
-  '🦷': 'стоматологія зуби',
-  '📚': 'база знань навчання',
-  '🧾': 'регламент стандарт протокол',
-  '📌': 'важливо закріплено',
-  '❤️': 'лояльність любов серце',
-  '🎯': 'ціль nps план',
-  '⚕️': 'медицина здоровʼя',
-  '🖥️': 'компʼютер робоче місце',
-  '📋': 'посадова інструкція список чеклист',
-  '📈': 'звіт аналітика ріст',
-  '📉': 'звіт аналітика спад',
-  '📅': 'календар дата подія',
-  '🗓️': 'календар графік дата',
-  '📍': 'локація місто філія',
-  '🏥': 'клініка медцентр філія',
-  '✅': 'готово виконано підтверджено',
-  '⚠️': 'увага попередження',
-  '🔔': 'сповіщення нагадування',
-};
-const knowledgeEmojiSearchIndex = allKnowledgeEmojiOptions.reduce<Record<string, string>>((index, emoji) => {
-  const groupLabels = knowledgeEmojiGroups
-    .filter((group) => group.emojis.includes(emoji))
-    .map((group) => group.label)
-    .join(' ');
-  index[emoji] = `${emoji} ${groupLabels} ${knowledgeEmojiKeywords[emoji] ?? ''}`;
-  return index;
-}, {});
-
 const knowledgeTextColors = [
   { id: 'ink', label: 'Текст', value: '#061c3d' },
   { id: 'violet', label: 'Violet', value: '#7c3aed' },
@@ -9773,6 +9763,32 @@ const knowledgeSocialOptions = [
   { id: 'website', label: 'Сайт', placeholder: 'https://vidnova.ua' },
 ];
 
+function knowledgeCategoryAudienceConditions(category: KnowledgeCategory): AnnouncementCondition[] {
+  const direct = Array.isArray(category.conditions) ? category.conditions : [];
+  const nested = category.audience_filters?.['conditions'];
+  const legacyEmployeeIds = Array.isArray(category.audience_employee_ids)
+    ? category.audience_employee_ids.map((entry) => Number(entry)).filter(Number.isFinite)
+    : [];
+  const source = direct.length
+    ? direct
+    : Array.isArray(nested) && nested.length
+      ? nested
+      : legacyEmployeeIds.length
+        ? [{ field: 'employee', operator: 'is', value: legacyEmployeeIds }]
+        : [];
+  return source
+    .map((condition) => {
+      if (!condition || typeof condition !== 'object') return null;
+      const item = condition as Record<string, unknown>;
+      const field = typeof item.field === 'string' ? item.field : '';
+      const operator = typeof item.operator === 'string' ? item.operator : '';
+      const value = Array.isArray(item.value) ? item.value.map((entry) => Number(entry)).filter(Number.isFinite) : [];
+      if (!field || !operator) return null;
+      return { field, operator: operator as AnnouncementCondition['operator'], value };
+    })
+    .filter((condition): condition is AnnouncementCondition => Boolean(condition));
+}
+
 function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowledge; resetToken: number; copy: AppCopy }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -9798,12 +9814,10 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
     parent: '',
     icon_emoji: '📄',
     visibility_mode: 'all',
-    audience_employee_ids: '',
+    conditions: [],
   });
   const [categorySaveState, setCategorySaveState] = useState<LoadState>('idle');
   const [categoryError, setCategoryError] = useState('');
-  const [activePeopleTotal, setActivePeopleTotal] = useState(0);
-  const [audiencePeople, setAudiencePeople] = useState<EmployeeListItem[]>([]);
   const [editorDraft, setEditorDraft] = useState<KnowledgeEditorDraft | null>(null);
   const [editorSaveState, setEditorSaveState] = useState<LoadState>('idle');
   const [editorError, setEditorError] = useState('');
@@ -9864,26 +9878,6 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
       cancelled = true;
     };
   }, [knowledge.categories, knowledge.documents, search]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    api
-      .employees({ status: 'active', page_size: 200 })
-      .then((result) => {
-        if (!cancelled) {
-          setActivePeopleTotal(result.total);
-          setAudiencePeople(result.items);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setActivePeopleTotal(0);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const sortedCategories = useMemo(
     () => [...categories].sort((first, second) => first.position - second.position || first.name.localeCompare(second.name, 'uk')),
@@ -10070,7 +10064,7 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
       parent: parentId ? String(parentId) : '',
       icon_emoji: '📄',
       visibility_mode: 'all',
-      audience_employee_ids: '',
+      conditions: [],
     });
     setCategoryError('');
     setCategorySaveState('idle');
@@ -10086,7 +10080,7 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
       parent: category.parent ? String(category.parent) : '',
       icon_emoji: categoryIcon(category, 0),
       visibility_mode: category.visibility_mode || 'all',
-      audience_employee_ids: (category.audience_employee_ids || []).join(', '),
+      conditions: knowledgeCategoryAudienceConditions(category),
     });
     setCategoryError('');
     setCategorySaveState('idle');
@@ -10161,9 +10155,14 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
       setCategoryError('Назва категорії обовʼязкова.');
       return;
     }
-    const audienceIds = parseIdList(categoryDraft.audience_employee_ids);
-    if (categoryDraft.visibility_mode === 'specific' && categoryDraft.audience_employee_ids.trim() && !audienceIds.length) {
-      setCategoryError('Вкажіть ID співробітників через кому або залиште поле порожнім.');
+    const visibilityMode = categoryDraft.visibility_mode === 'specific' ? 'specific' : 'all';
+    const completeConditions = visibilityMode === 'specific' ? categoryDraft.conditions.filter(isCompleteAnnouncementCondition) : [];
+    if (visibilityMode === 'specific' && !completeConditions.length) {
+      setCategoryError('Додайте хоча б одну умову для конкретної аудиторії.');
+      return;
+    }
+    if (visibilityMode === 'specific' && categoryDraft.conditions.some((condition) => !isCompleteAnnouncementCondition(condition))) {
+      setCategoryError('Заповніть або видаліть незавершені умови.');
       return;
     }
     setCategorySaveState('loading');
@@ -10173,9 +10172,10 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
         name,
         description: categoryDraft.description.trim(),
         icon_emoji: categoryDraft.icon_emoji || '📄',
-        visibility_mode: categoryDraft.visibility_mode,
-        audience_employee_ids: categoryDraft.visibility_mode === 'specific' ? audienceIds : [],
-        audience_filters: categoryDraft.visibility_mode === 'all' ? { employee_status: 'active' } : {},
+        visibility_mode: visibilityMode,
+        audience_employee_ids: [],
+        audience_filters: { employee_status: 'active', conditions: completeConditions },
+        conditions: completeConditions,
         parent: categoryDraft.parent ? Number(categoryDraft.parent) : null,
         position: categoryDraft.id ? undefined : categories.length + 1,
         is_active: true,
@@ -10405,8 +10405,6 @@ function KnowledgeView({ knowledge, resetToken, copy }: { knowledge: SelfKnowled
           onDraftChange={setCategoryDraft}
           onClose={() => setCategoryDialogOpen(false)}
           onSubmit={saveCategory}
-          activePeopleTotal={activePeopleTotal}
-          people={audiencePeople}
         />
       ) : null}
     </main>
@@ -10732,8 +10730,6 @@ function KnowledgeCategoryDialog({
   categories,
   saveState,
   error,
-  activePeopleTotal,
-  people,
   onDraftChange,
   onClose,
   onSubmit,
@@ -10742,18 +10738,19 @@ function KnowledgeCategoryDialog({
   categories: KnowledgeCategory[];
   saveState: LoadState;
   error: string;
-  activePeopleTotal: number;
-  people: EmployeeListItem[];
   onDraftChange: (draft: KnowledgeCategoryDraft) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const [peopleSearch, setPeopleSearch] = useState('');
   const [emojiOpen, setEmojiOpen] = useState(false);
-  const [emojiSearch, setEmojiSearch] = useState('');
   const [activeEmojiGroup, setActiveEmojiGroup] = useState(knowledgeEmojiGroups[0].id);
   const [parentPickerOpen, setParentPickerOpen] = useState(false);
   const [parentSearch, setParentSearch] = useState('');
+  const [audiencePreview, setAudiencePreview] = useState<{ count: number; sample: Array<{ id: number; full_name: string; avatar_url: string }> }>({
+    count: 0,
+    sample: [],
+  });
+  const dictCache = useRef<Record<string, AnnouncementConditionOption[]>>({});
   const excludedParentIds = draft.id ? new Set([draft.id, ...knowledgeCategoryDescendantIds(categories, draft.id)]) : new Set<number>();
   const availableParents = useMemo(
     () =>
@@ -10775,35 +10772,40 @@ function KnowledgeCategoryDialog({
   }, [availableParentTree, categories, parentSearch]);
   const selectedParentId = draft.parent ? Number(draft.parent) : null;
   const selectedParentLabel = selectedParentId ? categoryBreadcrumb(categories, selectedParentId) || 'Категорію не знайдено' : 'Без батьківської категорії';
-  const selectedSpecificIds = parseIdList(draft.audience_employee_ids);
-  const selectedIdSet = new Set(selectedSpecificIds);
   const activeEmojiSet = knowledgeEmojiGroups.find((group) => group.id === activeEmojiGroup) ?? knowledgeEmojiGroups[0];
-  const visibleEmojis = useMemo(() => {
-    const query = emojiSearch.trim().toLowerCase();
-    const source = query ? allKnowledgeEmojiOptions : activeEmojiSet.emojis;
-    return source.filter((emoji) => {
-      if (!query) return true;
-      return knowledgeEmojiSearchIndex[emoji].toLowerCase().includes(query);
-    });
-  }, [activeEmojiSet.emojis, emojiSearch]);
-  const filteredPeople = people
-    .filter((person) => {
-      const query = peopleSearch.trim().toLowerCase();
-      if (!query) return true;
-      return [person.full_name, person.position_name, person.department_name, person.email].some((value) =>
-        (value || '').toLowerCase().includes(query),
-      );
-    })
-    .slice(0, 12);
+  const audienceType = draft.visibility_mode === 'specific' ? 'conditions' : 'all';
+  const previewConditions = useMemo(
+    () => (audienceType === 'conditions' ? draft.conditions.filter(isCompleteAnnouncementCondition) : []),
+    [audienceType, draft.conditions],
+  );
 
-  function togglePerson(personId: number) {
-    const next = new Set(selectedSpecificIds);
-    if (next.has(personId)) {
-      next.delete(personId);
-    } else {
-      next.add(personId);
+  useEffect(() => {
+    if (audienceType === 'conditions' && !previewConditions.length) {
+      setAudiencePreview({ count: 0, sample: [] });
+      return undefined;
     }
-    onDraftChange({ ...draft, audience_employee_ids: Array.from(next).sort((first, second) => first - second).join(', ') });
+    const timer = setTimeout(() => {
+      api
+        .announcementAudiencePreview({ audience_type: audienceType, conditions: previewConditions })
+        .then(setAudiencePreview)
+        .catch(() => setAudiencePreview({ count: 0, sample: [] }));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [audienceType, previewConditions]);
+
+  function addCondition() {
+    onDraftChange({ ...draft, conditions: [...draft.conditions, { field: '', operator: '', value: [] }] });
+  }
+
+  function updateCondition(index: number, patch: Partial<AnnouncementCondition>) {
+    onDraftChange({
+      ...draft,
+      conditions: draft.conditions.map((condition, conditionIndex) => (conditionIndex === index ? { ...condition, ...patch } : condition)),
+    });
+  }
+
+  function removeCondition(index: number) {
+    onDraftChange({ ...draft, conditions: draft.conditions.filter((_, conditionIndex) => conditionIndex !== index) });
   }
 
   return (
@@ -10851,13 +10853,9 @@ function KnowledgeCategoryDialog({
                     </button>
                   ))}
                 </div>
-                <label className="knowledge-emoji-search">
-                  <Search size={16} />
-                  <input value={emojiSearch} placeholder="Пошук emoji" onChange={(event) => setEmojiSearch(event.target.value)} />
-                </label>
-                <div className="knowledge-emoji-title">{emojiSearch.trim() ? 'Результати пошуку' : activeEmojiSet.label}</div>
+                <div className="knowledge-emoji-title">{activeEmojiSet.label}</div>
                 <div className="knowledge-emoji-grid">
-                  {visibleEmojis.map((emoji) => (
+                  {activeEmojiSet.emojis.map((emoji) => (
                     <button
                       type="button"
                       key={emoji}
@@ -10938,18 +10936,24 @@ function KnowledgeCategoryDialog({
             <button
               type="button"
               className={draft.visibility_mode === 'specific' ? 'active' : ''}
-              onClick={() => onDraftChange({ ...draft, visibility_mode: 'specific' })}
+              onClick={() =>
+                onDraftChange({
+                  ...draft,
+                  visibility_mode: 'specific',
+                  conditions: draft.conditions.length ? draft.conditions : [{ field: '', operator: '', value: [] }],
+                })
+              }
             >
               <span className="radio-dot" />
               <div>
                 <strong>Конкретні люди</strong>
-                <span>Вкажіть ID співробітників</span>
+                <span>Виберіть людей на основі умов</span>
               </div>
             </button>
             <button
               type="button"
               className={draft.visibility_mode === 'all' ? 'active' : ''}
-              onClick={() => onDraftChange({ ...draft, visibility_mode: 'all', audience_employee_ids: '' })}
+              onClick={() => onDraftChange({ ...draft, visibility_mode: 'all' })}
             >
               <span className="radio-dot" />
               <div>
@@ -10959,34 +10963,33 @@ function KnowledgeCategoryDialog({
             </button>
           </div>
           {draft.visibility_mode === 'specific' ? (
-            <div className="knowledge-specific-people">
-              <label>
-                <span>Пошук людей</span>
-                <input value={peopleSearch} placeholder="Імʼя, посада, email" onChange={(event) => setPeopleSearch(event.target.value)} />
-              </label>
-              <div className="knowledge-people-picker">
-                {filteredPeople.map((person) => (
-                  <label key={person.id} className={selectedIdSet.has(person.id) ? 'active' : ''}>
-                    <input type="checkbox" checked={selectedIdSet.has(person.id)} onChange={() => togglePerson(person.id)} />
-                    <Avatar name={person.full_name} size="sm" accent="teal" />
-                    <span>
-                      <strong>{person.full_name}</strong>
-                      <em>{person.position_name || person.department_name || person.email || `ID ${person.id}`}</em>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <input
-                value={draft.audience_employee_ids}
-                placeholder="ID співробітників"
-                onChange={(event) => onDraftChange({ ...draft, audience_employee_ids: event.target.value })}
-              />
+            <div className="ann-conditions knowledge-conditions">
+              {draft.conditions.map((condition, index) => (
+                <ConditionRow
+                  key={`${index}-${condition.field}-${condition.operator}`}
+                  condition={condition}
+                  dictCache={dictCache}
+                  onChange={(patch) => updateCondition(index, patch)}
+                  onRemove={() => removeCondition(index)}
+                />
+              ))}
+              <button type="button" className="ann-add-condition" onClick={addCondition}>
+                <Plus size={16} />
+                Додати умову
+              </button>
             </div>
           ) : null}
-          <div className="knowledge-audience-summary">
-            <span className="audience-avatar">V</span>
-            <span className="audience-avatar muted">HR</span>
-            <strong>{draft.visibility_mode === 'specific' ? selectedSpecificIds.length : activePeopleTotal || '—'} людей</strong>
+          <div className="ann-audience-count knowledge-audience-summary">
+            {audiencePreview.sample.length ? (
+              <span className="ann-avatars">
+                {audiencePreview.sample.slice(0, 5).map((person) => (
+                  <span className="ann-avatar" key={person.id}>
+                    {person.avatar_url ? <img src={person.avatar_url} alt="" /> : person.full_name.charAt(0)}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+            <strong>{audiencePreview.count} людей</strong>
             <span>відповідають обраним критеріям</span>
           </div>
         </section>
@@ -11979,13 +11982,6 @@ function knowledgeCategoryDescendantIds(categories: KnowledgeCategory[], categor
   }
   visit(categoryId);
   return ids;
-}
-
-function parseIdList(value: string): number[] {
-  return value
-    .split(',')
-    .map((part) => Number(part.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0);
 }
 
 type OrgPersonNode = {
@@ -20217,7 +20213,7 @@ export function App() {
     notifications: <NotificationsView />,
     people: <PeopleView brandingSettings={userBrandingSettings} employeeCovers={employeeCovers} onEmployeeCoverChange={updateEmployeeCover} copy={copy} />,
     calendar: <CompanyCalendarView copy={copy} />,
-    attendance: <AttendanceView copy={copy} brandingSettings={userBrandingSettings} employeeCovers={employeeCovers} />,
+    attendance: <AttendanceView copy={copy} brandingSettings={userBrandingSettings} employeeCovers={employeeCovers} currentEmployeeId={profile.id} />,
     requests: <RequestsView leave={leave} leaveForm={leaveForm} setLeaveForm={setLeaveForm} onSubmitLeave={handleLeaveSubmit} copy={copy} />,
     knowledge: <KnowledgeView knowledge={knowledge} resetToken={knowledgeResetToken} copy={copy} />,
     assets: <AssetsView copy={copy} />,

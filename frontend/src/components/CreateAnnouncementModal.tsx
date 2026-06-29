@@ -9,19 +9,59 @@ type Opt = AnnouncementConditionOption;
 export type AnnouncementConditionOperator = Exclude<AnnouncementCondition['operator'], ''>;
 type Operator = AnnouncementConditionOperator;
 type CompleteCondition = AnnouncementCondition & { operator: Operator };
+type FieldOption = {
+  key: string;
+  label: string;
+  loader: () => Promise<Opt[]>;
+  operators?: Operator[];
+};
 
 const toOpts = (p: Promise<{ items: Array<{ id: number; name: string }> }>): Promise<Opt[]> =>
   p.then((r) => r.items.map((o) => ({ id: o.id, name: o.name })));
 
-export const ANNOUNCEMENT_FIELD_OPTIONS: Array<{ key: string; label: string; loader: () => Promise<Opt[]> }> = [
-  { key: 'department', label: 'Департамент', loader: () => toOpts(api.departments({ page_size: 500 })) },
-  { key: 'team', label: 'Команда', loader: () => toOpts(api.teams({ page_size: 500 })) },
-  { key: 'clinic', label: 'Локація', loader: () => toOpts(api.locations({ page_size: 500 })) },
-  { key: 'position', label: 'Посада', loader: () => toOpts(api.positions({ page_size: 500 })) },
-  { key: 'division', label: 'Підрозділ', loader: () => toOpts(api.divisions({ page_size: 500 })) },
-  { key: 'department_level', label: 'Рівень департаменту', loader: () => toOpts(api.departmentLevels({ page_size: 500 })) },
-  { key: 'employment_type', label: 'Тип роботи', loader: () => toOpts(api.workTypes({ page_size: 500 })) },
-  { key: 'job_level', label: 'Рівень посади', loader: () => toOpts(api.jobLevels({ page_size: 500 })) },
+const employeeOpts = (): Promise<Opt[]> =>
+  api.employees({ status: 'active', compact: true, page_size: 500 }).then((result) =>
+    result.items
+      .map((employee) => ({ id: employee.id, name: employee.full_name || `${employee.last_name} ${employee.first_name}`.trim() }))
+      .filter((employee) => employee.name)
+      .sort((first, second) => first.name.localeCompare(second.name, 'uk')),
+  );
+
+const genderOpts = (): Promise<Opt[]> =>
+  api.genders({ is_active: true, page_size: 200 }).then((result) =>
+    result.items.map((gender) => ({ id: gender.id, name: gender.name || gender.code })).filter((gender) => gender.name),
+  );
+
+const noValueOptions = (): Promise<Opt[]> => Promise.resolve([]);
+const selectOperators: Operator[] = ['is', 'is_not', 'is_not_empty', 'is_empty'];
+const personOperators: Operator[] = ['is', 'is_not'];
+const presenceOperators: Operator[] = ['is_not_empty', 'is_empty'];
+
+export const ANNOUNCEMENT_FIELD_OPTIONS: FieldOption[] = [
+  { key: 'instagram_url', label: 'URL-адреса Instagram', loader: noValueOptions, operators: presenceOperators },
+  { key: 'employee_number', label: 'Ідентифікатор працівника', loader: noValueOptions, operators: presenceOperators },
+  { key: 'first_name', label: "Ім'я", loader: noValueOptions, operators: presenceOperators },
+  { key: 'probation_policy', label: 'Випр. термін закінчується', loader: () => toOpts(api.probationPolicies({ is_active: true, page_size: 500 })), operators: selectOperators },
+  { key: 'birth_date', label: 'Дата народження', loader: noValueOptions, operators: presenceOperators },
+  { key: 'hired_on', label: 'Дата початку', loader: noValueOptions, operators: presenceOperators },
+  { key: 'department', label: 'Департамент', loader: () => toOpts(api.departments({ page_size: 500 })), operators: selectOperators },
+  { key: 'email', label: 'Електронна пошта', loader: noValueOptions, operators: presenceOperators },
+  { key: 'dismissed_on', label: 'Звільнено', loader: noValueOptions, operators: presenceOperators },
+  { key: 'team', label: 'Команда', loader: () => toOpts(api.teams({ page_size: 500 })), operators: selectOperators },
+  { key: 'employee', label: 'Конкретна особа', loader: employeeOpts },
+  { key: 'clinic', label: 'Локація', loader: () => toOpts(api.locations({ page_size: 500 })), operators: selectOperators },
+  { key: 'manager', label: 'Менеджер', loader: employeeOpts, operators: selectOperators },
+  { key: 'phone2', label: 'Номер робочого телефону', loader: noValueOptions, operators: presenceOperators },
+  { key: 'personal_email', label: 'Особиста ел. пошта', loader: noValueOptions, operators: presenceOperators },
+  { key: 'position', label: 'Посада', loader: () => toOpts(api.positions({ page_size: 500 })), operators: selectOperators },
+  { key: 'direct_reports', label: 'Прямі підлеглі', loader: employeeOpts, operators: personOperators },
+  { key: 'direct_and_indirect_reports', label: 'Прямі та непрямі підлеглі', loader: employeeOpts, operators: personOperators },
+  { key: 'last_name', label: 'Прізвище', loader: noValueOptions, operators: presenceOperators },
+  { key: 'division', label: 'Підрозділ', loader: () => toOpts(api.divisions({ page_size: 500 })), operators: selectOperators },
+  { key: 'job_level', label: 'Рівень', loader: () => toOpts(api.jobLevels({ page_size: 500 })), operators: selectOperators },
+  { key: 'department_level', label: 'Рівень департаменту', loader: () => toOpts(api.departmentLevels({ page_size: 500 })), operators: selectOperators },
+  { key: 'gender', label: 'Стать', loader: genderOpts, operators: selectOperators },
+  { key: 'employment_type', label: 'Тип роботи', loader: () => toOpts(api.workTypes({ page_size: 500 })), operators: selectOperators },
 ];
 
 export const ANNOUNCEMENT_OPERATOR_OPTIONS: Array<{ value: Operator; label: string }> = [
@@ -30,6 +70,12 @@ export const ANNOUNCEMENT_OPERATOR_OPTIONS: Array<{ value: Operator; label: stri
   { value: 'is_not_empty', label: 'Не є порожнім' },
   { value: 'is_empty', label: 'Є порожнім' },
 ];
+
+function operatorOptionsForField(field: string): Array<{ value: Operator; label: string }> {
+  const allowed = FIELD_OPTIONS.find((option) => option.key === field)?.operators ?? (field === 'employee' ? personOperators : undefined);
+  if (!allowed) return ANNOUNCEMENT_OPERATOR_OPTIONS;
+  return ANNOUNCEMENT_OPERATOR_OPTIONS.filter((option) => allowed.includes(option.value));
+}
 
 export const announcementConditionNeedsValue = (op: AnnouncementCondition['operator']) => op === 'is' || op === 'is_not';
 export const isCompleteAnnouncementCondition = (condition: AnnouncementCondition): condition is CompleteCondition =>
@@ -283,6 +329,7 @@ export function ConditionRow({
     () => options.filter((o) => o.name.toLowerCase().includes(query.toLowerCase())),
     [options, query],
   );
+  const operatorOptions = operatorOptionsForField(condition.field);
   const selectedNames = options.filter((o) => condition.value.includes(o.id)).map((o) => o.name);
   const toggleValue = (id: number) =>
     onChange({ value: condition.value.includes(id) ? condition.value.filter((v) => v !== id) : [...condition.value, id] });
@@ -307,7 +354,7 @@ export function ConditionRow({
         onChange={(e) => onChange({ operator: e.target.value as Operator, value: [] })}
       >
         <option value="" disabled>Оберіть умову</option>
-        {OPERATOR_OPTIONS.map((o) => (
+        {operatorOptions.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>

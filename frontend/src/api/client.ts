@@ -91,6 +91,7 @@ export type KnowledgeCategoryPayload = {
   visibility_mode?: string;
   audience_employee_ids?: number[];
   audience_filters?: Record<string, unknown>;
+  conditions?: AnnouncementCondition[];
   parent?: number | null;
   position?: number;
   is_active?: boolean;

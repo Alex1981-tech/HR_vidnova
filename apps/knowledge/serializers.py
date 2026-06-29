@@ -20,6 +20,8 @@ def unique_slug(model, label: str, instance=None) -> str:
 
 
 class KnowledgeCategorySerializer(serializers.ModelSerializer):
+    conditions = serializers.JSONField(required=False, write_only=True)
+
     class Meta:
         model = KnowledgeCategory
         fields = (
@@ -32,6 +34,7 @@ class KnowledgeCategorySerializer(serializers.ModelSerializer):
             "visibility_mode",
             "audience_employee_ids",
             "audience_filters",
+            "conditions",
             "position",
             "parent",
             "is_active",
@@ -58,6 +61,35 @@ class KnowledgeCategorySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Employee IDs must be numbers.") from exc
         return normalized
 
+    def validate_conditions(self, value):
+        if value in (None, ""):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Expected a list of audience conditions.")
+
+        normalized = []
+        allowed_operators = {"is", "is_not", "is_empty", "is_not_empty"}
+        for item in value:
+            if not isinstance(item, dict):
+                raise serializers.ValidationError("Each condition must be an object.")
+            field = str(item.get("field") or "").strip()
+            operator = str(item.get("operator") or "").strip()
+            raw_values = item.get("value") or []
+            if operator not in allowed_operators:
+                raise serializers.ValidationError("Unsupported condition operator.")
+            if not field:
+                raise serializers.ValidationError("Condition field is required.")
+            if not isinstance(raw_values, list):
+                raw_values = [raw_values]
+            values = []
+            for raw_value in raw_values:
+                try:
+                    values.append(int(raw_value))
+                except (TypeError, ValueError) as exc:
+                    raise serializers.ValidationError("Condition values must be numeric IDs.") from exc
+            normalized.append({"field": field, "operator": operator, "value": values})
+        return normalized
+
     def validate(self, attrs):
         parent = attrs.get("parent")
         instance = self.instance
@@ -71,11 +103,43 @@ class KnowledgeCategorySerializer(serializers.ModelSerializer):
                 current = current.parent
         return attrs
 
+    def _apply_conditions_to_filters(self, validated_data, instance=None):
+        if "conditions" not in validated_data:
+            return validated_data
+        conditions = validated_data.pop("conditions")
+        audience_filters = dict(validated_data.get("audience_filters") or (instance.audience_filters if instance else {}) or {})
+        audience_filters["employee_status"] = "active"
+        audience_filters["conditions"] = conditions
+        validated_data["audience_filters"] = audience_filters
+        if conditions:
+            validated_data["audience_employee_ids"] = []
+        return validated_data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        filters = instance.audience_filters if isinstance(instance.audience_filters, dict) else {}
+        conditions = filters.get("conditions")
+        if isinstance(conditions, list) and conditions:
+            data["conditions"] = conditions
+        elif instance.visibility_mode == KnowledgeCategory.VisibilityMode.SPECIFIC and instance.audience_employee_ids:
+            data["conditions"] = [
+                {
+                    "field": "employee",
+                    "operator": "is",
+                    "value": instance.audience_employee_ids,
+                }
+            ]
+        else:
+            data["conditions"] = []
+        return data
+
     def create(self, validated_data):
+        validated_data = self._apply_conditions_to_filters(validated_data)
         validated_data["slug"] = unique_slug(KnowledgeCategory, validated_data["name"])
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
+        validated_data = self._apply_conditions_to_filters(validated_data, instance)
         if "name" in validated_data and validated_data["name"] != instance.name:
             validated_data["slug"] = unique_slug(KnowledgeCategory, validated_data["name"], instance)
         return super().update(instance, validated_data)

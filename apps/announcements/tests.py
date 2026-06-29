@@ -1,4 +1,5 @@
 import tempfile
+from datetime import date
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -6,7 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
-from apps.employees.models import Clinic, Department, Employee
+from apps.employees.models import Clinic, Department, Employee, Gender, ManagerAssignment
 from apps.announcements.audience import resolve_audience
 from apps.announcements.models import Announcement, AnnouncementPollVote
 from apps.announcements.tasks import announcement_to_telegram, html_to_telegram
@@ -17,10 +18,12 @@ class AudienceResolverTests(APITestCase):
         self.clinic = Clinic.objects.create(name="Клініка Львів")
         self.dep = Department.objects.create(name="Стоматологія", clinic=self.clinic)
         self.active_in = Employee.objects.create(first_name="А", last_name="Один", clinic=self.clinic, department=self.dep)
-        self.active_out = Employee.objects.create(first_name="Б", last_name="Два")
+        self.active_out = Employee.objects.create(first_name="Б", last_name="Два", email="two@example.com")
+        self.manager = Employee.objects.create(first_name="Г", last_name="Керівник")
         self.dismissed = Employee.objects.create(
             first_name="В", last_name="Три", clinic=self.clinic, status=Employee.Status.DISMISSED
         )
+        ManagerAssignment.objects.create(employee=self.active_in, manager=self.manager, valid_from=date(2026, 1, 1))
 
     def test_all_returns_only_active(self):
         ids = set(resolve_audience("all", []).values_list("id", flat=True))
@@ -36,10 +39,41 @@ class AudienceResolverTests(APITestCase):
     def test_condition_is_not(self):
         qs = resolve_audience("conditions", [{"field": "clinic", "operator": "is_not", "value": [self.clinic.id]}])
         ids = set(qs.values_list("id", flat=True))
-        self.assertEqual(ids, {self.active_out.id})
+        self.assertEqual(ids, {self.active_out.id, self.manager.id})
 
     def test_condition_is_empty(self):
         qs = resolve_audience("conditions", [{"field": "department", "operator": "is_empty", "value": []}])
+        ids = set(qs.values_list("id", flat=True))
+        self.assertEqual(ids, {self.active_out.id, self.manager.id})
+
+    def test_condition_employee_is(self):
+        qs = resolve_audience("conditions", [{"field": "employee", "operator": "is", "value": [self.active_in.id]}])
+        ids = set(qs.values_list("id", flat=True))
+        self.assertEqual(ids, {self.active_in.id})
+
+    def test_condition_employee_is_not_keeps_active_only(self):
+        qs = resolve_audience(
+            "conditions",
+            [{"field": "employee", "operator": "is_not", "value": [self.active_in.id]}],
+        )
+        ids = set(qs.values_list("id", flat=True))
+        self.assertEqual(ids, {self.active_out.id, self.manager.id})
+
+    def test_condition_manager_is(self):
+        qs = resolve_audience("conditions", [{"field": "manager", "operator": "is", "value": [self.manager.id]}])
+        ids = set(qs.values_list("id", flat=True))
+        self.assertEqual(ids, {self.active_in.id})
+
+    def test_condition_gender_is(self):
+        gender = Gender.objects.create(code="female", name="Жінка")
+        self.active_in.gender = "female"
+        self.active_in.save(update_fields=["gender"])
+        qs = resolve_audience("conditions", [{"field": "gender", "operator": "is", "value": [gender.id]}])
+        ids = set(qs.values_list("id", flat=True))
+        self.assertEqual(ids, {self.active_in.id})
+
+    def test_condition_presence_field_not_empty(self):
+        qs = resolve_audience("conditions", [{"field": "email", "operator": "is_not_empty", "value": []}])
         ids = set(qs.values_list("id", flat=True))
         self.assertEqual(ids, {self.active_out.id})
 
