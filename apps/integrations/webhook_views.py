@@ -75,15 +75,17 @@ class PeopleForceWebhookView(APIView):
             topic=topic,
             event_id=event_id,
             payload=payload if isinstance(payload, (dict, list)) else {},
-            headers={k: v for k, v in request.headers.items() if k.lower() in {"content-type", "user-agent", *[h.lower() for h in SIGNATURE_HEADERS]}},
+            # Зберігаємо всі заголовки (без cookie) — щоб звірити реальну схему підпису PeopleForce.
+            headers={k: v for k, v in request.headers.items() if k.lower() != "cookie"},
             signature_valid=signature_valid,
             remote_addr=(request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() or request.META.get("REMOTE_ADDR", ""))[:80],
         )
 
-        # Якщо секрет налаштовано, але підпис невалідний — не застосовуємо (можлива підробка),
-        # але повертаємо 200, щоб PeopleForce не вимкнув ендпоінт.
+        # Строгий режим (за прапорцем): відхиляти невалідний підпис. За замовчуванням —
+        # дорадчий: обробляємо завжди (вебхук лише тригерить синк, дані тягне importer із PF).
         secret_configured = bool((getattr(settings, "PEOPLEFORCE_WEBHOOK_SECRET", "") or "").strip())
-        if secret_configured and not signature_valid:
+        enforce = bool(getattr(settings, "PEOPLEFORCE_WEBHOOK_ENFORCE", False))
+        if enforce and secret_configured and not signature_valid:
             event.status = PeopleForceWebhookEvent.Status.SKIPPED
             event.error = "Invalid signature"
             event.save(update_fields=["status", "error", "updated_at"])
