@@ -51,7 +51,7 @@ def _verify_signature(raw_body: bytes, headers) -> bool:
 def _extract_topic(payload) -> tuple[str, str]:
     if not isinstance(payload, dict):
         return "", ""
-    topic = payload.get("event") or payload.get("topic") or payload.get("type") or ""
+    topic = payload.get("action") or payload.get("event") or payload.get("topic") or payload.get("type") or ""
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     event_id = str(payload.get("id") or data.get("id") or "")
     return str(topic), event_id
