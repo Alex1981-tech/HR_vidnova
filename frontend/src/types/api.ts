@@ -265,6 +265,19 @@ export type HolidayOption = {
   is_active: boolean;
 };
 
+export type CompanyLink = {
+  id: number;
+  title: string;
+  url: string;
+  icon_url: string;
+  order: number;
+  is_active: boolean;
+  audience_type: 'all' | 'conditions';
+  conditions: AnnouncementCondition[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type WorkingPatternScheduleDay = {
   key: string;
   label?: string;
@@ -565,6 +578,9 @@ export type LeaveRequest = {
   id: number;
   employee?: number;
   employee_name?: string;
+  employee_avatar_url?: string;
+  employee_avatar_local_url?: string;
+  employee_position_name?: string;
   legacy_peopleforce_id?: string;
   leave_type: number;
   leave_type_name: string;
@@ -707,10 +723,20 @@ export type AnnouncementComment = {
   created_at: string;
 };
 
+export type AnnouncementPollResult = {
+  index: number;
+  text: string;
+  votes: number;
+  percentage: number;
+  total_votes: number;
+};
+
 export type Announcement = {
   id: number;
   title: string;
+  kind: 'announcement' | 'poll';
   body_html: string;
+  poll_options: string[];
   author: number | null;
   author_name: string;
   author_avatar: string;
@@ -718,6 +744,7 @@ export type Announcement = {
   audience_type: 'all' | 'conditions';
   conditions: AnnouncementCondition[];
   notify_telegram: boolean;
+  notify_email: boolean;
   notify_web: boolean;
   allow_comments: boolean;
   scheduled_at: string | null;
@@ -730,16 +757,21 @@ export type Announcement = {
   comments_count: number;
   comments: AnnouncementComment[];
   reactions: AnnouncementReactionSummary[];
+  poll_results: AnnouncementPollResult[];
+  user_vote: number | null;
   created_at: string;
   updated_at: string;
 };
 
 export type AnnouncementPayload = {
+  kind?: 'announcement' | 'poll';
   title: string;
   body_html: string;
+  poll_options?: string[];
   audience_type: 'all' | 'conditions';
   conditions: AnnouncementCondition[];
   notify_telegram: boolean;
+  notify_email?: boolean;
   notify_web: boolean;
   allow_comments: boolean;
   scheduled_at?: string | null;

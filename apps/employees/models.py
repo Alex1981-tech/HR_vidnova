@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 from django.conf import settings
 from django.db import models
 
@@ -567,6 +569,53 @@ class ExternalEmployeeLink(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.source}:{self.external_id}"
+
+
+class CompanyLink(TimestampedModel):
+    class Audience(models.TextChoices):
+        ALL = "all", "Усі"
+        CONDITIONS = "conditions", "Конкретні люди"
+
+    title = models.CharField(max_length=180)
+    url = models.URLField(max_length=1000)
+    icon_url = models.URLField(max_length=1000, blank=True)
+    order = models.PositiveIntegerField(default=0, db_index=True)
+    is_active = models.BooleanField(default=True)
+    audience_type = models.CharField(max_length=20, choices=Audience.choices, default=Audience.ALL)
+    conditions = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["order", "title"]
+        indexes = [
+            models.Index(fields=["is_active", "order"], name="company_link_active_order_idx"),
+        ]
+
+    def default_icon_url(self) -> str:
+        parsed = urlparse(self.url)
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+        host = parsed.netloc.lower()
+        if host == "ha.vidnova.app":
+            return f"{parsed.scheme}://{parsed.netloc}/static/icons/favicon-192x192.png"
+        if host == "cc.vidnova.app":
+            return f"{parsed.scheme}://{parsed.netloc}/favicon.png"
+        if host == "cmms.vidnova.app":
+            return f"{parsed.scheme}://{parsed.netloc}/logo_icon.svg"
+        return f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
+
+    def save(self, *args, **kwargs):
+        generated_icon = self.default_icon_url()
+        parsed = urlparse(self.url)
+        legacy_root_icon = f"{parsed.scheme}://{parsed.netloc}/favicon.ico" if parsed.scheme and parsed.netloc else ""
+        if generated_icon and (not self.icon_url or "google.com/s2/favicons" in self.icon_url or self.icon_url == legacy_root_icon):
+            self.icon_url = generated_icon
+        if not self.order:
+            last = CompanyLink.objects.order_by("-order").first()
+            self.order = (last.order + 1) if last else 1
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.title
 
 
 class EmployeeImportRun(TimestampedModel):

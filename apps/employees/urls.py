@@ -2,6 +2,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ClinicViewSet,
+    CompanyLinkViewSet,
     DepartmentLevelViewSet,
     DepartmentViewSet,
     DivisionViewSet,
@@ -31,6 +32,7 @@ from .views import (
 )
 
 router = DefaultRouter()
+router.register("company-links", CompanyLinkViewSet, basename="company-link")
 router.register("clinics", ClinicViewSet, basename="clinic")
 router.register("departments", DepartmentViewSet, basename="department")
 router.register("department-levels", DepartmentLevelViewSet, basename="department-level")

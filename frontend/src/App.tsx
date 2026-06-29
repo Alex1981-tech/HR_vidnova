@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Bell,
   BookOpen,
   Bold,
@@ -7,7 +8,6 @@ import {
   Building2,
   Calendar,
   CalendarCheck,
-  CalendarPlus,
   Check,
   CheckSquare,
   ChevronDown,
@@ -87,21 +87,30 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { ApiError, api, type EmployeeFormTemplatePayload, type EmployeeHirePayload } from './api/client';
+import { ApiError, api, type CompanyLinkPayload, type EmployeeFormTemplatePayload, type EmployeeHirePayload } from './api/client';
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { ReportsView } from './views/ReportsView';
 import { PeopleDataSettingsView } from './views/settings/PeopleDataSettingsView';
 import { SettingsLeaveTypesView } from './views/settings/SettingsLeaveTypesView';
 import { SettingsDocumentsView } from './views/settings/SettingsDocumentsView';
-import { CreateAnnouncementModal } from './components/CreateAnnouncementModal';
+import {
+  ConditionRow,
+  CreateAnnouncementModal,
+  isCompleteAnnouncementCondition,
+  type AnnouncementConditionOption,
+} from './components/CreateAnnouncementModal';
+import { CreateQuickPollModal } from './components/CreateQuickPollModal';
 import { LeaveTypeIcon } from './lib/leaveIcons';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
 import type {
   Announcement,
+  AnnouncementCondition,
+  AnnouncementPollResult,
   AuthLoginResponse,
   AuthStatus,
   ClinicLocation,
+  CompanyLink,
   CompanyAttendanceSummary,
   DashboardOverview,
   DepartmentLevelOption,
@@ -635,6 +644,7 @@ const settingsGroups: SettingsGroup[] = [
       { slug: 'gender', label: 'Стать', icon: Users },
       { slug: 'forms', label: 'Форми', icon: FileText },
       { slug: 'calendars', label: 'Календарі', icon: Calendar },
+      { slug: 'company-links', label: 'Посилання компанії', icon: Link },
       { slug: 'departments', label: 'Департаменти', icon: Building2 },
       { slug: 'holiday-policies', label: 'Політики свят', icon: Sparkles },
       { slug: 'positions', label: 'Посади', icon: BriefcaseBusiness },
@@ -2158,6 +2168,77 @@ function prepareAnnouncementHtml(html: string): string {
   return template.innerHTML;
 }
 
+function AnnouncementPollBody({
+  post,
+  results,
+  userVote,
+  votingIndex,
+  onVote,
+}: {
+  post: Announcement;
+  results: AnnouncementPollResult[];
+  userVote: number | null;
+  votingIndex: number | null;
+  onVote: (optionIndex: number) => void;
+}) {
+  const options = results.length
+    ? results
+    : (post.poll_options || []).map((text, index) => ({
+      index,
+      text,
+      votes: 0,
+      percentage: 0,
+      total_votes: 0,
+    }));
+  const hasVoted = userVote !== null;
+  const totalVotes = options[0]?.total_votes ?? 0;
+  const recipients = post.recipients_count || 0;
+
+  if (!options.length) {
+    return (
+      <div className="announcement-poll">
+        <div className="announcement-poll-empty">Варіанти відповіді ще не додані.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="announcement-poll">
+      {options.map((option) => {
+        const selected = userVote === option.index;
+        if (!hasVoted) {
+          return (
+            <button
+              key={option.index}
+              type="button"
+              className="announcement-poll-option"
+              onClick={() => onVote(option.index)}
+              disabled={votingIndex !== null}
+            >
+              {option.text}
+            </button>
+          );
+        }
+        return (
+          <div key={option.index} className={`announcement-poll-result${selected ? ' selected' : ''}`}>
+            <div className="announcement-poll-bar" style={{ width: `${Math.max(0, Math.min(100, option.percentage))}%` }} />
+            <div className="announcement-poll-label">
+              <span>{option.text}</span>
+              {selected ? <Check size={16} /> : null}
+            </div>
+            <strong>{option.percentage}%</strong>
+          </div>
+        );
+      })}
+      {hasVoted ? (
+        <div className="announcement-poll-summary">
+          {recipients ? `${totalVotes} з ${recipients} відповіли` : `${totalVotes} відповіли`}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnnouncementCard({
   post,
   onEdit,
@@ -2172,12 +2253,20 @@ function AnnouncementCard({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reactions, setReactions] = useState(post.reactions ?? []);
   const [comments, setComments] = useState(post.comments ?? []);
+  const [pollResults, setPollResults] = useState(post.poll_results ?? []);
+  const [userVote, setUserVote] = useState<number | null>(post.user_vote ?? null);
+  const [votingIndex, setVotingIndex] = useState<number | null>(null);
   const [commentText, setCommentText] = useState('');
   const [posting, setPosting] = useState(false);
   const when = post.published_at || post.created_at;
   const timeAgo = when ? formatRelativeTime(when) : '';
   const subtitle = [post.author_role, timeAgo].filter(Boolean).join(' · ');
   const preparedBodyHtml = useMemo(() => prepareAnnouncementHtml(post.body_html), [post.body_html]);
+
+  useEffect(() => {
+    setPollResults(post.poll_results ?? []);
+    setUserVote(post.user_vote ?? null);
+  }, [post.id, post.poll_results, post.user_vote]);
 
   useEffect(() => {
     const root = articleRef.current;
@@ -2313,6 +2402,18 @@ function AnnouncementCard({
       .finally(() => setPosting(false));
   };
 
+  const votePoll = (optionIndex: number) => {
+    if (votingIndex !== null) return;
+    setVotingIndex(optionIndex);
+    api.voteAnnouncementPoll(post.id, optionIndex)
+      .then((res) => {
+        setPollResults(res.poll_results);
+        setUserVote(res.user_vote);
+      })
+      .catch(() => undefined)
+      .finally(() => setVotingIndex(null));
+  };
+
   return (
     <article ref={articleRef} className="feed-post announcement-card" id={`announcement-${post.id}`}>
       <header className="announcement-head">
@@ -2348,7 +2449,15 @@ function AnnouncementCard({
       </header>
 
       <h3 className="announcement-title">{post.title}</h3>
-      {post.body_html ? (
+      {post.kind === 'poll' ? (
+        <AnnouncementPollBody
+          post={post}
+          results={pollResults}
+          userVote={userVote}
+          votingIndex={votingIndex}
+          onVote={votePoll}
+        />
+      ) : post.body_html ? (
         <div className="announcement-body" dangerouslySetInnerHTML={{ __html: preparedBodyHtml }} />
       ) : null}
 
@@ -2411,15 +2520,148 @@ function AnnouncementCard({
   );
 }
 
+const homeWeekdayLabels = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'НД'];
+
+type HomeHolidayEvent = {
+  id: string;
+  isoDate: string;
+  name: string;
+  policyName: string;
+  tone: 'holiday' | 'working' | 'compensated' | 'birthday';
+  employee?: EmployeeListItem;
+};
+
+function dateFromIso(value: string): Date {
+  return new Date(`${value}T00:00:00`);
+}
+
+function addDaysIso(value: string, days: number): string {
+  const next = dateFromIso(value);
+  next.setDate(next.getDate() + days);
+  return localIsoDate(next.getFullYear(), next.getMonth(), next.getDate());
+}
+
+function startOfWeekIso(value: string): string {
+  const date = dateFromIso(value);
+  const day = date.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  return addDaysIso(value, offset);
+}
+
+function weekDaysForIso(value: string) {
+  const start = startOfWeekIso(value);
+  return homeWeekdayLabels.map((weekday, index) => {
+    const isoDate = addDaysIso(start, index);
+    const parts = parseIsoDateParts(isoDate);
+    return { isoDate, weekday, day: parts?.day ?? index + 1 };
+  });
+}
+
+function formatHomeDateLabel(value: string) {
+  const formatted = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }).format(dateFromIso(value));
+  return value === todayIsoDate() ? `Сьогодні, ${formatted}` : formatted;
+}
+
+function buildHomeHolidayEvents(holidays: HolidayOption[], year: number) {
+  const grouped: Record<string, HomeHolidayEvent[]> = {};
+  const addEvent = (event: HomeHolidayEvent) => {
+    if (!event.isoDate.startsWith(`${year}-`)) return;
+    grouped[event.isoDate] = [...(grouped[event.isoDate] ?? []), event];
+  };
+  holidays.forEach((holiday) => {
+    const policyName = holiday.policy_name || 'Календар свят';
+    const isoDate = holidayOccurrenceIso(holiday, year);
+    addEvent({
+      id: `holiday:${holiday.id}:date`,
+      isoDate,
+      name: holiday.name,
+      policyName,
+      tone: holiday.working ? 'working' : 'holiday',
+    });
+    const observedIso = holiday.observed_on ? recurringDateIso(holiday.observed_on, holiday.recurrence, year) : '';
+    if (observedIso && observedIso !== isoDate) {
+      addEvent({
+        id: `holiday:${holiday.id}:observed`,
+        isoDate: observedIso,
+        name: `Перенесення вихідного: ${holiday.name}`,
+        policyName,
+        tone: 'holiday',
+      });
+    }
+    const compensatedIso = holiday.compensated_on ? recurringDateIso(holiday.compensated_on, holiday.recurrence, year) : '';
+    if (compensatedIso && compensatedIso !== isoDate) {
+      addEvent({
+        id: `holiday:${holiday.id}:compensated`,
+        isoDate: compensatedIso,
+        name: `День відпрацювання: ${holiday.name}`,
+        policyName,
+        tone: 'compensated',
+      });
+    }
+  });
+  Object.values(grouped).forEach((items) => {
+    items.sort((first, second) => first.policyName.localeCompare(second.policyName, 'uk') || first.name.localeCompare(second.name, 'uk'));
+  });
+  return grouped;
+}
+
+function buildHomeBirthdayEvents(employees: EmployeeListItem[], year: number) {
+  const grouped: Record<string, HomeHolidayEvent[]> = {};
+  employees.forEach((employee) => {
+    const parts = parseIsoDateParts(employee.birth_date);
+    if (!parts) return;
+    const monthIndex = parts.month - 1;
+    const day = Math.min(parts.day, monthDayCount(year, monthIndex));
+    const isoDate = localIsoDate(year, monthIndex, day);
+    grouped[isoDate] = [
+      ...(grouped[isoDate] ?? []),
+      {
+        id: `birthday:${employee.id}`,
+        isoDate,
+        name: employeeCalendarName(employee),
+        policyName: birthdaySystemPolicy.name,
+        tone: 'birthday',
+        employee,
+      },
+    ];
+  });
+  Object.values(grouped).forEach((items) => {
+    items.sort((first, second) => first.name.localeCompare(second.name, 'uk'));
+  });
+  return grouped;
+}
+
+function mergeHomeEventMaps(...maps: Array<Record<string, HomeHolidayEvent[]>>) {
+  const grouped: Record<string, HomeHolidayEvent[]> = {};
+  maps.forEach((map) => {
+    Object.entries(map).forEach(([isoDate, events]) => {
+      grouped[isoDate] = [...(grouped[isoDate] ?? []), ...events];
+    });
+  });
+  Object.values(grouped).forEach((items) => {
+    items.sort((first, second) => first.policyName.localeCompare(second.policyName, 'uk') || first.name.localeCompare(second.name, 'uk'));
+  });
+  return grouped;
+}
+
+function groupHomeHolidayEvents(events: HomeHolidayEvent[]) {
+  return events.reduce<Array<{ policyName: string; events: HomeHolidayEvent[] }>>((groups, event) => {
+    const group = groups.find((item) => item.policyName === event.policyName);
+    if (group) {
+      group.events.push(event);
+    } else {
+      groups.push({ policyName: event.policyName, events: [event] });
+    }
+    return groups;
+  }, []);
+}
+
 function HomeView({
   employee,
   leaveRequests,
   leaveTypes,
   onOpenLeave,
   onLeaveSubmitted,
-  onOpenAttendance,
-  onOpenKnowledge,
-  onOpenOrg,
   brandingSettings,
   copy,
 }: {
@@ -2428,9 +2670,6 @@ function HomeView({
   leaveTypes: LeaveType[];
   onOpenLeave: () => void;
   onLeaveSubmitted: () => void;
-  onOpenAttendance: () => void;
-  onOpenKnowledge: () => void;
-  onOpenOrg: () => void;
   brandingSettings: BrandingSettings;
   copy: AppCopy;
 }) {
@@ -2439,10 +2678,25 @@ function HomeView({
   const [leaveWidgetIndex, setLeaveWidgetIndex] = useState(0);
   const greeting = getDayGreeting();
   const [announceOpen, setAnnounceOpen] = useState(false);
+  const [quickPollOpen, setQuickPollOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [deleteAnnouncementTarget, setDeleteAnnouncementTarget] = useState<Announcement | null>(null);
   const [deletingAnnouncement, setDeletingAnnouncement] = useState(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [selectedHomeDate, setSelectedHomeDate] = useState(() => todayIsoDate());
+  const [absenceModalDate, setAbsenceModalDate] = useState(() => todayIsoDate());
+  const [homeHolidays, setHomeHolidays] = useState<HolidayOption[]>([]);
+  const [holidayWidgetState, setHolidayWidgetState] = useState<LoadState>('idle');
+  const [homeBirthdayEmployees, setHomeBirthdayEmployees] = useState<EmployeeListItem[]>([]);
+  const [birthdayWidgetState, setBirthdayWidgetState] = useState<LoadState>('idle');
+  const [todayAbsences, setTodayAbsences] = useState<LeaveRequest[]>([]);
+  const [absenceWidgetState, setAbsenceWidgetState] = useState<LoadState>('idle');
+  const [modalAbsences, setModalAbsences] = useState<LeaveRequest[]>([]);
+  const [modalAbsenceState, setModalAbsenceState] = useState<LoadState>('idle');
+  const [absenceModalOpen, setAbsenceModalOpen] = useState(false);
+  const [absenceSearch, setAbsenceSearch] = useState('');
+  const [companyLinks, setCompanyLinks] = useState<CompanyLink[]>([]);
+  const [companyLinksState, setCompanyLinksState] = useState<LoadState>('idle');
 
   useEffect(() => {
     let alive = true;
@@ -2455,12 +2709,154 @@ function HomeView({
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    setCompanyLinksState('loading');
+    api.companyLinks({ is_active: true, for_me: true, page_size: 50 })
+      .then((res) => {
+        if (!alive) return;
+        setCompanyLinks(res.items);
+        setCompanyLinksState('ok');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setCompanyLinks([]);
+        setCompanyLinksState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const selectedHomeYear = parseIsoDateParts(selectedHomeDate)?.year ?? new Date().getFullYear();
+  const absenceModalYear = parseIsoDateParts(absenceModalDate)?.year ?? selectedHomeYear;
+
+  useEffect(() => {
+    let alive = true;
+    setHolidayWidgetState('loading');
+    (async () => {
+      const holidays: HolidayOption[] = [];
+      let page = 1;
+      for (let guard = 0; guard < 20; guard += 1) {
+        const res = await api.holidays({ is_active: true, page, page_size: 1000 });
+        holidays.push(...res.items);
+        if (!res.next || holidays.length >= res.total) break;
+        page += 1;
+      }
+      return holidays;
+    })()
+      .then((items) => {
+        if (!alive) return;
+        setHomeHolidays(items);
+        setHolidayWidgetState('ok');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setHomeHolidays([]);
+        setHolidayWidgetState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setBirthdayWidgetState('loading');
+    (async () => {
+      const employees: EmployeeListItem[] = [];
+      let page = 1;
+      for (let guard = 0; guard < 20; guard += 1) {
+        const res = await api.employees({ status: 'active', compact: true, page, page_size: 500 });
+        employees.push(...res.items);
+        if (!res.next || employees.length >= res.total) break;
+        page += 1;
+      }
+      return employees.filter((item) => Boolean(item.birth_date));
+    })()
+      .then((items) => {
+        if (!alive) return;
+        setHomeBirthdayEmployees(items);
+        setBirthdayWidgetState('ok');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setHomeBirthdayEmployees([]);
+        setBirthdayWidgetState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setAbsenceWidgetState('loading');
+    api.leaveRequests({ status: 'approved', date_from: selectedHomeDate, date_to: selectedHomeDate, page_size: 200 })
+      .then((res) => {
+        if (!alive) return;
+        setTodayAbsences(res.items);
+        setAbsenceWidgetState('ok');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setTodayAbsences([]);
+        setAbsenceWidgetState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [selectedHomeDate]);
+
+  useEffect(() => {
+    if (!absenceModalOpen) return undefined;
+    let alive = true;
+    setModalAbsenceState('loading');
+    api.leaveRequests({ status: 'approved', date_from: absenceModalDate, date_to: absenceModalDate, page_size: 200 })
+      .then((res) => {
+        if (!alive) return;
+        setModalAbsences(res.items);
+        setModalAbsenceState('ok');
+      })
+      .catch(() => {
+        if (!alive) return;
+        setModalAbsences([]);
+        setModalAbsenceState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [absenceModalDate, absenceModalOpen]);
+
+  useEffect(() => {
     if (leaveTypes.length && leaveWidgetIndex >= leaveTypes.length) {
       setLeaveWidgetIndex(0);
     }
   }, [leaveTypes.length, leaveWidgetIndex]);
 
   const activeLeaveType = leaveTypes.length ? leaveTypes[leaveWidgetIndex % leaveTypes.length] : null;
+  const leaveTypeById = useMemo(() => new Map(leaveTypes.map((type) => [type.id, type])), [leaveTypes]);
+  const selectedWeekDays = useMemo(() => weekDaysForIso(selectedHomeDate), [selectedHomeDate]);
+  const holidayEventsByDate = useMemo(() => {
+    const holidayEvents = buildHomeHolidayEvents(homeHolidays, selectedHomeYear);
+    const birthdayEvents = buildHomeBirthdayEvents(homeBirthdayEmployees, selectedHomeYear);
+    return mergeHomeEventMaps(holidayEvents, birthdayEvents);
+  }, [homeBirthdayEmployees, homeHolidays, selectedHomeYear]);
+  const homeEventsLoading = holidayWidgetState === 'loading' || birthdayWidgetState === 'loading';
+  const selectedHolidayEvents = holidayEventsByDate[selectedHomeDate] ?? [];
+  const selectedHolidayGroups = useMemo(() => groupHomeHolidayEvents(selectedHolidayEvents), [selectedHolidayEvents]);
+  const modalHolidayEventsByDate = useMemo(() => {
+    const holidayEvents = buildHomeHolidayEvents(homeHolidays, absenceModalYear);
+    const birthdayEvents = buildHomeBirthdayEvents(homeBirthdayEmployees, absenceModalYear);
+    return mergeHomeEventMaps(holidayEvents, birthdayEvents);
+  }, [absenceModalYear, homeBirthdayEmployees, homeHolidays]);
+  const modalSelectedHolidayEvents = modalHolidayEventsByDate[absenceModalDate] ?? [];
+  const filteredAbsences = useMemo(() => {
+    const query = absenceSearch.trim().toLowerCase();
+    if (!query) return modalAbsences;
+    return modalAbsences.filter((request) =>
+      [request.employee_name, request.employee_position_name, request.leave_type_name].some((value) => (value || '').toLowerCase().includes(query)),
+    );
+  }, [absenceSearch, modalAbsences]);
   const showPreviousLeaveType = () => {
     if (!leaveTypes.length) return;
     setLeaveWidgetIndex((index) => (index - 1 + leaveTypes.length) % leaveTypes.length);
@@ -2469,6 +2865,10 @@ function HomeView({
     if (!leaveTypes.length) return;
     setLeaveWidgetIndex((index) => (index + 1) % leaveTypes.length);
   };
+  const showPreviousHomeDate = () => setSelectedHomeDate((current) => addDaysIso(current, -1));
+  const showNextHomeDate = () => setSelectedHomeDate((current) => addDaysIso(current, 1));
+  const showPreviousAbsenceModalDate = () => setAbsenceModalDate((current) => addDaysIso(current, -1));
+  const showNextAbsenceModalDate = () => setAbsenceModalDate((current) => addDaysIso(current, 1));
 
   const handleDeleteAnnouncement = (post: Announcement) => {
     setDeleteAnnouncementTarget(post);
@@ -2494,6 +2894,7 @@ function HomeView({
       return exists ? cur.map((a) => (a.id === saved.id ? saved : a)) : [saved, ...cur];
     });
     setAnnounceOpen(false);
+    setQuickPollOpen(false);
     setEditingAnnouncement(null);
   };
 
@@ -2527,7 +2928,7 @@ function HomeView({
                 <CalendarCheck size={16} />
                 {copy.home.requestTimeOff}
               </button>
-              <button type="button" onClick={onOpenAttendance}>
+              <button type="button" onClick={() => navigate(attendanceEmployeePath(76, '2026-06'))}>
                 <Clock3 size={16} />
                 {copy.home.time}
               </button>
@@ -2535,6 +2936,10 @@ function HomeView({
           </div>
         </div>
         <div className="welcome-actions">
+          <button type="button" className="secondary-action quick-poll-action" onClick={() => setQuickPollOpen(true)}>
+            <BarChart3 size={16} />
+            Створити швидке опитування
+          </button>
           <button type="button" className="primary-action" onClick={() => setAnnounceOpen(true)}>
             <MegaphoneIcon />
             {copy.home.createAnnouncement}
@@ -2542,11 +2947,21 @@ function HomeView({
         </div>
       </section>
 
-      {announceOpen || editingAnnouncement ? (
+      {announceOpen || (editingAnnouncement && editingAnnouncement.kind !== 'poll') ? (
         <CreateAnnouncementModal
           announcement={editingAnnouncement}
           onClose={() => {
             setAnnounceOpen(false);
+            setEditingAnnouncement(null);
+          }}
+          onCreated={upsertAnnouncement}
+        />
+      ) : null}
+      {quickPollOpen || editingAnnouncement?.kind === 'poll' ? (
+        <CreateQuickPollModal
+          announcement={editingAnnouncement?.kind === 'poll' ? editingAnnouncement : null}
+          onClose={() => {
+            setQuickPollOpen(false);
             setEditingAnnouncement(null);
           }}
           onCreated={upsertAnnouncement}
@@ -2607,8 +3022,8 @@ function HomeView({
               <div className="leave-carousel-card">
                 <header className="leave-carousel-head">
                   <div className="leave-carousel-title">
-                    <span className="leave-carousel-icon" style={{ color: activeLeaveType.color || 'var(--primary-strong)' }}>
-                      <LeaveTypeIcon iconKey={activeLeaveType.icon} size={24} />
+                    <span className="widget-title-icon leave-carousel-icon">
+                      <LeaveTypeIcon iconKey={activeLeaveType.icon} size={18} />
                     </span>
                     <h2>{activeLeaveType.name}</h2>
                   </div>
@@ -2634,14 +3049,6 @@ function HomeView({
                     title={`Подати заявку: ${activeLeaveType.name}`}
                   >
                     {copy.home.requestTimeOff}
-                  </button>
-                  <button
-                    type="button"
-                    className="leave-carousel-calendar"
-                    onClick={() => setLeaveRequestType(activeLeaveType)}
-                    aria-label={`Подати заявку: ${activeLeaveType.name}`}
-                  >
-                    <CalendarPlus size={20} />
                   </button>
                 </footer>
               </div>
@@ -2669,47 +3076,215 @@ function HomeView({
           <section className="panel week-widget">
             <div className="widget-title">
               <div>
-                <Calendar size={19} />
+                <span className="widget-title-icon">
+                  <Calendar size={19} />
+                </span>
                 <h2>{copy.home.plannedEvents}</h2>
               </div>
             </div>
             <div className="week-strip">
-              {['24', '25', '26', '27', '28', '29', '30'].map((day, index) => (
-                <span key={day} className={index === 0 ? 'active' : index === 3 ? 'marked' : ''}>
-                  {day}
-                </span>
+              {selectedWeekDays.map((day) => (
+                <button
+                  key={day.isoDate}
+                  type="button"
+                  className={`${day.isoDate === selectedHomeDate ? 'active' : ''}${holidayEventsByDate[day.isoDate]?.length ? ' marked' : ''}`}
+                  onClick={() => setSelectedHomeDate(day.isoDate)}
+                >
+                  <small>{day.weekday}</small>
+                  <span>{day.day}</span>
+                </button>
               ))}
             </div>
-            <p>{copy.home.today}</p>
-            <small>{copy.home.noEvents}</small>
+            <p>{formatHomeDateLabel(selectedHomeDate)}</p>
+            {homeEventsLoading ? (
+              <small>{copy.common.loading}</small>
+            ) : selectedHolidayGroups.length ? (
+              <div className="home-event-list">
+                {selectedHolidayGroups.map((group) => (
+                  <div key={group.policyName} className="home-event-group">
+                    <strong>{group.policyName}</strong>
+                    {group.events.map((event) => {
+                      const birthdayEmployee = event.employee;
+                      if (event.tone === 'birthday' && birthdayEmployee) {
+                        const milestone = birthdayMilestoneForEmployee(birthdayEmployee, selectedHomeYear);
+                        const MilestoneIcon = milestone?.Icon;
+                        return (
+                          <button
+                            key={event.id}
+                            type="button"
+                            className={`home-birthday-card ${milestone ? `milestone-${milestone.tone}` : ''}`}
+                            onClick={() => navigate(peopleEmployeePath(birthdayEmployee.id))}
+                          >
+                            <Avatar name={event.name} src={employeeAvatarUrl(birthdayEmployee)} accent={birthdayAccent(birthdayEmployee)} size="sm" />
+                            <span className="home-birthday-body">
+                              <strong>{event.name}</strong>
+                              <em>{birthdayAgeText(birthdayEmployee, selectedHomeYear)}</em>
+                              {milestone && MilestoneIcon ? (
+                                <span className={`home-birthday-stage ${milestone.tone}`}>
+                                  <span className="home-birthday-stage-icon">
+                                    <MilestoneIcon size={14} />
+                                  </span>
+                                  <span>
+                                    <b>{milestone.label}</b>
+                                    <small>{milestone.description}</small>
+                                  </span>
+                                </span>
+                              ) : null}
+                            </span>
+                          </button>
+                        );
+                      }
+                      return (
+                        <span key={event.id} className={`home-event-item ${event.tone}`}>
+                          {event.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <small>{copy.home.noEvents}</small>
+            )}
           </section>
 
           <section className="panel absent-widget">
             <div className="widget-title">
               <div>
-                <Users size={19} />
+                <span className="widget-title-icon">
+                  <Users size={19} />
+                </span>
                 <h2>{copy.home.whoIsAbsent}</h2>
               </div>
             </div>
-            <div className="absence-counter">
-              <strong>0</strong>
+            <button
+              type="button"
+              className="absence-counter"
+              onClick={() => {
+                setAbsenceModalDate(selectedHomeDate);
+                setAbsenceSearch('');
+                setAbsenceModalOpen(true);
+              }}
+            >
+              <strong>{absenceWidgetState === 'loading' ? '...' : todayAbsences.length}</strong>
               <span>{copy.home.absentCount}</span>
-            </div>
+              {todayAbsences.length ? (
+                <span className="absence-avatar-stack" aria-hidden="true">
+                  {todayAbsences.slice(0, 4).map((request, index) => (
+                    <Avatar
+                      key={`${request.id}-${index}`}
+                      name={request.employee_name || '—'}
+                      src={request.employee_avatar_local_url || request.employee_avatar_url || ''}
+                      size="sm"
+                    />
+                  ))}
+                </span>
+              ) : null}
+            </button>
           </section>
 
           <section className="panel links-widget">
             <div className="widget-title">
               <div>
-                <Link size={19} />
+                <span className="widget-title-icon">
+                  <Link size={19} />
+                </span>
                 <h2>{copy.home.companyLinks}</h2>
               </div>
-              <button type="button">{copy.home.manage}</button>
             </div>
-            <button type="button" onClick={onOpenKnowledge}>{copy.home.knowledgeLink}</button>
-            <button type="button" onClick={onOpenOrg}>{copy.home.orgLink}</button>
+            <div className="company-link-list">
+              {companyLinksState === 'loading' ? (
+                <small>{copy.common.loading}</small>
+              ) : companyLinks.length ? (
+                companyLinks.map((item) => (
+                  <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="company-link-row">
+                    <CompanyLinkIcon item={item} />
+                    <span>{item.title}</span>
+                  </a>
+                ))
+              ) : (
+                <small>{copy.home.noEvents}</small>
+              )}
+            </div>
           </section>
         </aside>
       </div>
+      {absenceModalOpen ? (
+        <div className="settings-option-modal-layer home-absence-layer" role="dialog" aria-modal="true" aria-label={copy.home.whoIsAbsent}>
+          <button type="button" className="settings-option-modal-backdrop" aria-label={copy.common.closeMenu} onClick={() => setAbsenceModalOpen(false)} />
+          <section className="settings-option-modal home-absence-modal">
+            <header className="settings-option-modal-head">
+              <strong>{copy.home.whoIsAbsent}</strong>
+              <button type="button" className="modal-close" aria-label={copy.common.closeMenu} onClick={() => setAbsenceModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="home-absence-controls">
+              <label className="settings-search">
+                <Search size={18} />
+                <input value={absenceSearch} placeholder={copy.common.search} onChange={(event) => setAbsenceSearch(event.target.value)} />
+              </label>
+              <div className="home-absence-date-nav">
+                <button type="button" onClick={showPreviousAbsenceModalDate} aria-label={copy.common.previous}>
+                  <ChevronLeft size={17} />
+                </button>
+                <button type="button" onClick={() => setAbsenceModalDate(todayIsoDate())}>Сьогодні</button>
+                <button type="button" onClick={showNextAbsenceModalDate} aria-label={copy.common.next}>
+                  <ChevronRight size={17} />
+                </button>
+                <span>{formatHomeDateLabel(absenceModalDate)}</span>
+              </div>
+            </div>
+            <div className="home-absence-tabs">
+              <span>
+                У відсутності <b>{modalAbsences.length}</b>
+              </span>
+              <span>
+                На державних святах <b>{modalSelectedHolidayEvents.filter((event) => event.tone === 'holiday').length}</b>
+              </span>
+            </div>
+            <div className="home-absence-list">
+              {modalAbsenceState === 'loading' ? (
+                <EmptyState title={copy.common.loading} text="" />
+              ) : filteredAbsences.length ? (
+                filteredAbsences.map((request) => {
+                  const leaveType = leaveTypeById.get(request.leave_type);
+                  return (
+                    <button
+                      key={request.id}
+                      type="button"
+                      className="home-absence-row"
+                      disabled={!request.employee}
+                      onClick={() => {
+                        if (!request.employee) return;
+                        setAbsenceModalOpen(false);
+                        navigate(peopleEmployeePath(request.employee));
+                      }}
+                    >
+                      <Avatar name={request.employee_name || '—'} src={request.employee_avatar_local_url || request.employee_avatar_url || ''} />
+                      <div>
+                        <strong>{request.employee_name}</strong>
+                        <span>{request.employee_position_name || 'Посада не вказана'}</span>
+                      </div>
+                      <p>
+                        На {request.leave_type_name}
+                        <small>
+                          {formatDate(request.date_from)} - {formatDate(request.date_to)}
+                        </small>
+                      </p>
+                      <span className="home-absence-type-icon" aria-hidden="true">
+                        <LeaveTypeIcon iconKey={leaveType?.icon || ''} size={18} />
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <EmptyState title={copy.home.noEvents} text="" />
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -2725,19 +3300,20 @@ function AnnouncementDeleteConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const entityLabel = post.kind === 'poll' ? 'опитування' : 'оголошення';
   return (
-    <div className="settings-option-modal-layer announcement-delete-layer" role="dialog" aria-modal="true" aria-label="Видалити оголошення">
+    <div className="settings-option-modal-layer announcement-delete-layer" role="dialog" aria-modal="true" aria-label={`Видалити ${entityLabel}`}>
       <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
       <section className="settings-option-modal settings-delete-modal">
         <header className="settings-option-modal-head">
-          <strong>Видалити оголошення?</strong>
+          <strong>Видалити {entityLabel}?</strong>
           <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
             <X size={18} />
           </button>
         </header>
         <div className="settings-delete-body">
           <p>
-            Оголошення <strong>«{post.title}»</strong> буде видалено з ленти.
+            {post.kind === 'poll' ? 'Опитування' : 'Оголошення'} <strong>«{post.title}»</strong> буде видалено зі стрічки.
           </p>
         </div>
         <footer className="settings-option-modal-foot">
@@ -17017,6 +17593,510 @@ function buildDepartmentTreeRows(departments: DepartmentOption[], expandedIds: S
   return rows;
 }
 
+function companyLinkFormFromItem(item?: CompanyLink | null): CompanyLinkPayload {
+  return {
+    title: item?.title ?? '',
+    url: item?.url ?? '',
+    icon_url: item?.icon_url ?? '',
+    is_active: item?.is_active ?? true,
+    audience_type: item?.audience_type ?? 'all',
+    conditions: item?.conditions ?? [],
+  };
+}
+
+function normalizeCompanyLinkUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+function companyLinkOriginIconUrl(value: string, fileName: string) {
+  try {
+    const parsed = new URL(normalizeCompanyLinkUrl(value));
+    return `${parsed.origin}/${fileName}`;
+  } catch {
+    return '';
+  }
+}
+
+function companyLinkOriginIconPath(value: string, path: string) {
+  try {
+    const parsed = new URL(normalizeCompanyLinkUrl(value));
+    return `${parsed.origin}${path.startsWith('/') ? path : `/${path}`}`;
+  } catch {
+    return '';
+  }
+}
+
+function companyLinkHost(value: string) {
+  try {
+    return new URL(normalizeCompanyLinkUrl(value)).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function googleCompanyFaviconUrl(value: string) {
+  const normalized = normalizeCompanyLinkUrl(value);
+  return normalized ? `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(normalized)}&sz=64` : '';
+}
+
+function companyLinkIconCandidates(item: Pick<CompanyLink, 'url' | 'icon_url'>) {
+  const saved = (item.icon_url || '').trim();
+  const host = companyLinkHost(item.url);
+  const known: string[] = [];
+  if (host === 'ha.vidnova.app') {
+    known.push(
+      companyLinkOriginIconPath(item.url, '/static/icons/favicon-192x192.png'),
+      companyLinkOriginIconPath(item.url, '/static/icons/favicon.ico'),
+      companyLinkOriginIconPath(item.url, '/static/icons/favicon-apple-180x180.png'),
+    );
+  }
+  if (host === 'cc.vidnova.app') {
+    known.push(
+      companyLinkOriginIconPath(item.url, '/favicon.png'),
+      companyLinkOriginIconPath(item.url, '/favicon.svg'),
+      companyLinkOriginIconPath(item.url, '/apple-touch-icon.png'),
+    );
+  }
+  if (host === 'cmms.vidnova.app') {
+    known.push(companyLinkOriginIconPath(item.url, '/logo_icon.svg'));
+  }
+  const direct = [
+    companyLinkOriginIconUrl(item.url, 'logo_icon.svg'),
+    companyLinkOriginIconUrl(item.url, 'logo.svg'),
+    companyLinkOriginIconUrl(item.url, 'icon.svg'),
+    companyLinkOriginIconUrl(item.url, 'favicon.svg'),
+    companyLinkOriginIconUrl(item.url, 'favicon.png'),
+    companyLinkOriginIconUrl(item.url, 'favicon.ico'),
+    companyLinkOriginIconUrl(item.url, 'apple-touch-icon.png'),
+  ];
+  const fallback = googleCompanyFaviconUrl(item.url);
+  const savedIsGenerated = !saved || saved.includes('google.com/s2/favicons');
+  const candidates = savedIsGenerated ? [...known, ...direct, saved, fallback] : [...known, saved, ...direct, fallback];
+  return Array.from(new Set(candidates.filter(Boolean)));
+}
+
+function CompanyLinkIcon({ item, size = 18 }: { item: Pick<CompanyLink, 'title' | 'url' | 'icon_url'>; size?: number }) {
+  const candidates = useMemo(() => companyLinkIconCandidates(item), [item.icon_url, item.url]);
+  const candidateKey = candidates.join('|');
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [candidateKey]);
+
+  const src = candidates[index] ?? '';
+  if (!src) {
+    return (
+      <span className="company-link-fallback">
+        <Link size={Math.max(14, size - 3)} />
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      width={size}
+      height={size}
+      onError={() => setIndex((current) => current + 1)}
+    />
+  );
+}
+
+function SettingsCompanyLinksView({ onBack, copy }: { onBack: () => void; copy: AppCopy }) {
+  const [items, setItems] = useState<CompanyLink[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [saveState, setSaveState] = useState<LoadState>('idle');
+  const [orderState, setOrderState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<CompanyLink | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CompanyLink | null>(null);
+  const [form, setForm] = useState<CompanyLinkPayload>(() => companyLinkFormFromItem());
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [preview, setPreview] = useState<{ count: number; sample: Array<{ id: number; full_name: string; avatar_url: string }> }>({
+    count: 0,
+    sample: [],
+  });
+  const dictCache = useRef<Record<string, AnnouncementConditionOption[]>>({});
+  const title = copy.settings.items['company-links'] ?? 'Посилання компанії';
+  const audienceType = form.audience_type ?? 'all';
+  const conditions = form.conditions ?? [];
+  const previewConditions = useMemo(
+    () => (audienceType === 'conditions' ? conditions.filter(isCompleteAnnouncementCondition) : []),
+    [audienceType, conditions],
+  );
+
+  const loadItems = () => {
+    setLoadState('loading');
+    setError('');
+    api.companyLinks({ page_size: 200 })
+      .then((res) => {
+        setItems(res.items);
+        setTotal(res.total);
+        setLoadState('ok');
+      })
+      .catch((loadError) => {
+        setItems([]);
+        setTotal(0);
+        setLoadState('error');
+        setError(loadError instanceof ApiError ? loadError.message : copy.settings.loadErrorText);
+      });
+  };
+
+  useEffect(loadItems, [copy.settings.loadErrorText]);
+
+  useEffect(() => {
+    if (!formOpen) return undefined;
+    const timer = window.setTimeout(() => {
+      api
+        .companyLinkAudiencePreview({ audience_type: audienceType, conditions: previewConditions })
+        .then(setPreview)
+        .catch(() => setPreview({ count: 0, sample: [] }));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [audienceType, formOpen, previewConditions]);
+
+  const openCreate = () => {
+    setEditingItem(null);
+    setDeleteTarget(null);
+    setForm(companyLinkFormFromItem());
+    setSaveState('idle');
+    setFormOpen(true);
+  };
+
+  const openEdit = (item: CompanyLink) => {
+    setEditingItem(item);
+    setDeleteTarget(null);
+    setForm(companyLinkFormFromItem(item));
+    setSaveState('idle');
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditingItem(null);
+    setForm(companyLinkFormFromItem());
+    setSaveState('idle');
+  };
+
+  const addCondition = () => {
+    setForm((current) => ({ ...current, conditions: [...(current.conditions ?? []), { field: '', operator: '', value: [] }] }));
+  };
+
+  const updateCondition = (index: number, patch: Partial<AnnouncementCondition>) => {
+    setForm((current) => ({
+      ...current,
+      conditions: (current.conditions ?? []).map((condition, itemIndex) => (itemIndex === index ? { ...condition, ...patch } : condition)),
+    }));
+  };
+
+  const removeCondition = (index: number) => {
+    setForm((current) => ({ ...current, conditions: (current.conditions ?? []).filter((_, itemIndex) => itemIndex !== index) }));
+  };
+
+  const saveItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form.title.trim() || !form.url.trim() || saveState === 'loading') return;
+    if (audienceType === 'conditions' && conditions.some((condition) => !isCompleteAnnouncementCondition(condition))) {
+      setError('Заповніть або видаліть незавершені умови.');
+      return;
+    }
+    setSaveState('loading');
+    setError('');
+    try {
+      const payload: CompanyLinkPayload = {
+        title: form.title.trim(),
+        url: normalizeCompanyLinkUrl(form.url),
+        is_active: form.is_active ?? true,
+        audience_type: audienceType,
+        conditions: audienceType === 'conditions' ? previewConditions : [],
+      };
+      const saved = editingItem ? await api.updateCompanyLink(editingItem.id, payload) : await api.createCompanyLink(payload);
+      setItems((current) => {
+        const exists = current.some((item) => item.id === saved.id);
+        return (exists ? current.map((item) => (item.id === saved.id ? saved : item)) : [...current, saved]).sort(
+          (first, second) => first.order - second.order || first.title.localeCompare(second.title, 'uk'),
+        );
+      });
+      if (!editingItem) setTotal((current) => current + 1);
+      closeForm();
+    } catch (saveError) {
+      setSaveState('error');
+      setError(saveError instanceof ApiError ? saveError.message : copy.settings.loadErrorText);
+    }
+  };
+
+  const deleteItem = async () => {
+    if (!deleteTarget) return;
+    setSaveState('loading');
+    setError('');
+    try {
+      await api.deleteCompanyLink(deleteTarget.id);
+      setItems((current) => current.filter((item) => item.id !== deleteTarget.id));
+      setTotal((current) => Math.max(0, current - 1));
+      setDeleteTarget(null);
+      setSaveState('idle');
+    } catch (deleteError) {
+      setSaveState('error');
+      setError(deleteError instanceof ApiError ? deleteError.message : copy.settings.loadErrorText);
+    }
+  };
+
+  const moveCompanyLink = (sourceId: number, targetId: number) => {
+    const sourceIndex = items.findIndex((item) => item.id === sourceId);
+    const targetIndex = items.findIndex((item) => item.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return items;
+    const nextItems = [...items];
+    const [moved] = nextItems.splice(sourceIndex, 1);
+    nextItems.splice(targetIndex, 0, moved);
+    return nextItems;
+  };
+
+  const saveCompanyLinkOrder = async (nextItems: CompanyLink[]) => {
+    setOrderState('loading');
+    setError('');
+    try {
+      const savedRows = await api.reorderCompanyLinks(nextItems.map((item) => item.id));
+      setItems(savedRows);
+      setOrderState('ok');
+    } catch (orderError) {
+      setOrderState('error');
+      setError(orderError instanceof ApiError ? orderError.message : copy.settings.loadErrorText);
+      loadItems();
+    }
+  };
+
+  const handleCompanyLinkDragStart = (event: DragEvent<HTMLButtonElement>, item: CompanyLink) => {
+    setDraggingId(item.id);
+    setDragOverId(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(item.id));
+  };
+
+  const handleCompanyLinkDragOver = (event: DragEvent<HTMLTableRowElement>, item: CompanyLink) => {
+    if (draggingId === null || draggingId === item.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverId(item.id);
+  };
+
+  const handleCompanyLinkDrop = (event: DragEvent<HTMLTableRowElement>, item: CompanyLink) => {
+    event.preventDefault();
+    if (draggingId === null || draggingId === item.id) {
+      setDraggingId(null);
+      setDragOverId(null);
+      return;
+    }
+    const nextItems = moveCompanyLink(draggingId, item.id);
+    setItems(nextItems);
+    setDraggingId(null);
+    setDragOverId(null);
+    void saveCompanyLinkOrder(nextItems);
+  };
+
+  return (
+    <main className="settings-page settings-option-page company-links-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} />
+            {copy.common.previous}
+          </button>
+          <h1>{title}</h1>
+        </div>
+        <button type="button" className="primary-action" onClick={openCreate}>
+          <Plus size={16} />
+          Нове посилання
+        </button>
+      </header>
+      {error ? <div className="settings-error">{error}</div> : null}
+      <div className="settings-option-meta">
+        {loadState === 'loading' ? copy.common.loading : resultMetaLabel(items.length, total, copy)}
+        {orderState === 'loading' ? <span>Збереження порядку...</span> : null}
+      </div>
+      <section className="settings-option-table company-links-table">
+        <table>
+          <thead>
+            <tr>
+              <th>{copy.settings.nameColumn}</th>
+              <th>Посилання</th>
+              <th>{copy.common.actions}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr
+                key={item.id}
+                className={`${draggingId === item.id ? 'is-dragging' : ''} ${dragOverId === item.id ? 'is-drag-over' : ''}`}
+                onDragOver={(event) => handleCompanyLinkDragOver(event, item)}
+                onDrop={(event) => handleCompanyLinkDrop(event, item)}
+                onDragLeave={() => setDragOverId((current) => (current === item.id ? null : current))}
+              >
+                <td>
+                  <div className="company-link-title-cell">
+                    <button
+                      type="button"
+                      className="company-link-drag-handle"
+                      draggable
+                      aria-label="Змінити порядок"
+                      onDragStart={(event) => handleCompanyLinkDragStart(event, item)}
+                      onDragEnd={() => {
+                        setDraggingId(null);
+                        setDragOverId(null);
+                      }}
+                    >
+                      <GripVertical size={15} />
+                    </button>
+                    <CompanyLinkIcon item={item} />
+                    <span className="company-link-name">{item.title}</span>
+                    {!item.is_active ? <StatusPill status={copy.settings.inactive} /> : null}
+                  </div>
+                </td>
+                <td>
+                  <a href={item.url} target="_blank" rel="noreferrer" className="company-link-url">
+                    {item.url}
+                  </a>
+                </td>
+                <td>
+                  <div className="settings-row-actions">
+                    <button type="button" className="icon-button" onClick={() => openEdit(item)} aria-label={copy.settings.edit}>
+                      <Pencil size={15} />
+                    </button>
+                    <button type="button" className="icon-button" onClick={() => setDeleteTarget(item)} aria-label={copy.settings.delete}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {loadState !== 'loading' && !items.length ? <EmptyState title={copy.settings.noRowsTitle} text={copy.settings.noRowsText} /> : null}
+      </section>
+
+      {formOpen ? (
+        <div className="settings-option-modal-layer company-link-modal-layer" role="dialog" aria-modal="true" aria-label={editingItem ? 'Редагувати посилання' : 'Нове посилання'}>
+          <button type="button" className="settings-option-modal-backdrop" aria-label={copy.settings.cancel} onClick={closeForm} />
+          <form className="settings-option-modal company-link-modal" onSubmit={saveItem}>
+            <header className="settings-option-modal-head">
+              <strong>{editingItem ? 'Редагувати посилання' : 'Нове посилання'}</strong>
+              <button type="button" className="modal-close" aria-label={copy.settings.cancel} onClick={closeForm}>
+                <X size={18} />
+              </button>
+            </header>
+            <label>
+              <span>Заголовок</span>
+              <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} autoFocus />
+            </label>
+            <label>
+              <span>Посилання</span>
+              <input value={form.url} onChange={(event) => setForm((current) => ({ ...current, url: event.target.value }))} />
+            </label>
+            <div className="company-link-audience">
+              <div className="ann-section-title">Призначено</div>
+              <div className="ann-base-chip">Цикл зайнятості є <strong>Працюючі</strong></div>
+              <div className="ann-audience-cards">
+                <button
+                  type="button"
+                  className={`ann-audience-card${audienceType === 'conditions' ? ' active' : ''}`}
+                  onClick={() => setForm((current) => ({ ...current, audience_type: 'conditions' }))}
+                >
+                  <span className="ann-radio">{audienceType === 'conditions' ? <span className="ann-radio-dot" /> : null}</span>
+                  <span>
+                    <strong>Конкретні люди</strong>
+                    <small>Виберіть людей на основі умов</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`ann-audience-card${audienceType === 'all' ? ' active' : ''}`}
+                  onClick={() => setForm((current) => ({ ...current, audience_type: 'all' }))}
+                >
+                  <span className="ann-radio">{audienceType === 'all' ? <span className="ann-radio-dot" /> : null}</span>
+                  <span>
+                    <strong>Усі</strong>
+                    <small>Включає всіх людей</small>
+                  </span>
+                </button>
+              </div>
+
+              {audienceType === 'conditions' ? (
+                <div className="ann-conditions">
+                  {conditions.map((condition, index) => (
+                    <ConditionRow
+                      key={index}
+                      condition={condition}
+                      dictCache={dictCache}
+                      onChange={(patch) => updateCondition(index, patch)}
+                      onRemove={() => removeCondition(index)}
+                    />
+                  ))}
+                  <button type="button" className="ann-add-condition" onClick={addCondition}>
+                    <Plus size={15} /> Додати умову
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="ann-audience-count">
+                <span className="ann-avatars">
+                  {preview.sample.map((person) => (
+                    <span key={person.id} className="ann-avatar" title={person.full_name}>
+                      {person.avatar_url ? <img src={person.avatar_url} alt="" /> : <Users size={13} />}
+                    </span>
+                  ))}
+                </span>
+                <strong>{preview.count} людей</strong> відповідають обраним критеріям
+              </div>
+            </div>
+            <footer className="settings-option-modal-foot">
+              <button type="button" className="secondary-action" onClick={closeForm}>
+                {copy.settings.cancel}
+              </button>
+              <button type="submit" className="primary-action" disabled={!form.title.trim() || !form.url.trim() || saveState === 'loading'}>
+                {copy.settings.save}
+              </button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="settings-option-modal-layer company-link-modal-layer" role="dialog" aria-modal="true" aria-label={copy.settings.confirmDeleteTitle}>
+          <button type="button" className="settings-option-modal-backdrop" aria-label={copy.settings.cancel} onClick={() => setDeleteTarget(null)} />
+          <section className="settings-option-modal settings-delete-modal">
+            <header className="settings-option-modal-head">
+              <strong>{copy.settings.confirmDeleteTitle}</strong>
+              <button type="button" className="modal-close" aria-label={copy.settings.cancel} onClick={() => setDeleteTarget(null)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="settings-delete-body">
+              <p>
+                Посилання <strong>«{deleteTarget.title}»</strong> буде видалено.
+              </p>
+            </div>
+            <footer className="settings-option-modal-foot">
+              <button type="button" className="secondary-action" onClick={() => setDeleteTarget(null)}>
+                {copy.settings.cancel}
+              </button>
+              <button type="button" className="danger-action" onClick={deleteItem} disabled={saveState === 'loading'}>
+                {copy.settings.confirmDeleteAction}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+    </main>
+  );
+}
+
 function SettingsGeneralView({
   onBack,
   brandingSettings,
@@ -18301,6 +19381,9 @@ function SettingsView({
   if (activeSlug === 'documents') {
     return <SettingsDocumentsView onBack={() => navigate('/settings')} />;
   }
+  if (activeSlug === 'company-links') {
+    return <SettingsCompanyLinksView onBack={() => navigate('/settings')} copy={copy} />;
+  }
 
   if (
     activeSlug === 'experience-levels' ||
@@ -19127,9 +20210,6 @@ export function App() {
         leaveTypes={leave.leave_types}
         onLeaveSubmitted={() => { void api.selfLeave().then(setLeave); }}
         onOpenLeave={() => changeSection('requests')}
-        onOpenAttendance={() => changeSection('attendance')}
-        onOpenKnowledge={() => changeSection('knowledge')}
-        onOpenOrg={() => changeSection('org')}
         brandingSettings={userBrandingSettings}
         copy={copy}
       />

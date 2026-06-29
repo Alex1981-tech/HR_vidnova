@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from .models import (
     Clinic,
+    CompanyLink,
     Department,
     DepartmentLevel,
     Division,
@@ -445,6 +446,21 @@ class ExternalEmployeeLinkSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExternalEmployeeLink
         fields = ("id", "source", "external_id", "raw_hash", "last_seen_at", "is_active")
+
+
+class CompanyLinkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyLink
+        fields = (
+            "id", "title", "url", "icon_url", "order", "is_active",
+            "audience_type", "conditions", "created_at", "updated_at",
+        )
+        read_only_fields = ("created_at", "updated_at")
+        extra_kwargs = {
+            "icon_url": {"required": False, "allow_blank": True},
+            "order": {"required": False},
+            "conditions": {"required": False},
+        }
 
 
 class EmployeeDocumentFolderSerializer(serializers.ModelSerializer):

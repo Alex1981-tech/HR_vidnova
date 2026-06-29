@@ -11,6 +11,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.announcements.audience import resolve_audience
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
 # Ліміти для ручного завантаження документів (Фаза 7).
@@ -47,6 +48,8 @@ PREVIEWABLE_DOCUMENT_TEXT_EXTENSIONS = {
     "yml",
 }
 
+COMPANY_LINK_AUDIENCE_SAMPLE_SIZE = 6
+
 
 def _document_extension(name: str) -> str:
     return name.rsplit(".", 1)[-1].lower() if "." in name else ""
@@ -80,11 +83,28 @@ def _document_preview_content_type(document: "EmployeeDocument") -> str | None:
             return base
     return None
 
+
+def _employee_avatar_url(employee: "Employee") -> str:
+    if employee.avatar_file:
+        try:
+            return employee.avatar_file.url
+        except ValueError:
+            return employee.avatar_url or ""
+    return employee.avatar_url or ""
+
+
+def _audience_sample_payload(qs):
+    return [
+        {"id": emp.id, "full_name": emp.full_name, "avatar_url": _employee_avatar_url(emp)}
+        for emp in qs.order_by("last_name", "first_name")[:COMPANY_LINK_AUDIENCE_SAMPLE_SIZE]
+    ]
+
 from .models import (
     EmployeeField,
     EmployeeFieldGroup,
     EmployeeFieldTable,
     Clinic,
+    CompanyLink,
     Department,
     DepartmentLevel,
     Division,
@@ -118,6 +138,7 @@ from .serializers import (
     EmployeeFieldGroupSerializer,
     EmployeeFieldTableSerializer,
     ClinicSerializer,
+    CompanyLinkSerializer,
     DepartmentLevelSerializer,
     DepartmentSerializer,
     DivisionSerializer,
@@ -147,6 +168,76 @@ from . import work_sync
 
 class EmployeeApiViewSet(viewsets.ModelViewSet):
     permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+
+
+class CompanyLinkViewSet(EmployeeApiViewSet):
+    serializer_class = CompanyLinkSerializer
+
+    def _current_employee(self):
+        user = getattr(self.request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+        return getattr(user, "employee_profile", None)
+
+    @staticmethod
+    def _is_visible_for_employee(link, employee):
+        if link.audience_type == CompanyLink.Audience.ALL:
+            return True
+        if not employee:
+            return True
+        return resolve_audience(link.audience_type, link.conditions).filter(pk=employee.pk).exists()
+
+    def get_queryset(self):
+        qs = CompanyLink.objects.order_by("order", "title")
+        search = self.request.query_params.get("q", "").strip()
+        if search:
+            qs = qs.filter(Q(title__icontains=search) | Q(url__icontains=search))
+        is_active = self.request.query_params.get("is_active")
+        if is_active in {"true", "1"}:
+            qs = qs.filter(is_active=True)
+        elif is_active in {"false", "0"}:
+            qs = qs.filter(is_active=False)
+        if self.request.query_params.get("for_me") in {"true", "1"}:
+            employee = self._current_employee()
+            visible_ids = [item.id for item in qs if self._is_visible_for_employee(item, employee)]
+            qs = CompanyLink.objects.filter(id__in=visible_ids).order_by("order", "title")
+        return qs
+
+    @action(detail=False, methods=["post"], url_path="audience-preview")
+    def audience_preview(self, request):
+        audience_type = request.data.get("audience_type") or CompanyLink.Audience.ALL
+        if audience_type not in {CompanyLink.Audience.ALL, CompanyLink.Audience.CONDITIONS}:
+            return Response({"detail": "Invalid audience_type."}, status=status.HTTP_400_BAD_REQUEST)
+        conditions = request.data.get("conditions") or []
+        if not isinstance(conditions, list):
+            return Response({"detail": "conditions must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        qs = resolve_audience(audience_type, conditions)
+        return Response({"count": qs.count(), "sample": _audience_sample_payload(qs)})
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        ids = request.data.get("ids")
+        if not isinstance(ids, list):
+            return Response({"detail": "ids must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        normalized_ids = []
+        for value in ids:
+            try:
+                normalized_ids.append(int(value))
+            except (TypeError, ValueError):
+                return Response({"detail": "ids must contain integers."}, status=status.HTTP_400_BAD_REQUEST)
+        links = {item.id: item for item in CompanyLink.objects.filter(id__in=normalized_ids)}
+        now = timezone.now()
+        to_update = []
+        for index, link_id in enumerate(normalized_ids, start=1):
+            item = links.get(link_id)
+            if not item:
+                continue
+            item.order = index
+            item.updated_at = now
+            to_update.append(item)
+        if to_update:
+            CompanyLink.objects.bulk_update(to_update, ["order", "updated_at"])
+        return Response(self.get_serializer(self.get_queryset(), many=True).data)
 
 
 class ClinicViewSet(EmployeeApiViewSet):

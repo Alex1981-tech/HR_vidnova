@@ -95,6 +95,9 @@ class LeaveApprovalStepSerializer(serializers.ModelSerializer):
 
 class LeaveRequestSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.full_name", read_only=True)
+    employee_avatar_url = serializers.CharField(source="employee.avatar_url", read_only=True)
+    employee_avatar_local_url = serializers.SerializerMethodField()
+    employee_position_name = serializers.CharField(source="employee.position.name", read_only=True)
     leave_type_name = serializers.CharField(source="leave_type.name", read_only=True)
     approval_steps = LeaveApprovalStepSerializer(many=True, read_only=True)
 
@@ -105,6 +108,9 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             "employee",
             "legacy_peopleforce_id",
             "employee_name",
+            "employee_avatar_url",
+            "employee_avatar_local_url",
+            "employee_position_name",
             "leave_type",
             "leave_type_name",
             "date_from",
@@ -118,3 +124,12 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             "decided_by",
             "approval_steps",
         )
+
+    def get_employee_avatar_local_url(self, obj):
+        avatar_file = getattr(obj.employee, "avatar_file", None)
+        if not avatar_file:
+            return ""
+        try:
+            return avatar_file.url
+        except ValueError:
+            return ""

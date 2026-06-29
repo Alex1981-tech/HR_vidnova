@@ -47,6 +47,21 @@ def html_to_telegram(html: str, title: str) -> str:
     return body[:4000]
 
 
+def announcement_to_telegram(announcement: Announcement) -> str:
+    if announcement.kind == Announcement.Kind.POLL:
+        safe_title = re.sub(r"(?is)<[^>]+>", "", announcement.title or "").strip()
+        header = f"<b>📊 Нове опитування: {safe_title}</b>" if safe_title else "<b>📊 Нове опитування</b>"
+        options = [
+            re.sub(r"(?is)<[^>]+>", "", str(option or "")).strip()
+            for option in (announcement.poll_options or [])
+        ]
+        options_text = "\n".join(f"• {option}" for option in options if option)
+        intro = "Голосування доступне в HR Vidnova."
+        body = f"{header}\n\n{intro}\n\n{options_text}" if options_text else f"{header}\n\n{intro}"
+        return body[:4000]
+    return html_to_telegram(announcement.body_html, announcement.title)
+
+
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def send_announcement_telegram(self, announcement_id: int) -> dict:
     try:
@@ -62,7 +77,7 @@ def send_announcement_telegram(self, announcement_id: int) -> dict:
         employee__in=audience, is_active=True
     ).exclude(telegram_chat_id=None)
 
-    message = html_to_telegram(announcement.body_html, announcement.title)
+    message = announcement_to_telegram(announcement)
     reply_markup = {"inline_keyboard": [[{"text": "Відкрити HR Vidnova", "url": "https://hr.vidnova.app/"}]]}
     sent = failed = 0
     for link in links.iterator():

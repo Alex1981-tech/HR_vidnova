@@ -4,14 +4,16 @@ import { api } from '../api/client';
 import type { Announcement, AnnouncementCondition } from '../types/api';
 import { RichTextEditor } from './RichTextEditor';
 
-type Opt = { id: number; name: string };
-type Operator = Exclude<AnnouncementCondition['operator'], ''>;
+export type AnnouncementConditionOption = { id: number; name: string };
+type Opt = AnnouncementConditionOption;
+export type AnnouncementConditionOperator = Exclude<AnnouncementCondition['operator'], ''>;
+type Operator = AnnouncementConditionOperator;
 type CompleteCondition = AnnouncementCondition & { operator: Operator };
 
 const toOpts = (p: Promise<{ items: Array<{ id: number; name: string }> }>): Promise<Opt[]> =>
   p.then((r) => r.items.map((o) => ({ id: o.id, name: o.name })));
 
-const FIELD_OPTIONS: Array<{ key: string; label: string; loader: () => Promise<Opt[]> }> = [
+export const ANNOUNCEMENT_FIELD_OPTIONS: Array<{ key: string; label: string; loader: () => Promise<Opt[]> }> = [
   { key: 'department', label: 'Департамент', loader: () => toOpts(api.departments({ page_size: 500 })) },
   { key: 'team', label: 'Команда', loader: () => toOpts(api.teams({ page_size: 500 })) },
   { key: 'clinic', label: 'Локація', loader: () => toOpts(api.locations({ page_size: 500 })) },
@@ -22,16 +24,21 @@ const FIELD_OPTIONS: Array<{ key: string; label: string; loader: () => Promise<O
   { key: 'job_level', label: 'Рівень посади', loader: () => toOpts(api.jobLevels({ page_size: 500 })) },
 ];
 
-const OPERATOR_OPTIONS: Array<{ value: Operator; label: string }> = [
+export const ANNOUNCEMENT_OPERATOR_OPTIONS: Array<{ value: Operator; label: string }> = [
   { value: 'is', label: 'Є' },
   { value: 'is_not', label: 'Не є' },
   { value: 'is_not_empty', label: 'Не є порожнім' },
   { value: 'is_empty', label: 'Є порожнім' },
 ];
 
-const needsValue = (op: AnnouncementCondition['operator']) => op === 'is' || op === 'is_not';
-const isCompleteCondition = (condition: AnnouncementCondition): condition is CompleteCondition =>
-  Boolean(condition.field && condition.operator && (!needsValue(condition.operator) || condition.value.length));
+export const announcementConditionNeedsValue = (op: AnnouncementCondition['operator']) => op === 'is' || op === 'is_not';
+export const isCompleteAnnouncementCondition = (condition: AnnouncementCondition): condition is CompleteCondition =>
+  Boolean(condition.field && condition.operator && (!announcementConditionNeedsValue(condition.operator) || condition.value.length));
+
+const FIELD_OPTIONS = ANNOUNCEMENT_FIELD_OPTIONS;
+const OPERATOR_OPTIONS = ANNOUNCEMENT_OPERATOR_OPTIONS;
+const needsValue = announcementConditionNeedsValue;
+export const isCompleteCondition = isCompleteAnnouncementCondition;
 
 function toLocalInput(iso: string | null): string {
   if (!iso) return '';
@@ -227,7 +234,7 @@ export function CreateAnnouncementModal({
   );
 }
 
-function ConditionRow({
+export function ConditionRow({
   condition,
   dictCache,
   onChange,

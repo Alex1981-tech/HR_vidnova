@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
 from .audience import resolve_audience
-from .models import Announcement, AnnouncementComment, AnnouncementReaction
+from .models import Announcement, AnnouncementComment, AnnouncementPollVote, AnnouncementReaction
 from .serializers import (
     AnnouncementCommentSerializer,
     AnnouncementSerializer,
@@ -53,6 +53,7 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         ).prefetch_related(
             "comments", "comments__employee", "comments__author",
             "reactions", "reactions__user__employee_profile",
+            "poll_votes", "poll_votes__user__employee_profile",
         )
         if self.action == "list":
             qs = qs.filter(status=Announcement.Status.PUBLISHED)
@@ -148,6 +149,30 @@ class AnnouncementViewSet(viewsets.ModelViewSet):
         fresh = self.get_queryset().get(pk=announcement.pk)  # свіжий prefetch реакцій
         data = AnnouncementSerializer(fresh, context=self.get_serializer_context()).data
         return Response({"reactions": data["reactions"]})
+
+    @action(detail=True, methods=["post"], url_path="vote")
+    def vote(self, request, pk=None):
+        announcement = self.get_object()
+        if announcement.kind != Announcement.Kind.POLL:
+            return Response({"detail": "Це не опитування."}, status=status.HTTP_400_BAD_REQUEST)
+        user = request.user if request.user.is_authenticated else None
+        if user is None:
+            return Response({"detail": "Потрібна авторизація."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            option_index = int(request.data.get("option_index"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Потрібен номер варіанту."}, status=status.HTTP_400_BAD_REQUEST)
+        if option_index < 0 or option_index >= len(announcement.poll_options or []):
+            return Response({"detail": "Невірний варіант відповіді."}, status=status.HTTP_400_BAD_REQUEST)
+
+        AnnouncementPollVote.objects.update_or_create(
+            announcement=announcement,
+            user=user,
+            defaults={"employee": getattr(user, "employee_profile", None), "option_index": option_index},
+        )
+        fresh = self.get_queryset().get(pk=announcement.pk)
+        data = AnnouncementSerializer(fresh, context=self.get_serializer_context()).data
+        return Response({"poll_results": data["poll_results"], "user_vote": data["user_vote"]})
 
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request, pk=None):

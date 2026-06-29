@@ -48,13 +48,19 @@ class LeaveRequestViewSet(LeaveModelViewSet):
     serializer_class = LeaveRequestSerializer
 
     def get_queryset(self):
-        qs = LeaveRequest.objects.select_related("employee", "leave_type", "decided_by").prefetch_related("approval_steps").all()
+        qs = LeaveRequest.objects.select_related("employee", "employee__position", "leave_type", "decided_by").prefetch_related("approval_steps").all()
         status = self.request.query_params.get("status")
         if status:
             qs = qs.filter(status=status)
         employee = self.request.query_params.get("employee")
         if employee:
             qs = qs.filter(employee_id=employee)
+        date_from = self.request.query_params.get("date_from")
+        if date_from:
+            qs = qs.filter(date_to__gte=date_from)
+        date_to = self.request.query_params.get("date_to")
+        if date_to:
+            qs = qs.filter(date_from__lte=date_to)
         return qs
 
 

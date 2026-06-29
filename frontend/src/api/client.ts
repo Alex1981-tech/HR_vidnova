@@ -5,11 +5,13 @@ import type {
   AnnouncementCondition,
   AnnouncementMediaUpload,
   AnnouncementPayload,
+  AnnouncementPollResult,
   AnnouncementReactionSummary,
   ApiList,
   AuthCodeResponse,
   AuthLoginResponse,
   AuthStatus,
+  CompanyLink,
   CompanyAttendanceSummary,
   DashboardOverview,
   DepartmentLevelOption,
@@ -176,6 +178,16 @@ export type HolidayPayload = {
   observed_on?: string | null;
   recurrence?: string;
   is_active?: boolean;
+};
+
+export type CompanyLinkPayload = {
+  title: string;
+  url: string;
+  icon_url?: string;
+  order?: number;
+  is_active?: boolean;
+  audience_type?: 'all' | 'conditions';
+  conditions?: AnnouncementCondition[];
 };
 
 export type WorkingPatternPayload = {
@@ -637,6 +649,32 @@ export const api = {
       page_size?: number;
     } = {},
   ) => request<ApiList<HolidayOption> | HolidayOption[]>(`/api/employees/holidays/${buildQuery(params)}`).then(normalizeList),
+  companyLinks: (params: { q?: string; is_active?: boolean; for_me?: boolean; page?: number; page_size?: number } = {}) =>
+    request<ApiList<CompanyLink> | CompanyLink[]>(`/api/employees/company-links/${buildQuery(params)}`).then(normalizeList),
+  companyLinkAudiencePreview: (payload: { audience_type: 'all' | 'conditions'; conditions: AnnouncementCondition[] }) =>
+    request<AnnouncementAudiencePreview>('/api/employees/company-links/audience-preview/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  createCompanyLink: (payload: CompanyLinkPayload) =>
+    request<CompanyLink>('/api/employees/company-links/', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateCompanyLink: (id: number, payload: Partial<CompanyLinkPayload>) =>
+    request<CompanyLink>(`/api/employees/company-links/${id}/`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  deleteCompanyLink: (id: number) =>
+    request<void>(`/api/employees/company-links/${id}/`, {
+      method: 'DELETE',
+    }),
+  reorderCompanyLinks: (ids: number[]) =>
+    request<CompanyLink[]>('/api/employees/company-links/reorder/', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
   createHoliday: (payload: HolidayPayload) =>
     request<HolidayOption>('/api/employees/holidays/', {
       method: 'POST',
@@ -884,7 +922,7 @@ export const api = {
         })
       : request<EmployeeNote>('/api/employees/employee-notes/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteEmployeeNote: (id: number) => request<void>(`/api/employees/employee-notes/${id}/`, { method: 'DELETE' }),
-  leaveRequests: (params: { status?: string; employee?: number; page?: number; page_size?: number } = {}) =>
+  leaveRequests: (params: { status?: string; employee?: number; date_from?: string; date_to?: string; page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveRequest> | LeaveRequest[]>(`/api/leave/requests/${buildQuery(params)}`).then(normalizeList),
   leaveBalances: (params: { employee?: number; leave_type?: number; page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveBalance> | LeaveBalance[]>(`/api/leave/balances/${buildQuery(params)}`).then(normalizeList),
@@ -998,4 +1036,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ body }),
     }),
+  voteAnnouncementPoll: (id: number, optionIndex: number) =>
+    request<{ poll_results: AnnouncementPollResult[]; user_vote: number | null }>(
+      `/api/announcements/announcements/${id}/vote/`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ option_index: optionIndex }),
+      },
+    ),
 };

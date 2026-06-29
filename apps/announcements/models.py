@@ -9,6 +9,10 @@ from apps.employees.models import Employee, TimestampedModel
 class Announcement(TimestampedModel):
     """Оголошення на головній сторінці з опційною розсилкою в Telegram."""
 
+    class Kind(models.TextChoices):
+        ANNOUNCEMENT = "announcement", "Оголошення"
+        POLL = "poll", "Опитування"
+
     class Audience(models.TextChoices):
         ALL = "all", "Усі"
         CONDITIONS = "conditions", "Конкретні люди"
@@ -19,7 +23,9 @@ class Announcement(TimestampedModel):
         PUBLISHED = "published", "Опубліковано"
 
     title = models.CharField(max_length=255)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.ANNOUNCEMENT, db_index=True)
     body_html = models.TextField(blank=True)
+    poll_options = models.JSONField(default=list, blank=True)
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="authored_announcements",
@@ -29,6 +35,7 @@ class Announcement(TimestampedModel):
     conditions = models.JSONField(default=list, blank=True)
 
     notify_telegram = models.BooleanField(default=True)
+    notify_email = models.BooleanField(default=False)
     notify_web = models.BooleanField(default=True)
     allow_comments = models.BooleanField(default=False)
 
@@ -86,3 +93,26 @@ class AnnouncementReaction(TimestampedModel):
 
     def __str__(self) -> str:
         return f"{self.emoji} on {self.announcement_id}"
+
+
+class AnnouncementPollVote(TimestampedModel):
+    announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name="poll_votes")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="announcement_poll_votes",
+    )
+    employee = models.ForeignKey(
+        Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name="announcement_poll_votes",
+    )
+    option_index = models.PositiveSmallIntegerField()
+
+    class Meta:
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["announcement", "option_index"], name="ann_poll_option_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["announcement", "user"], name="uniq_ann_poll_user"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Vote {self.option_index} on {self.announcement_id}"
