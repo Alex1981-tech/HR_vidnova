@@ -6063,8 +6063,15 @@ function EmployeeAdminProfileView({
       const bar = heroBarRef.current;
       if (!bar) return;
       const topbarHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 52;
-      const pinned = window.scrollY > 0 && bar.getBoundingClientRect().top <= topbarHeight + 1;
-      setHeroPinned((current) => (current === pinned ? current : pinned));
+      // Гістерезис проти циклу «закріплення↔відкріплення»: коли pin зменшує висоту
+      // сторінки, скрол клампиться → раніше це відкріплювало → знову росло → loop.
+      // Закріплюємо лише після помітного скролу (>80px) і тримаємо закріпленим,
+      // доки не повернемось майже до верху (<=8px). Мертва зона 8..80 гасить дрижання.
+      setHeroPinned((current) => {
+        const atTop = bar.getBoundingClientRect().top <= topbarHeight + 1;
+        const next = current ? window.scrollY > 8 : window.scrollY > 80 && atTop;
+        return next === current ? current : next;
+      });
     };
 
     updatePinnedState();
