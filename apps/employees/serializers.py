@@ -924,11 +924,58 @@ class EmployeeFieldSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("is_system", "system_key")
 
+    def validate(self, attrs):
+        field_type = attrs.get("field_type", getattr(self.instance, "field_type", None))
+        options = attrs.get("options", getattr(self.instance, "options", None))
+        if field_type == EmployeeField.FieldType.SELECT and not options:
+            raise serializers.ValidationError({"options": "Тип «Список» потребує непорожній список варіантів."})
+        if field_type in (EmployeeField.FieldType.EMPLOYEE, EmployeeField.FieldType.BOOLEAN) and options:
+            raise serializers.ValidationError({"options": "Цей тип поля не може мати варіантів."})
+        return attrs
+
+
+_TABLE_COLUMN_TYPES = {"text", "textarea", "number", "date", "select", "employee", "boolean", "url"}
+_SELECT_COLUMN_TYPE = "select"
+_OPTIONLESS_TYPES = {"employee", "boolean"}
+
 
 class EmployeeFieldTableSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeFieldTable
-        fields = ("id", "group", "name", "columns", "is_enabled", "order")
+        fields = ("id", "group", "name", "columns", "is_enabled", "sync_target", "order")
+
+    def validate_columns(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("columns має бути списком.")
+        seen_keys = set()
+        for index, col in enumerate(value):
+            where = f"Колонка #{index + 1}"
+            if not isinstance(col, dict):
+                raise serializers.ValidationError(f"{where}: має бути об'єктом.")
+            key = col.get("key")
+            if not key or not isinstance(key, str) or not key.strip():
+                raise serializers.ValidationError(f"{where}: «key» обов'язковий.")
+            key = key.strip()
+            if key in seen_keys:
+                raise serializers.ValidationError(f"{where}: дубльований «key» «{key}».")
+            seen_keys.add(key)
+            label = col.get("label")
+            if not label or not isinstance(label, str) or not label.strip():
+                raise serializers.ValidationError(f"{where}: «label» обов'язковий.")
+            col_type = col.get("type")
+            if col_type not in _TABLE_COLUMN_TYPES:
+                raise serializers.ValidationError(
+                    f"{where}: тип «{col_type}» не дозволений. Доступні: {', '.join(sorted(_TABLE_COLUMN_TYPES))}."
+                )
+            if col_type == "file":
+                raise serializers.ValidationError(f"{where}: тип «file» поки не підтримується.")
+            if col_type == _SELECT_COLUMN_TYPE:
+                options = col.get("options")
+                if not isinstance(options, list) or not options:
+                    raise serializers.ValidationError(f"{where}: «select» потребує непорожній список «options».")
+            elif col_type in _OPTIONLESS_TYPES and col.get("options"):
+                raise serializers.ValidationError(f"{where}: тип «{col_type}» не може мати «options».")
+        return value
 
 
 class EmployeeFieldGroupSerializer(serializers.ModelSerializer):

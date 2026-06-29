@@ -790,7 +790,7 @@ class PeopleForceLegacyImporter:
             defaults={
                 "name": name,
                 "code": code,
-                "unit": trim(clean(payload.get("unit")), 40),
+                "unit": _normalize_leave_unit(clean(payload.get("unit"))),
                 "color": trim(clean(payload.get("hex_color")), 40),
                 "legacy_payload": payload,
                 "is_active": True,
@@ -1435,6 +1435,14 @@ def clean(value: Any) -> str:
 
 def trim(value: str, max_length: int) -> str:
     return value[:max_length]
+
+
+def _normalize_leave_unit(value: Any) -> str:
+    """Канонізує одиницю відстеження відсутності у days|hours."""
+    raw = clean(value).lower()
+    if raw.startswith("hour") or raw.startswith("год"):
+        return "hours"
+    return "days"
 
 
 def peopleforce_field_value(fields: dict[str, Any], key: str) -> str:

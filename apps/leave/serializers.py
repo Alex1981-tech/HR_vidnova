@@ -7,6 +7,8 @@ from .models import LeaveApprovalStep, LeaveBalance, LeaveRequest, LeaveType
 class LeaveTypeSerializer(serializers.ModelSerializer):
     # code генерується автоматично з імені, якщо не передано (модалка має лише Ім'я).
     code = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    # unit приймає legacy-значення й нормалізується у validate_unit (не ChoiceField).
+    unit = serializers.CharField(max_length=40, required=False, allow_blank=True)
 
     class Meta:
         model = LeaveType
@@ -23,6 +25,17 @@ class LeaveTypeSerializer(serializers.ModelSerializer):
             "is_active",
         )
         read_only_fields = ("legacy_peopleforce_id", "order")
+
+    def validate_unit(self, value):
+        """Нормалізує одиницю відстеження до days|hours; legacy-значення мапляться за префіксом."""
+        raw = (value or "").strip().lower()
+        if not raw:
+            return LeaveType.TrackingUnit.DAYS
+        if raw.startswith("hour") or raw.startswith("год"):
+            return LeaveType.TrackingUnit.HOURS
+        if raw.startswith("day") or raw.startswith("дн") or raw.startswith("ден"):
+            return LeaveType.TrackingUnit.DAYS
+        raise serializers.ValidationError("Одиниця має бути «days» або «hours».")
 
     def _unique_code(self, base, instance=None):
         slug = (slugify(base) or "leave")[:36]

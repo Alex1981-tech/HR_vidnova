@@ -6,6 +6,7 @@ from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -78,6 +79,7 @@ from .serializers import (
     TerminationTypeSerializer,
     WorkingPatternSerializer,
 )
+from . import work_sync
 
 
 class EmployeeApiViewSet(viewsets.ModelViewSet):
@@ -870,6 +872,115 @@ class EmployeeViewSet(EmployeeApiViewSet):
         employee.refresh_from_db()
         output = EmployeeSerializer(employee, context=self.get_serializer_context())
         return Response(output.data)
+
+    # --- Atomic row-level API для повторюваних таблиць профілю ---
+
+    @staticmethod
+    def _table_storage_key(table_id):
+        return f"table_{table_id}"
+
+    def _resolve_table(self, table_id):
+        """Повертає EmployeeFieldTable або кидає DRF-помилку 400/404."""
+        if not table_id:
+            raise ValidationError({"table": "Параметр «table» обов'язковий."})
+        try:
+            return EmployeeFieldTable.objects.get(pk=table_id)
+        except (EmployeeFieldTable.DoesNotExist, ValueError, TypeError):
+            raise NotFound("Таблицю не знайдено.")
+
+    @staticmethod
+    def _clean_row_values(table, values):
+        """Лишає тільки відомі колонки таблиці; ігнорує службові/зайві ключі."""
+        if not isinstance(values, dict):
+            raise ValidationError({"values": "«values» має бути об'єктом."})
+        allowed = {col.get("key") for col in (table.columns or []) if col.get("key")}
+        reserved = {"row_id", "created_at", "updated_at"}
+        return {k: v for k, v in values.items() if k in allowed and k not in reserved}
+
+    def _rows_with_ids(self, pk, key):
+        """Повертає рядки таблиці, ледаче проставляючи row_id legacy-рядкам (міграція-на-читанні)."""
+        employee = self.get_queryset().get(pk=pk)
+        rows = (employee.custom_fields or {}).get(key, [])
+        if not isinstance(rows, list):
+            return []
+        missing = [r for r in rows if isinstance(r, dict) and not r.get("row_id")]
+        if not missing:
+            return rows
+        now = timezone.now().isoformat()
+        with transaction.atomic():
+            employee = Employee.objects.select_for_update().get(pk=pk)
+            custom = dict(employee.custom_fields or {})
+            rows = list(custom.get(key, []) or [])
+            for r in rows:
+                if isinstance(r, dict) and not r.get("row_id"):
+                    r["row_id"] = uuid.uuid4().hex
+                    r.setdefault("created_at", now)
+                    r.setdefault("updated_at", now)
+            custom[key] = rows
+            employee.custom_fields = custom
+            employee.save(update_fields=["custom_fields", "updated_at"])
+        return rows
+
+    @action(detail=True, methods=["get", "post"], url_path="table-rows")
+    def table_rows(self, request, pk=None):
+        table_id = request.query_params.get("table") or request.data.get("table")
+        table = self._resolve_table(table_id)
+        key = self._table_storage_key(table.id)
+
+        if request.method == "GET":
+            return Response(self._rows_with_ids(pk, key))
+
+        # POST — створення рядка
+        values = self._clean_row_values(table, request.data.get("values", request.data))
+        now = timezone.now().isoformat()
+        with transaction.atomic():
+            employee = Employee.objects.select_for_update().get(pk=pk)
+            custom = dict(employee.custom_fields or {})
+            rows = list(custom.get(key, []) or [])
+            row = {**values, "row_id": uuid.uuid4().hex, "created_at": now, "updated_at": now}
+            rows.append(row)
+            custom[key] = rows
+            employee.custom_fields = custom
+            employee.save(update_fields=["custom_fields", "updated_at"])
+            if table.sync_target:
+                work_sync.sync_table(employee, table)
+        return Response(row, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["patch", "delete"], url_path="table-rows/(?P<row_id>[^/.]+)")
+    def table_row_detail(self, request, pk=None, row_id=None):
+        table_id = request.query_params.get("table") or request.data.get("table")
+        table = self._resolve_table(table_id)
+        key = self._table_storage_key(table.id)
+
+        with transaction.atomic():
+            employee = Employee.objects.select_for_update().get(pk=pk)
+            custom = dict(employee.custom_fields or {})
+            rows = list(custom.get(key, []) or [])
+            index = next((i for i, r in enumerate(rows) if isinstance(r, dict) and r.get("row_id") == row_id), None)
+            if index is None:
+                raise NotFound("Рядок не знайдено.")
+
+            if request.method == "DELETE":
+                rows.pop(index)
+                custom[key] = rows
+                employee.custom_fields = custom
+                employee.save(update_fields=["custom_fields", "updated_at"])
+                if table.sync_target:
+                    work_sync.sync_table(employee, table)
+                return Response(status=status.HTTP_204_NO_CONTENT)
+
+            # PATCH — оновлення значень
+            values = self._clean_row_values(table, request.data.get("values", request.data))
+            row = dict(rows[index])
+            row.update(values)
+            row["updated_at"] = timezone.now().isoformat()
+            rows[index] = row
+            custom[key] = rows
+            employee.custom_fields = custom
+            employee.save(update_fields=["custom_fields", "updated_at"])
+            if table.sync_target:
+                work_sync.sync_table(employee, table)
+        return Response(row)
 
 
 class ManagerAssignmentViewSet(EmployeeApiViewSet):

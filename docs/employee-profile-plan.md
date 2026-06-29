@@ -74,28 +74,30 @@
 
 - [x] `EmployeeFieldGroup/EmployeeField/EmployeeFieldTable` і CRUD viewsets існують.
 - [x] Settings UI має таблиці/колонки, boolean уже є на frontend і в compensation seed.
-- [ ] Додати backend validation для `EmployeeFieldTable.columns`:
+- [x] Додати backend validation для `EmployeeFieldTable.columns` (serializers.py `validate_columns`):
   - `key` stable slug, unique per table, не порожній;
   - `label` required;
   - `type` тільки allowlist;
   - `select.options` required/list;
-  - `employee` не має options;
+  - `employee`/`boolean` не мають options;
   - `file` заборонений до появи attachment storage.
-- [ ] Додати `boolean` у `EmployeeField.FieldType` на backend (`AlterField` choices) і serializer validation.
+- [x] Додати `boolean` у `EmployeeField.FieldType` на backend (міграція 0027) + serializer validation (`validate`).
 - [ ] `file` тип не додавати як generic field без backing model. Для сертифікатів/освіти потрібен row attachment design.
 - [ ] Винести profile field-group loading у `frontend/src/api/client.ts` замість raw `fetch`.
 
-### B. Atomic row API для таблиць ⏳
+### B. Atomic row API для таблиць ✅
 
 Поточний PATCH усього `Employee.custom_fields['table_<id>']` працює, але має ризики full-JSON overwrite, немає row id, audit/concurrency і cleanup при зміні таблиці.
 
 Рішення: залишити storage у `custom_fields` на MVP, але додати backend actions з row-level контрактом:
 
-- `GET /api/employees/employees/:id/table-rows/?table=:table_id`
-- `POST /api/employees/employees/:id/table-rows/`
-- `PATCH /api/employees/employees/:id/table-rows/:row_id/`
-- `DELETE /api/employees/employees/:id/table-rows/:row_id/`
-- Кожен row отримує `row_id`, `created_at`, `updated_at`; зміни виконуються в `transaction.atomic()` + `select_for_update()`.
+- [x] `GET /api/employees/employees/:id/table-rows/?table=:table_id`
+- [x] `POST /api/employees/employees/:id/table-rows/`
+- [x] `PATCH /api/employees/employees/:id/table-rows/:row_id/`
+- [x] `DELETE /api/employees/employees/:id/table-rows/:row_id/`
+- [x] Кожен row отримує `row_id`, `created_at`, `updated_at`; зміни в `transaction.atomic()` + `select_for_update()`.
+- [x] Legacy-рядки без `row_id` ледаче backfill-яться на GET (міграція-на-читанні).
+- [x] Frontend (`EmployeeTablePanel`) переведено з full-PATCH на row API (Фаза 1).
 - Для rename/delete column не видаляти дані автоматично. Delete table у settings спочатку `is_enabled=false`; physical cleanup тільки окремою підтвердженою дією.
 
 ### C. Restricted profile update ⏳
@@ -106,7 +108,7 @@
 - `gender` не hardcoded `Жінка/Чоловік`: frontend вантажить `/api/employees/genders/`, зберігає `Gender.code` у `Employee.gender`.
 - Custom values у тому ж block-save можна PATCHити як `{custom_fields_delta}`, але не замінювати весь JSON без merge/validation.
 
-### D. Work domain sync ⏳
+### D. Work domain sync ✅
 
 `Робота` не може бути лише display у `custom_fields`, бо доменні моделі вже існують:
 
@@ -115,21 +117,21 @@
 - `EmployeeEmploymentStatus`
 - SKUD використовує employment/schedule доменну історію, не JSON-таблицю.
 
-Рішення:
+Реалізація (`apps/employees/work_sync.py`, тригер у `table_rows`/`table_row_detail`):
 
-- Таблиці `Посади`/`Робота` залишаються PF-like UI layer.
-- Значення select-колонок перевести зі static label options на structured source (`position`, `department`, `division`, `clinic`, `job_level`, `employment_type`, `working_pattern`) і зберігати IDs.
-- Save row у `Посади` синхронізує latest/current row у `Employee.position/department/division/clinic/job_level` + `ManagerAssignment`/`EmployeePositionHistory`.
-- Save row у `Робота` синхронізує `Employee.employment_type` + `EmployeeEmploymentStatus`/working pattern.
-- До завершення sync ці таблиці позначати як draft/display-only і не використовувати для SKUD/звітів.
+- [x] Таблиці `Посади`/`Робота` лишаються PF-like UI layer; маркер `EmployeeFieldTable.sync_target` (`positions`/`employment`) вмикає sync (міграції 0028/0029).
+- [x] Save/PATCH/DELETE row у `Посади` дзеркалить КОЖЕН рядок у `EmployeePositionHistory` (keyed `hrtable:<row_id>`), а latest/current row → `Employee.position/department/division/clinic/job_level` + `ManagerAssignment`.
+- [x] Save row у `Робота` → `Employee.employment_type` + `EmployeeEmploymentStatus` (working_pattern_name, comment).
+- [x] Резолв select-колонок за **назвою** (опції = назви довідників, унікальні); `employee`-колонка зберігає id. Нерезолвлена назва НЕ обнуляє доменне поле (захист від втрати даних). Видалення рядка прибирає його історичний запис.
+- ⏳ Майбутнє: перевести select-колонки на structured **IDs** замість назв (зараз name-resolution — функціонально коректний bridge).
 
 ### E. Leave ⏳
 
 Не створювати `LeaveType` з нуля. Доробити існуючу модель:
 
 - Поточні поля: `name`, `code`, `legacy_peopleforce_id`, `unit`, `color`, `requires_hr_approval`, `is_active`.
-- Додати/нормалізувати: `tracking_unit` (`days|hours`) або узгодити з поточним `unit`, `icon`, `order`.
-- Додати endpoint reorder для `/api/leave/types/`.
+- [x] `unit` нормалізовано як канонічний tracking_unit `days|hours` (choices + serializer `validate_unit` мапить legacy-значення; importer `_normalize_leave_unit`; міграції 0004/0005). `icon`, `order` вже були.
+- [x] Endpoint reorder для `/api/leave/types/` (вже існував).
 - Profile tab вантажить:
   - `api.leaveTypes({page_size: 100})`
   - `api.leaveBalances({employee})`
@@ -174,7 +176,7 @@
 ### Фаза 0 — Profile shell і routing 🚧
 
 - [x] Header/banner/avatar/name/role/location/actions/tabs уже є.
-- [ ] URL-driven active tab + active `Більше` state.
+- [x] URL-driven active tab + active `Більше` state (`/people/employees/:id/:tab`, helpers `profileTabFromPathname`/`peopleEmployeeTabPath`; back/forward/reload/deep-link відновлюють вкладку; Time зберігає `?month`).
 - [ ] Loading/not found/forbidden/error для direct URL `/people/employees/:id`, навіть якщо employee не в поточній сторінці списку.
 - [ ] Top-level retry state.
 - [ ] PF-like visual acceptance:
@@ -197,7 +199,7 @@
   - sticky footer;
   - empty/error states;
   - mobile internal scroll.
-- [ ] Switch profile table saves from full employee PATCH to atomic row API.
+- [x] Switch profile table saves from full employee PATCH to atomic row API (`refreshTableRows` + `api.createTableRow/updateTableRow/deleteTableRow`).
 - [ ] File column only after row attachment backend is ready.
 
 ### Фаза 2 — `Особисте` per-block edit ⏳

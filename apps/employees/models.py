@@ -654,6 +654,7 @@ class EmployeeField(TimestampedModel):
         SELECT = "select", "Список"
         EMPLOYEE = "employee", "Вибір співробітника"
         URL = "url", "Посилання"
+        BOOLEAN = "boolean", "Так/Ні"
 
     group = models.ForeignKey(EmployeeFieldGroup, on_delete=models.CASCADE, related_name="fields")
     name = models.CharField(max_length=200)
@@ -678,10 +679,19 @@ class EmployeeFieldTable(TimestampedModel):
     """Повторювана таблиця в групі (напр. освіта, сертифікати). Рядки зберігаються
     в Employee.custom_fields['table_<id>'] як список словників по ключах колонок."""
 
+    class SyncTarget(models.TextChoices):
+        NONE = "", "Без синхронізації"
+        POSITIONS = "positions", "Посади → Employee + Position History"
+        EMPLOYMENT = "employment", "Робота → Employee + Employment Status"
+
     group = models.ForeignKey(EmployeeFieldGroup, on_delete=models.CASCADE, related_name="tables")
     name = models.CharField(max_length=200)
     columns = models.JSONField(default=list, blank=True, help_text="[{key,label,type}]")
     is_enabled = models.BooleanField(default=True)
+    sync_target = models.CharField(
+        max_length=20, choices=SyncTarget.choices, default=SyncTarget.NONE, blank=True,
+        help_text="Чи синхронізувати рядки в доменні моделі (Employee/історія)",
+    )
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

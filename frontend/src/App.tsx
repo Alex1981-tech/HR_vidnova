@@ -21,7 +21,6 @@ import {
   FileText,
   Folder,
   Download,
-  Package,
   Pencil,
   Filter,
   GitBranch,
@@ -456,6 +455,27 @@ function peopleRouteFromPathname(pathname: string): PeopleRoute {
 
 function peopleEmployeePath(employeeId: number): string {
   return `/people/employees/${employeeId}`;
+}
+
+// URL-сегменти вкладок профілю. Внутрішні ключі «Більше» мають префікс more-, у URL — без нього.
+const PROFILE_MORE_SLUGS = ['tasks', 'workflow', 'assets', 'emergency', 'dependents', 'notes'];
+const PROFILE_TAB_SLUGS = ['personal', 'work', 'compensation', 'absence', 'time', 'documents', ...PROFILE_MORE_SLUGS];
+
+function profileTabKeyToSlug(key: string): string {
+  return key.startsWith('more-') ? key.slice(5) : key;
+}
+
+function profileSlugToTabKey(slug: string): string {
+  return PROFILE_MORE_SLUGS.includes(slug) ? `more-${slug}` : slug;
+}
+
+function profileTabFromPathname(pathname: string): string {
+  const [, , , slug] = pathname.split('/').filter(Boolean);
+  return slug && PROFILE_TAB_SLUGS.includes(slug) ? profileSlugToTabKey(slug) : 'personal';
+}
+
+function peopleEmployeeTabPath(employeeId: number, tabKey: string, search = ''): string {
+  return `/people/employees/${employeeId}/${profileTabKeyToSlug(tabKey)}${search}`;
 }
 
 type AttendanceRoute = { mode: 'company' } | { mode: 'employee'; id: number };
@@ -4411,7 +4431,12 @@ type ProfileGroup = {
   group_fields: ProfileFieldDef[];
   tables: ProfileTable[];
 };
-type TableRow = Record<string, unknown>;
+type TableRow = {
+  row_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+};
 
 type EmployeeOption = { id: number; full_name: string };
 
@@ -4582,7 +4607,18 @@ function EmployeeAdminProfileView({
   copy: AppCopy;
 }) {
   const [coverCropOpen, setCoverCropOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('personal');
+  const heroBarRef = useRef<HTMLDivElement | null>(null);
+  const [heroPinned, setHeroPinned] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Активна вкладка живе в URL (/people/employees/:id/:tab) — back/forward/reload/пряме посилання її відновлюють.
+  const activeTab = profileTabFromPathname(location.pathname);
+  const setActiveTab = (key: string) => {
+    if (employee?.id) {
+      const search = key === 'time' ? location.search : '';
+      navigate(peopleEmployeeTabPath(employee.id, key, search));
+    }
+  };
   const [moreOpen, setMoreOpen] = useState(false);
   const displayName = employee?.full_name || copy.people.newEmployee;
   const avatarUrl = employeeAvatarUrl(employee);
@@ -4650,6 +4686,24 @@ function EmployeeAdminProfileView({
   );
   const genderOptions = useGenderOptions(needsGenderOptions);
 
+  useEffect(() => {
+    const updatePinnedState = () => {
+      const bar = heroBarRef.current;
+      if (!bar) return;
+      const topbarHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 52;
+      const pinned = window.scrollY > 0 && bar.getBoundingClientRect().top <= topbarHeight + 1;
+      setHeroPinned((current) => (current === pinned ? current : pinned));
+    };
+
+    updatePinnedState();
+    window.addEventListener('scroll', updatePinnedState, { passive: true });
+    window.addEventListener('resize', updatePinnedState);
+    return () => {
+      window.removeEventListener('scroll', updatePinnedState);
+      window.removeEventListener('resize', updatePinnedState);
+    };
+  }, [employee?.id, activeTab, coverVisible]);
+
   async function handleSaveProfilePanel({
     system,
     custom,
@@ -4667,11 +4721,12 @@ function EmployeeAdminProfileView({
     onEmployeeUpdated?.(updated);
   }
 
-  async function handleSaveTableRows(tableId: number, rows: Record<string, unknown>[]) {
+  // Atomic row API: після кожної операції оновлюємо локальний custom_fields актуальним списком рядків.
+  async function refreshTableRows(tableId: number) {
     if (!employee) return;
+    const rows = await api.tableRows(employee.id, tableId);
     const merged = { ...(employee.custom_fields ?? {}), [`table_${tableId}`]: rows };
-    const updated = await api.updateEmployee(employee.id, { custom_fields: merged });
-    onEmployeeUpdated?.(updated);
+    onEmployeeUpdated?.({ ...employee, custom_fields: merged });
   }
 
 
@@ -4691,6 +4746,8 @@ function EmployeeAdminProfileView({
             ) : null}
           </div>
         ) : null}
+      </section>
+      <div ref={heroBarRef} className={`employee-hero-bar ${coverVisible ? '' : 'no-cover'}${heroPinned ? ' is-pinned' : ''}`}>
         <div className="employee-hero-body">
           <div className="employee-photo">
             {avatarUrl ? <img src={avatarUrl} alt="" /> : <Users size={46} />}
@@ -4767,7 +4824,7 @@ function EmployeeAdminProfileView({
             ) : null}
           </div>
         </div>
-      </section>
+      </div>
       {coverCropOpen && onEmployeeCoverChange ? (
         <SettingsCoverCropModal
           title={copy.people.employeeCover || 'Employee cover'}
@@ -4805,7 +4862,7 @@ function EmployeeAdminProfileView({
                         table={table}
                         employee={employee}
                         employeeOptions={employeeOptions}
-                        onSaveRows={handleSaveTableRows}
+                        onRowsChanged={refreshTableRows}
                       />
                     ))}
                   </Fragment>
@@ -4821,7 +4878,7 @@ function EmployeeAdminProfileView({
               {!tabGroups.length ? <ProfileTabPlaceholder tab={activeTab} /> : null}
             </>
           ) : activeTab === 'time' && employee ? (
-            <EmployeeAttendanceDetailView employeeId={employee.id} copy={copy} />
+            <EmployeeAttendanceDetailView employeeId={employee.id} copy={copy} embedded />
           ) : activeTab === 'absence' && employee ? (
             <EmployeeAbsenceTabView employeeId={employee.id} />
           ) : activeTab === 'documents' && employee ? (
@@ -5527,14 +5584,15 @@ function MoreModalShell({
   children: ReactNode;
 }) {
   return (
-    <div className="people-data-modal-backdrop" role="dialog" aria-modal>
-      <div className="people-data-modal">
-        <div className="people-data-modal-head">
-          <h2>{title}</h2>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Закрити">
+    <div className="people-data-modal-layer more-modal-layer" role="dialog" aria-modal="true" aria-label={title}>
+      <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="people-data-modal more-modal">
+        <header className="people-data-modal-head">
+          <strong>{title}</strong>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Закрити">
             <X size={18} />
           </button>
-        </div>
+        </header>
         <div className="people-data-modal-body">
           {children}
           {error ? <p className="people-data-modal-error">{error}</p> : null}
@@ -5548,7 +5606,91 @@ function MoreModalShell({
             {saving ? 'Збереження…' : 'Зберегти'}
           </button>
         </div>
-      </div>
+      </section>
+    </div>
+  );
+}
+
+const EMERGENCY_RELATIONSHIP_OPTIONS = [
+  'Бабуся',
+  'Батько',
+  'Брат',
+  'Донька',
+  'Друг',
+  'Дружина',
+  'Дядько',
+  'Дідусь',
+  'Мати',
+  'Сестра',
+  'Син',
+  'Чоловік',
+  'Тітка',
+  'Партнер',
+  'Колега',
+  'Опікун',
+  'Інше',
+];
+
+function RelationshipCombobox({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filteredOptions = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase('uk-UA');
+    if (!normalized) return EMERGENCY_RELATIONSHIP_OPTIONS;
+    return EMERGENCY_RELATIONSHIP_OPTIONS.filter((option) => option.toLocaleLowerCase('uk-UA').includes(normalized));
+  }, [query]);
+
+  return (
+    <div
+      className="relationship-combobox"
+      onBlur={(event) => {
+        const nextFocus = event.relatedTarget as Node | null;
+        if (!event.currentTarget.contains(nextFocus)) setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        className={`relationship-trigger people-data-input${open ? ' active' : ''}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((current) => !current);
+          setQuery('');
+        }}
+      >
+        <span>{value || ''}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open ? (
+        <div className="relationship-menu">
+          <label className="relationship-search">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук..." autoFocus />
+          </label>
+          <div className="relationship-options" role="listbox">
+            {filteredOptions.length ? (
+              filteredOptions.map((option) => (
+                <button
+                  type="button"
+                  key={option}
+                  className={option === value ? 'active' : ''}
+                  role="option"
+                  aria-selected={option === value}
+                  onClick={() => {
+                    onChange(option);
+                    setOpen(false);
+                    setQuery('');
+                  }}
+                >
+                  {option}
+                </button>
+              ))
+            ) : (
+              <div className="relationship-empty">Нічого не знайдено</div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -5643,12 +5785,14 @@ function EmergencyContactsTab({ employeeId }: { employeeId: number }) {
           onSave={save}
         >
           <label className="people-data-modal-field">
-            <span>Ім’я</span>
-            <input className="people-data-input" value={edit.name ?? ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} autoFocus />
+            <span>
+              Ім’я <em className="required-star">*</em>
+            </span>
+            <input className="people-data-input" value={edit.name ?? ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} autoFocus required aria-required="true" />
           </label>
           <label className="people-data-modal-field">
             <span>Відносини</span>
-            <input className="people-data-input" value={edit.relationship ?? ''} onChange={(e) => setEdit({ ...edit, relationship: e.target.value })} />
+            <RelationshipCombobox value={edit.relationship ?? ''} onChange={(relationship) => setEdit({ ...edit, relationship })} />
           </label>
           <label className="people-data-modal-field">
             <span>Мобільний телефон</span>
@@ -5914,18 +6058,28 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
           <EmptyState title="Не вдалося завантажити активи" text="CMMS може бути недоступний." />
         </div>
       ) : items.length ? (
-        <div className="asset-cards">
+        <div className="asset-grid asset-grid--profile">
           {items.map((asset) => (
-            <div className="asset-card" key={asset.id}>
-              <div className="asset-card-photo">
-                {asset.photo_url ? <img src={asset.photo_url} alt="" /> : <Package size={26} />}
+            <article className="asset-card" key={asset.id}>
+              <div className="asset-card-media">
+                {asset.status ? (
+                  <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
+                ) : null}
+                {asset.photo_url ? (
+                  <img src={asset.photo_url} alt={asset.name} loading="lazy" />
+                ) : (
+                  <div className="asset-card-noimg">
+                    <Boxes size={42} />
+                  </div>
+                )}
               </div>
               <div className="asset-card-body">
-                <strong>{asset.name}</strong>
-                {asset.inventory_number ? <span>№ {asset.inventory_number}</span> : null}
-                {asset.status ? <span className="asset-card-status">{asset.status}</span> : null}
+                <strong className="asset-card-name" title={asset.name}>{asset.name}</strong>
+                {asset.inventory_number ? (
+                  <span className="asset-card-inv">Інв. № {asset.inventory_number}</span>
+                ) : null}
               </div>
-            </div>
+            </article>
           ))}
         </div>
       ) : (
@@ -6181,16 +6335,24 @@ function EmployeeTablePanel({
   table,
   employee,
   employeeOptions,
-  onSaveRows,
+  onRowsChanged,
 }: {
   table: ProfileTable;
   employee: EmployeeListItem | null;
   employeeOptions: EmployeeOption[];
-  onSaveRows: (tableId: number, rows: TableRow[]) => Promise<void>;
+  onRowsChanged: (tableId: number) => Promise<void>;
 }) {
   const rows = ((employee?.custom_fields ?? {})[`table_${table.id}`] as TableRow[] | undefined) ?? [];
   const [rowModal, setRowModal] = useState<{ index: number | null } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Legacy-рядки без row_id (збережені старим full-PATCH) — підтягуємо через row API, який їх backfill-ить.
+  const needsBackfill = rows.some((r) => !r.row_id);
+  useEffect(() => {
+    if (employee && needsBackfill) void onRowsChanged(table.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee?.id, table.id, needsBackfill]);
 
   // Часова таблиця: є колонка-дата «Діє з» → показуємо останній запис як панель, решта = історія.
   const dateCol = table.columns.find((c) => c.key === 'die_z') || table.columns.find((c) => c.type === 'date');
@@ -6205,16 +6367,42 @@ function EmployeeTablePanel({
   const visible = isTimeSeries && !showAll ? ordered.slice(0, 1) : ordered;
   const latestDate = isTimeSeries && dateCol && ordered.length ? ordered[0].r[dateCol.key] : null;
 
+  // Лишаємо тільки значення колонок (службові поля проставляє бекенд).
+  const cleanValues = (row: TableRow) => {
+    const { row_id: _r, created_at: _c, updated_at: _u, ...values } = row;
+    return values as Record<string, unknown>;
+  };
+
   const saveRow = async (row: TableRow) => {
-    const next = [...rows];
-    if (rowModal?.index == null) next.push(row);
-    else next[rowModal.index] = row;
-    await onSaveRows(table.id, next);
-    setRowModal(null);
+    if (!employee || busy) return;
+    setBusy(true);
+    try {
+      const values = cleanValues(row);
+      if (rowModal?.index == null) {
+        await api.createTableRow(employee.id, table.id, values);
+      } else {
+        const rowId = rows[rowModal.index]?.row_id;
+        if (rowId) await api.updateTableRow(employee.id, table.id, rowId, values);
+        else await api.createTableRow(employee.id, table.id, values);
+      }
+      await onRowsChanged(table.id);
+      setRowModal(null);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const deleteRow = async (index: number) => {
-    await onSaveRows(table.id, rows.filter((_, idx) => idx !== index));
+    if (!employee || busy) return;
+    const rowId = rows[index]?.row_id;
+    if (!rowId) return;
+    setBusy(true);
+    try {
+      await api.deleteTableRow(employee.id, table.id, rowId);
+      await onRowsChanged(table.id);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -7100,9 +7288,11 @@ function AttendanceSummaryTable({
 function EmployeeAttendanceDetailView({
   employeeId,
   copy,
+  embedded = false,
 }: {
   employeeId: number;
   copy: AppCopy;
+  embedded?: boolean;
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -7152,7 +7342,8 @@ function EmployeeAttendanceDetailView({
 
   function changeMonth(nextMonth: Date) {
     setMonth(nextMonth);
-    navigate(attendanceEmployeePath(employeeId, monthQueryValue(nextMonth)), { replace: true });
+    const nextMonthQuery = monthQueryValue(nextMonth);
+    navigate(embedded ? peopleEmployeeTabPath(employeeId, 'time', `?month=${nextMonthQuery}`) : attendanceEmployeePath(employeeId, nextMonthQuery), { replace: true });
   }
 
   async function reloadDetail() {
@@ -7231,42 +7422,45 @@ function EmployeeAttendanceDetailView({
   const summary = detail?.summary;
   const role = [employee?.position_name, employee?.department_name].filter(Boolean).join(' · ') || 'Співробітник';
   const absenceMinutes = (summary?.paid_absence_minutes ?? 0) + (summary?.unpaid_absence_minutes ?? 0);
+  const DetailShell = embedded ? 'section' : 'main';
 
   return (
-    <main className="workspace attendance-page attendance-detail-page">
-      <header className="page-header compact profile-header attendance-detail-header">
-        <div className="profile-back">
-          <button type="button" onClick={() => navigate('/attendance')}>
-            <ChevronLeft size={16} />
-            Назад
-          </button>
-          <div className="profile-person">
-            <Avatar
-              name={employee?.full_name || 'Співробітник'}
-              src={employeeAvatarUrl(employee)}
-              accent={employeeAccentClasses[employeeId % employeeAccentClasses.length]}
-              size="lg"
-            />
-            <div>
-              <strong>{employee?.full_name || (loadState === 'loading' ? copy.common.loading : 'Співробітник')}</strong>
-              <span>{role}</span>
+    <DetailShell className={`workspace attendance-page attendance-detail-page${embedded ? ' embedded' : ''}`}>
+      {!embedded ? (
+        <header className="page-header compact profile-header attendance-detail-header">
+          <div className="profile-back">
+            <button type="button" onClick={() => navigate('/attendance')}>
+              <ChevronLeft size={16} />
+              Назад
+            </button>
+            <div className="profile-person">
+              <Avatar
+                name={employee?.full_name || 'Співробітник'}
+                src={employeeAvatarUrl(employee)}
+                accent={employeeAccentClasses[employeeId % employeeAccentClasses.length]}
+                size="lg"
+              />
+              <div>
+                <strong>{employee?.full_name || (loadState === 'loading' ? copy.common.loading : 'Співробітник')}</strong>
+                <span>{role}</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="toolbar-icon" aria-label={copy.common.actions}>
-            <MoreHorizontal size={18} />
-          </button>
-          <button type="button" className="secondary-action">
-            <Sparkles size={16} />
-            Автозаповнення
-          </button>
-          <button type="button" className="secondary-action" onClick={() => navigate(peopleEmployeePath(employeeId))}>
-            <ArrowUpRight size={16} />
-            Профіль
-          </button>
-        </div>
-      </header>
+          <div className="header-actions">
+            <button type="button" className="toolbar-icon" aria-label={copy.common.actions}>
+              <MoreHorizontal size={18} />
+            </button>
+            <button type="button" className="secondary-action">
+              <Sparkles size={16} />
+              Автозаповнення
+            </button>
+            <button type="button" className="secondary-action" onClick={() => navigate(peopleEmployeePath(employeeId))}>
+              <ArrowUpRight size={16} />
+              Профіль
+            </button>
+          </div>
+        </header>
+      ) : null}
 
       <div className="attendance-detail-toolbar">
         <div className="month-controls">
@@ -7377,7 +7571,7 @@ function EmployeeAttendanceDetailView({
           onConfirm={() => void confirmDeletePeriod()}
         />
       ) : null}
-    </main>
+    </DetailShell>
   );
 }
 

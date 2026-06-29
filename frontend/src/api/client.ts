@@ -252,6 +252,13 @@ export type TeamPayload = {
   is_active?: boolean;
 };
 
+export type TableRow = {
+  row_id: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+};
+
 export type EmployeeHirePayload = {
   first_name: string;
   last_name: string;
@@ -457,6 +464,23 @@ export const api = {
     request<EmployeeListItem>('/api/employees/employees/hire/', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+  // Atomic row-level API для повторюваних таблиць профілю
+  tableRows: (employeeId: number, tableId: number) =>
+    request<TableRow[]>(`/api/employees/employees/${employeeId}/table-rows/?table=${tableId}`),
+  createTableRow: (employeeId: number, tableId: number, values: Record<string, unknown>) =>
+    request<TableRow>(`/api/employees/employees/${employeeId}/table-rows/?table=${tableId}`, {
+      method: 'POST',
+      body: JSON.stringify({ values }),
+    }),
+  updateTableRow: (employeeId: number, tableId: number, rowId: string, values: Record<string, unknown>) =>
+    request<TableRow>(`/api/employees/employees/${employeeId}/table-rows/${rowId}/?table=${tableId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ values }),
+    }),
+  deleteTableRow: (employeeId: number, tableId: number, rowId: string) =>
+    request<void>(`/api/employees/employees/${employeeId}/table-rows/${rowId}/?table=${tableId}`, {
+      method: 'DELETE',
     }),
   jobLevels: (params: { q?: string; is_active?: boolean; page?: number; page_size?: number } = {}) =>
     request<ApiList<JobLevel> | JobLevel[]>(`/api/employees/job-levels/${buildQuery(params)}`).then(normalizeList),

@@ -13,10 +13,17 @@ class TimestampedModel(models.Model):
 
 
 class LeaveType(TimestampedModel):
+    class TrackingUnit(models.TextChoices):
+        DAYS = "days", "У днях"
+        HOURS = "hours", "У годинах"
+
     name = models.CharField(max_length=120, unique=True)
     code = models.CharField(max_length=40, unique=True)
     legacy_peopleforce_id = models.CharField(max_length=120, blank=True, db_index=True)
-    unit = models.CharField(max_length=40, blank=True)
+    unit = models.CharField(
+        max_length=40, choices=TrackingUnit.choices, default=TrackingUnit.DAYS, blank=True,
+        help_text="Одиниця відстеження відсутності (days|hours)",
+    )
     icon = models.CharField(max_length=40, blank=True, help_text="Ключ іконки (frontend)")
     color = models.CharField(max_length=40, blank=True)
     order = models.PositiveIntegerField(default=0, db_index=True)
