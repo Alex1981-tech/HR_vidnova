@@ -963,6 +963,14 @@ export const api = {
     ).then(normalizeList),
   createSkillCategory: (name: string) =>
     request<SkillCategory>('/api/employees/skill-categories/', { method: 'POST', body: JSON.stringify({ name }) }),
+  updateSkillCategory: (id: number, name: string) =>
+    request<SkillCategory>(`/api/employees/skill-categories/${id}/`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deleteSkillCategory: (id: number) =>
+    request<void>(`/api/employees/skill-categories/${id}/`, { method: 'DELETE' }),
+  updateCatalogSkill: (id: number, name: string) =>
+    request<SkillCatalogItem>(`/api/employees/skills-catalog/${id}/`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  deleteCatalogSkill: (id: number) =>
+    request<void>(`/api/employees/skills-catalog/${id}/`, { method: 'DELETE' }),
   skillsCatalog: (category: number) =>
     request<ApiList<SkillCatalogItem> | SkillCatalogItem[]>(
       `/api/employees/skills-catalog/${buildQuery({ category, is_active: true, page_size: 500 })}`,

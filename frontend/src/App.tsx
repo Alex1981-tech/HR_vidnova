@@ -7599,13 +7599,8 @@ function ProfileListDeleteModal({
 
 // «...»-меню для карток self-fill блоків (Освіта/Сертифікати): закривається кліком поза ним.
 function useRowMenu() {
+  // Закриття по кліку поза меню тепер обробляє сам MoreCardMenu (mousedown).
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  useEffect(() => {
-    if (menuOpenId == null) return;
-    const close = () => setMenuOpenId(null);
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
-  }, [menuOpenId]);
   return { menuOpenId, setMenuOpenId };
 }
 
@@ -7620,23 +7615,51 @@ function MoreCardMenu({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+
+  useEffect(() => {
+    if (!open || !btnRef.current) {
+      setPos(null);
+      return;
+    }
+    const rect = btnRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    // Закриваємо по mousedown поза кнопкою/popover. Саме mousedown (а не click)
+    // не «з'їдає» клік, що відкрив меню, і не заважає кліку по пунктах меню.
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (btnRef.current?.contains(target) || popRef.current?.contains(target)) return;
+      onToggle();
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
     <div className="more-card-actions">
-      <div className="settings-option-row-menu" onClick={(event) => event.stopPropagation()}>
-        <button type="button" className="settings-option-row-action" aria-label="Дії" onClick={onToggle}>
-          <MoreHorizontal size={17} />
-        </button>
-        {open ? (
-          <div className="settings-option-row-popover">
-            <button type="button" onClick={onEdit}>
-              Редагувати
-            </button>
-            <button type="button" className="danger" onClick={onDelete}>
-              Видалити
-            </button>
-          </div>
-        ) : null}
-      </div>
+      <button ref={btnRef} type="button" className="settings-option-row-action" aria-label="Дії" onClick={onToggle}>
+        <MoreHorizontal size={17} />
+      </button>
+      {open && pos
+        ? createPortal(
+            <div
+              ref={popRef}
+              className="settings-option-row-popover more-card-popover"
+              style={{ position: 'fixed', top: pos.top, right: pos.right }}
+            >
+              <button type="button" onClick={onEdit}>
+                Редагувати
+              </button>
+              <button type="button" className="danger" onClick={onDelete}>
+                Видалити
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -7842,7 +7865,7 @@ function EmployeeSkillsTab({ employeeId }: { employeeId: number }) {
                     {group.skills.map((s) => (
                       <div className="skill-row" key={s.id}>
                         <strong className="skill-row-name">{s.skill_name}</strong>
-                        <span className="skill-level-badge">{s.level_display}</span>
+                        <span className={`skill-level-badge skill-level-${s.level}`}>{s.level_display}</span>
                         <MoreCardMenu
                           open={menuOpenId === s.id}
                           onToggle={() => setMenuOpenId((cur) => (cur === s.id ? null : s.id))}
@@ -21052,6 +21075,246 @@ function SettingsFormEditorView({
   );
 }
 
+function SettingsSkillsView({ onBack }: { onBack: () => void }) {
+  const [categories, setCategories] = useState<SkillCategory[]>([]);
+  const [skillsByCat, setSkillsByCat] = useState<Record<number, SkillCatalogItem[]>>({});
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [catEdit, setCatEdit] = useState<{ id?: number; name: string } | null>(null);
+  const [catDelete, setCatDelete] = useState<SkillCategory | null>(null);
+  const [skillEdit, setSkillEdit] = useState<{ id?: number; category: number; name: string } | null>(null);
+  const [skillDelete, setSkillDelete] = useState<{ id: number; name: string; category: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function load() {
+    setLoadState('loading');
+    try {
+      setCategories((await api.skillCategories()).items);
+      setLoadState('ok');
+    } catch {
+      setLoadState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function loadSkills(catId: number) {
+    try {
+      const result = await api.skillsCatalog(catId);
+      setSkillsByCat((cur) => ({ ...cur, [catId]: result.items }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function toggle(catId: number) {
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(catId)) {
+        next.delete(catId);
+      } else {
+        next.add(catId);
+        if (!skillsByCat[catId]) void loadSkills(catId);
+      }
+      return next;
+    });
+  }
+
+  // Закриття «...»-меню по кліку поза ним обробляє MoreCardMenu (mousedown).
+
+  async function saveCat() {
+    if (!catEdit?.name.trim()) {
+      setError('Введіть назву категорії');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      if (catEdit.id) await api.updateSkillCategory(catEdit.id, catEdit.name.trim());
+      else await api.createSkillCategory(catEdit.name.trim());
+      setCatEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveSkill() {
+    if (!skillEdit?.name.trim()) {
+      setError('Введіть назву навички');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      if (skillEdit.id) await api.updateCatalogSkill(skillEdit.id, skillEdit.name.trim());
+      else await api.createCatalogSkill(skillEdit.category, skillEdit.name.trim());
+      const cat = skillEdit.category;
+      setSkillEdit(null);
+      await loadSkills(cat);
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmCatDelete() {
+    if (!catDelete) return;
+    setBusy(true);
+    try {
+      await api.deleteSkillCategory(catDelete.id);
+      setCatDelete(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSkillDelete() {
+    if (!skillDelete) return;
+    setBusy(true);
+    try {
+      await api.deleteCatalogSkill(skillDelete.id);
+      const cat = skillDelete.category;
+      setSkillDelete(null);
+      await loadSkills(cat);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="settings-page settings-option-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} /> Назад
+          </button>
+          <h1>Навички</h1>
+        </div>
+        <button type="button" className="primary-action" onClick={() => { setError(''); setCatEdit({ name: '' }); }}>
+          <Plus size={16} /> Нова категорія
+        </button>
+      </header>
+
+      <div className="settings-skill-body">
+      {loadState === 'loading' ? (
+        <p className="people-data-empty">Завантаження…</p>
+      ) : categories.length ? (
+        <div className="skill-cat-list">
+          {categories.map((cat) => {
+            const isOpen = expanded.has(cat.id);
+            const catSkills = skillsByCat[cat.id] ?? [];
+            return (
+              <section className="skill-cat" key={cat.id}>
+                <div className="skill-cat-head">
+                  <button type="button" className="skill-cat-toggle" onClick={() => toggle(cat.id)}>
+                    <ChevronDown size={16} className={`skill-group-chevron${isOpen ? '' : ' collapsed'}`} />
+                    <span className="skill-cat-name">{cat.name}</span>
+                  </button>
+                  <div className="skill-cat-head-actions">
+                    <button
+                      type="button"
+                      className="secondary-action compact"
+                      onClick={() => { setError(''); setSkillEdit({ category: cat.id, name: '' }); if (!isOpen) toggle(cat.id); }}
+                    >
+                      <Plus size={14} /> Навичка
+                    </button>
+                    <MoreCardMenu
+                      open={openMenu === `cat-${cat.id}`}
+                      onToggle={() => setOpenMenu((cur) => (cur === `cat-${cat.id}` ? null : `cat-${cat.id}`))}
+                      onEdit={() => { setOpenMenu(null); setError(''); setCatEdit({ id: cat.id, name: cat.name }); }}
+                      onDelete={() => { setOpenMenu(null); setCatDelete(cat); }}
+                    />
+                  </div>
+                </div>
+                {isOpen ? (
+                  catSkills.length ? (
+                    <div className="skill-rows">
+                      {catSkills.map((sk) => (
+                        <div className="skill-row" key={sk.id}>
+                          <strong className="skill-row-name">{sk.name}</strong>
+                          <MoreCardMenu
+                            open={openMenu === `skill-${sk.id}`}
+                            onToggle={() => setOpenMenu((cur) => (cur === `skill-${sk.id}` ? null : `skill-${sk.id}`))}
+                            onEdit={() => { setOpenMenu(null); setError(''); setSkillEdit({ id: sk.id, category: cat.id, name: sk.name }); }}
+                            onDelete={() => { setOpenMenu(null); setSkillDelete({ id: sk.id, name: sk.name, category: cat.id }); }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="more-empty skill-cat-empty">У категорії ще немає навичок</p>
+                  )
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="more-empty">Категорій ще немає. Додайте першу.</p>
+      )}
+      </div>
+
+      {catEdit ? (
+        <MoreModalShell
+          title={catEdit.id ? 'Редагувати категорію' : 'Нова категорія'}
+          saving={saving}
+          error={error}
+          onClose={() => setCatEdit(null)}
+          onSave={saveCat}
+        >
+          <label className="people-data-modal-field">
+            <span>Назва категорії</span>
+            <input className="people-data-input" value={catEdit.name} onChange={(e) => setCatEdit({ ...catEdit, name: e.target.value })} autoFocus />
+          </label>
+        </MoreModalShell>
+      ) : null}
+
+      {skillEdit ? (
+        <MoreModalShell
+          title={skillEdit.id ? 'Редагувати навичку' : 'Нова навичка'}
+          saving={saving}
+          error={error}
+          onClose={() => setSkillEdit(null)}
+          onSave={saveSkill}
+        >
+          <label className="people-data-modal-field">
+            <span>Назва навички</span>
+            <input className="people-data-input" value={skillEdit.name} onChange={(e) => setSkillEdit({ ...skillEdit, name: e.target.value })} autoFocus />
+          </label>
+        </MoreModalShell>
+      ) : null}
+
+      {catDelete ? (
+        <ProfileListDeleteModal
+          title="Видалити категорію?"
+          message={`Категорію «${catDelete.name}» буде видалено разом з усіма її навичками та їх прив'язками до співробітників.`}
+          busy={busy}
+          onCancel={() => setCatDelete(null)}
+          onConfirm={() => void confirmCatDelete()}
+        />
+      ) : null}
+      {skillDelete ? (
+        <ProfileListDeleteModal
+          title="Видалити навичку?"
+          message={`Навичку «${skillDelete.name}» буде видалено з довідника та з усіх профілів, де вона додана.`}
+          busy={busy}
+          onCancel={() => setSkillDelete(null)}
+          onConfirm={() => void confirmSkillDelete()}
+        />
+      ) : null}
+    </main>
+  );
+}
+
 function SettingsView({
   brandingSettings,
   onBrandingChange,
@@ -21108,10 +21371,13 @@ function SettingsView({
     activeSlug === 'work-types' ||
     activeSlug === 'probation-conditions' ||
     activeSlug === 'positions' ||
-    activeSlug === 'divisions' ||
-    activeSlug === 'skills'
+    activeSlug === 'divisions'
   ) {
     return <SettingsOptionListView kind={activeSlug} onBack={() => navigate('/settings')} copy={copy} />;
+  }
+
+  if (activeSlug === 'skills') {
+    return <SettingsSkillsView onBack={() => navigate('/settings')} />;
   }
 
   if (activeSlug === 'locations') {

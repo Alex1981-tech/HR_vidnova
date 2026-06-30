@@ -17718,23 +17718,50 @@ textarea:focus-visible {
 .skill-level-badge {
   display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 10px;
   background: var(--panel-soft); color: var(--primary-strong); font-weight: 600; font-size: var(--font-caption);
+  flex: 0 0 auto; white-space: nowrap;
 }
+.skill-level-badge.skill-level-interested { background: #eef1f5; color: #64748b; }
+.skill-level-badge.skill-level-beginner { background: #e0edff; color: #1d4ed8; }
+.skill-level-badge.skill-level-experienced { background: #fef3c7; color: #b45309; }
+.skill-level-badge.skill-level-expert { background: #dcfce7; color: #15803d; }
 .skill-groups { display: grid; gap: 10px; }
 .skill-rows { display: grid; gap: 6px; }
 .skill-row {
   display: flex; align-items: center; gap: 10px;
   padding: 6px 8px 6px 12px; border: 1px solid var(--line); border-radius: 7px;
 }
-.skill-row-name { font-size: var(--font-body); font-weight: 600; color: var(--text); }
-.skill-row .more-card-actions { margin-left: auto; }
+.skill-row-name {
+  flex: 1 1 auto; min-width: 0; word-break: break-word;
+  font-size: var(--font-body); font-weight: 600; color: var(--text);
+}
+.skill-row .more-card-actions { flex: 0 0 auto; }
 .skill-group { display: grid; gap: 6px; }
 .skill-group-head {
   display: flex; align-items: center; gap: 6px;
   border: 0; background: transparent; padding: 4px 0; cursor: pointer;
   font-size: var(--font-sm); font-weight: 600; color: var(--text); text-align: left;
 }
-.skill-group-chevron { transition: transform 0.15s ease; color: var(--muted); }
+.skill-group-chevron { transition: transform 0.15s ease; color: var(--muted); flex: 0 0 auto; }
 .skill-group-chevron.collapsed { transform: rotate(-90deg); }
+.skill-group-name { word-break: break-word; }
+/* Settings → дворівневе керування навичками */
+.settings-skill-body { width: min(1090px, calc(100% - 48px)); margin: 28px auto 0; }
+.settings-skill-body > .people-data-empty,
+.settings-skill-body > .more-empty { padding: 8px 2px; }
+.skill-cat-list { display: grid; gap: 12px; }
+.skill-cat {
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px;
+  background: var(--panel); box-shadow: var(--shadow);
+}
+.skill-cat-head { display: flex; align-items: center; gap: 10px; }
+.skill-cat-toggle {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; padding: 2px 0; cursor: pointer; text-align: left;
+}
+.skill-cat-name { font-size: var(--font-body); font-weight: 600; color: var(--text); word-break: break-word; }
+.skill-cat-head-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.skill-cat .skill-rows { margin-top: 10px; }
+.skill-cat-empty { margin-top: 8px; }
 .skill-group-count {
   margin-left: 4px; min-width: 18px; height: 18px; padding: 0 5px;
   display: inline-flex; align-items: center; justify-content: center;
