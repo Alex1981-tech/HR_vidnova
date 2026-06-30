@@ -1,4 +1,7 @@
+from unittest import skipUnless
+
 from django.contrib.auth import get_user_model
+from django.db import connection
 from rest_framework.test import APITestCase
 
 from apps.employees.models import Employee
@@ -40,6 +43,11 @@ class ProjectApiTests(APITestCase):
         archived = self.client.get("/api/projects/?archived=true")
         self.assertEqual({r["name"] for r in archived.data["results"]}, {"Old"})
 
+    @skipUnless(
+        connection.vendor == "postgresql",
+        "icontains is case-insensitive for non-ASCII (Cyrillic) only on PostgreSQL; "
+        "SQLite LIKE folds ASCII only. Production runs PostgreSQL.",
+    )
     def test_filter_q(self):
         Project.objects.create(name="Маркетинг")
         Project.objects.create(name="Розробка")
