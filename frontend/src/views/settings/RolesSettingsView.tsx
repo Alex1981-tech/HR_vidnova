@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Lock, Plus, Trash2, X } from 'lucide-react';
+import { ChevronLeft, Monitor, MoreHorizontal, Plus, Trash2, UserRound, X } from 'lucide-react';
 
 import { accessApi, type PermissionCatalog, type Role, type RolePermission } from '../../api/access';
 
@@ -74,8 +74,8 @@ export function RolesSettingsView({ onBack }: Props) {
       {loading ? (
         <div className="roles-empty">Завантаження…</div>
       ) : (
-        <div className="roles-list">
-          <div className="roles-row roles-row-head">
+        <div className="roles-table">
+          <div className="roles-trow roles-thead">
             <span>Імʼя</span>
             <span>Тип</span>
             <span className="roles-col-count">Люди</span>
@@ -85,15 +85,16 @@ export function RolesSettingsView({ onBack }: Props) {
           {roles.map((role) => (
             <div
               key={role.id}
-              className="roles-row roles-row-item"
+              className="roles-trow roles-trow-item"
               role="button"
               tabIndex={0}
               onClick={() => setSelected(role)}
               onKeyDown={(e) => e.key === 'Enter' && setSelected(role)}
             >
               <span className="roles-name">{role.name}</span>
-              <span className={`roles-badge roles-badge-${role.type}`}>
-                {role.type === 'system' ? 'Система' : 'Кастомна'}
+              <span className="roles-type">
+                {role.type === 'system' ? <Monitor size={14} /> : <UserRound size={14} />}
+                {role.type === 'system' ? 'Система' : 'Кастомний'}
               </span>
               <span className="roles-col-count">{role.people_count}</span>
               <span className="roles-col-desc">{role.description}</span>
@@ -101,8 +102,9 @@ export function RolesSettingsView({ onBack }: Props) {
                 {role.type === 'custom' ? (
                   <button
                     type="button"
-                    className="icon-button is-danger"
+                    className="roles-row-menu"
                     aria-label="Видалити роль"
+                    title="Видалити"
                     onClick={(e) => {
                       e.stopPropagation();
                       void accessApi
@@ -114,7 +116,7 @@ export function RolesSettingsView({ onBack }: Props) {
                     <Trash2 size={15} />
                   </button>
                 ) : (
-                  <Lock size={14} className="roles-lock" aria-label="Системна роль" />
+                  <MoreHorizontal size={15} className="roles-row-dash" aria-hidden />
                 )}
               </span>
             </div>
