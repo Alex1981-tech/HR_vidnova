@@ -45,9 +45,17 @@
 - ✅ **Этап 5 (backend) — AuthStatus.access**: `/api/auth/status/` теперь отдаёт
   `access: {is_admin, roles, permissions, enforced}` для frontend-gating (не источник
   enforcement). 2 теста.
-- **Дальше — Этап 7**: фронтенд `/settings/roles` (RolesSettingsView) + helper
-  `can(code)` поверх AuthStatus.access. ⚠️ Frontend в активной работе Alex
-  (App.tsx/client.ts/types/api.ts uncommitted) — координировать, чтобы не конфликтовать.
+- ✅ **Этап 7 — фронт `/settings/roles`**: `views/settings/RolesSettingsView.tsx`
+  (список ролей + создание кастомных + редактор прав по группам: чекбоксы/сегмент
+  Немає·Перегляд·Редагування) + `api/access.ts` + CSS + роут в App.tsx. `npm run
+  build` чисто (changelog 1.0.32). Страница требует roles.view (admin) — проверять
+  залогиненным админом.
+- **Запушено в origin/main** (`2e52ef2` + Этап 7): весь RBAC backend + hardening +
+  leave Alex задеплоены на прод (auto-migrate). RBAC дремлет (RBAC_ENFORCE off,
+  роли не засеяны на проде). CI workflow-файлы НЕ запушены (нет workflow scope).
+- **Дальше / отложено**: assignments-вкладка (Люди) + audit на странице ролей;
+  Этап 4ч2 field-level; на проде — seed ролей/прав + назначить admins + (опц.)
+  ENVIRONMENT=production когда решим включать enforcement.
 - **Отложено**: Этап 4 ч.2 — field-level serializer (компенсация — Alex: «полей
   компенсации пока нет, распишем потом»); enforcement leave/knowledge (leave —
   активная работа Alex).

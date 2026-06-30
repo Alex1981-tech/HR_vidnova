@@ -91,6 +91,7 @@ import { ApiError, api, type CompanyLinkPayload, type EmployeeFormTemplatePayloa
 import { APP_VERSION, APP_VERSION_DATE, changelog } from './changelog';
 import { ReportsView } from './views/ReportsView';
 import { PeopleDataSettingsView } from './views/settings/PeopleDataSettingsView';
+import { RolesSettingsView } from './views/settings/RolesSettingsView';
 import { SettingsLeaveTypesView } from './views/settings/SettingsLeaveTypesView';
 import { SettingsDocumentsView } from './views/settings/SettingsDocumentsView';
 import {
@@ -22702,6 +22703,9 @@ function SettingsView({
 
   if (activeSlug === 'people-data') {
     return <PeopleDataSettingsView onBack={() => navigate('/settings')} />;
+  }
+  if (activeSlug === 'roles') {
+    return <RolesSettingsView onBack={() => navigate('/settings')} />;
   }
   if (activeSlug === 'leave-types') {
     return <SettingsLeaveTypesView onBack={() => navigate('/settings')} />;
