@@ -307,6 +307,41 @@ def employee_scope_queryset(user, code: str, base_qs=None):
     return base.filter(pk__in=result)
 
 
+def preview_employee_ids(scope_type, scope_payload=None, anchor_employee=None):
+    """Для UI назначения роли: какие employee id попадут в scope. None = вся компания."""
+    grant = EffectiveGrant("__preview__", scope_type, dict(scope_payload or {}), is_computed=False)
+    result = _grant_scope(grant, anchor_employee)
+    return None if result is ALL_COMPANY else result
+
+
+def role_people_count(role) -> int:
+    """Кол-во людей в роли (для списка ролей). Computed-роли считаются по графу."""
+    from django.db.models import Q
+
+    from apps.access.models import AccessRoleAssignment
+    from apps.employees.models import Employee, ManagerAssignment, Team
+
+    slug = role.slug
+    if slug in ("all_people", "self"):
+        return Employee.objects.filter(status=Employee.Status.ACTIVE, user__isnull=False).count()
+    if slug == "manager":
+        today = _today()
+        return (
+            ManagerAssignment.objects.filter(is_primary=True, valid_from__lte=today)
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+            .values("manager").distinct().count()
+        )
+    if slug == "team_lead":
+        return (
+            Team.objects.filter(is_active=True, lead__isnull=False, memberships__is_active=True)
+            .values("lead").distinct().count()
+        )
+    base = AccessRoleAssignment.objects.filter(role=role, is_active=True)
+    users = set(base.exclude(user__isnull=True).values_list("user_id", flat=True))
+    emps = set(base.exclude(employee__isnull=True).values_list("employee_id", flat=True))
+    return len(users | {f"e{e}" for e in emps})
+
+
 def field_access(user, employee, field) -> str:
     """Уровень доступа к полю профиля сотрудника: 'none' | 'view' | 'edit'."""
     if user is None or not getattr(user, "is_authenticated", False):

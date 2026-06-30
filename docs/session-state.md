@@ -36,10 +36,16 @@
   EmployeeViewSet (people.directory, каталог не ломается), skud (time.attendance +
   scope-guard на attendance APIViews). 7 enforcement-тестов (override RBAC_ENFORCE=True).
   Прод пуст -> shadow-период не нужен, флаг можно включить когда готовы.
-- **Дальше — Этап 4 (часть 2)**: field-level serializer (скрытие компенсации/PII в
-  EmployeeSerializer), enforcement для leave/knowledge (leave сейчас в активной
-  работе Alex — не трогаю). Затем снять @expectedFailure с tests_authz по мере
-  закрытия (или когда RBAC_ENFORCE станет default-on).
+- ✅ **Этап 6 — RBAC management API** (`/api/access/`): `apps/access/rbac_views.py`
+  + `rbac_serializers.py` + `rbac_urls.py`. Эндпоинты: `roles/` (CRUD, system
+  нельзя удалить, set-permissions action + audit), `assignments/` (CRUD +
+  last-admin guard + audit), `audit/` (read-only), `permissions/` (каталог из
+  registry), `effective-preview/` (превью людей по scope). Гейт `RolesAPIPermission`
+  (всегда требует roles.view/manage — НЕ shadow-gated). 12 тестов.
+- **Дальше — Этап 7**: фронтенд `/settings/roles` (RolesSettingsView) поверх этого API.
+- **Отложено**: Этап 4 ч.2 — field-level serializer (компенсация — Alex: «полей
+  компенсации пока нет, распишем потом»); enforcement leave/knowledge (leave —
+  активная работа Alex).
 
 > ⚠️ Тесты `apps.leave.tests.LeavePolicyAccrualTests` падают — это **WIP Alex** в
 > `apps/leave/services.py` (`select_for_update()` на nullable outer join, Postgres
@@ -159,6 +165,7 @@
   71 grant) + добавлены self-fill registry-коды.
 - 2026-06-30: **Этап 4 часть 1 (DRF enforcement, flag-gated/shadow) готов** —
   apps/access/drf.py + подключение employees/skud + 7 enforcement-тестов.
-  RBAC_ENFORCE default OFF. Alex: прод ещё не обслуживает людей -> не усложняем,
-  shadow-машинерия не нужна, флаг включаем когда готовы. Падения leave-тестов —
-  WIP Alex (не RBAC).
+  RBAC_ENFORCE default OFF. Alex: прод ещё не обслуживает людей -> не усложняем.
+- 2026-06-30: **Этап 6 (RBAC management API) готов** — /api/access/ (roles/
+  assignments/audit/permissions/effective-preview) + 12 тестов. Дальше Этап 7
+  (фронт /settings/roles). Падения leave-тестов (3) — WIP Alex (не RBAC).

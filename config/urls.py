@@ -69,6 +69,7 @@ urlpatterns = [
     path("api/announcements/", include("apps.announcements.urls")),
     path("api/projects/", include("apps.projects.urls")),
     path("api/integrations/", include("apps.integrations.urls")),
+    path("api/access/", include("apps.access.rbac_urls")),
     path("api/public/v3/", include("apps.integrations.peopleforce_compat_urls")),
     path("api/peopleforce-compatible/v3/", include("apps.integrations.peopleforce_compat_urls")),
 ]
