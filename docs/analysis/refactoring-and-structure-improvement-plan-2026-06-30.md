@@ -27,7 +27,7 @@
 2. ✅ **P2** — private media для employee documents + cert attachments (закрывает активную утечку PII). _Сделано 2026-06-30._
 3. ✅ **P11** — CI quality gates + починить failing `test_filter_q` (SQLite artifact). Дешево, высокий рычаг. _Сделано 2026-06-30._
 4. ✅ **P4** — backend HTML-санитайзер для announcements/notes/knowledge (закрывает активный stored-XSS). _Сделано 2026-06-30._
-5. ⏳ **P1 (старт)** — добавить negative API tests + согласовать с Alex role matrix (продуктовое решение, не чисто техническое). _Блокер: нужна role matrix от Alex._
+5. 🚧 **P1 (старт)** — ✅ negative API tests добавлены (`apps/employees/tests_authz.py`, 12 @expectedFailure); ⏳ реализация scoped querysets/object-permissions ждёт role matrix от Alex.
 
 > Статус 2026-06-30: P0/P2/P11/P4 реализованы и закоммичены локально (commits 38eaca1, ffb7e1b, 39de4ee, f895fd6, 6991009). Backfill существующего HTML — opt-in команда `python manage.py sanitize_stored_html` (НЕ запускалась; dry-run: 33 knowledge-документа изменятся). Активация safety gate в проде (`ENVIRONMENT=production`) — после деплоя нового кода. Frontend defense-in-depth для P4 (render-санитайзер заметок/объявлений) пока не делался — backend boundary авторитетен.
 
@@ -88,7 +88,7 @@ Checklist:
 - [ ] Разделить admin HR endpoints и self-service endpoints.
 - [ ] Для `EmployeeApiViewSet`, child records, documents, leave, SKUD добавить scoped querysets.
 - [ ] Добавить object-level checks для documents/notes/emergency/dependents/attendance.
-- [ ] Добавить negative API tests на каждую PII категорию.
+- [x] Добавить negative API tests на каждую PII категорию. _Сделано 2026-06-30: `apps/employees/tests_authz.py` (12 @expectedFailure: профиль/документы/заметки/контакты/иждивенцы/отсутствия/посещаемость; снять декораторы при реализации scoping)._
 
 Acceptance criteria:
 
