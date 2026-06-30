@@ -1,7 +1,6 @@
 """Root URL routing for HR Vidnova."""
 
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -10,6 +9,7 @@ from rest_framework.authentication import BasicAuthentication, SessionAuthentica
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.media import protected_media
 from apps.employees.models import Employee
 from apps.selfservice.models import UserPreference
 from apps.selfservice.serializers import UserPreferenceSerializer
@@ -73,5 +73,7 @@ urlpatterns = [
     path("api/peopleforce-compatible/v3/", include("apps.integrations.peopleforce_compat_urls")),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# P2: media всегда через защищённый view (анонимный доступ запрещён в production).
+urlpatterns += [
+    path("media/<path:path>", protected_media, name="protected-media"),
+]

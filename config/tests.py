@@ -3,6 +3,9 @@
 from django.contrib.auth.models import AnonymousUser, User
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
+from django.http import Http404
+
+from config.media import protected_media
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 from config.safety import DEV_SECRET_FALLBACK, production_safety_problems
 
@@ -101,3 +104,42 @@ class ConfiguredReadOnlyOrAuthenticatedTests(SimpleTestCase):
         request = self.factory.get("/api/employees/")
         request.user = AnonymousUser()
         self.assertTrue(self.perm.has_permission(request, view=None))
+
+
+class ProtectedMediaTests(SimpleTestCase):
+    """P2: media недоступна анонимно; авторизованный запрос идёт через X-Accel."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @override_settings(HR_PUBLIC_READ_API=False, HR_MEDIA_X_ACCEL=True)
+    def test_anonymous_denied_when_public_off(self):
+        request = self.factory.get("/media/employee_avatars/2026/06/x.webp")
+        request.user = AnonymousUser()
+        response = protected_media(request, "employee_avatars/2026/06/x.webp")
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn("X-Accel-Redirect", response)
+
+    @override_settings(HR_PUBLIC_READ_API=False, HR_MEDIA_X_ACCEL=True)
+    def test_authenticated_served_via_x_accel(self):
+        request = self.factory.get("/media/certificates/2026/06/a.webp")
+        request.user = User(username="u", is_active=True)
+        response = protected_media(request, "certificates/2026/06/a.webp")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["X-Accel-Redirect"], "/protected-media/certificates/2026/06/a.webp")
+        self.assertEqual(response["Content-Type"], "image/webp")
+
+    @override_settings(HR_PUBLIC_READ_API=True, HR_MEDIA_X_ACCEL=True)
+    def test_anonymous_allowed_in_dev_public_read(self):
+        request = self.factory.get("/media/knowledge/file.pdf")
+        request.user = AnonymousUser()
+        response = protected_media(request, "knowledge/file.pdf")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("X-Accel-Redirect", response)
+
+    @override_settings(HR_PUBLIC_READ_API=True, HR_MEDIA_X_ACCEL=True)
+    def test_path_traversal_blocked(self):
+        request = self.factory.get("/media/x")
+        request.user = User(username="u", is_active=True)
+        with self.assertRaises(Http404):
+            protected_media(request, "../../etc/passwd")

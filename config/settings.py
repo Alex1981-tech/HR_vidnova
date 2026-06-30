@@ -161,6 +161,9 @@ if env_bool("USE_X_FORWARDED_PROTO", not DEBUG):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 HR_PUBLIC_READ_API = env_bool("HR_PUBLIC_READ_API", DEBUG and not IS_PRODUCTION)
 HR_PUBLIC_WRITE_API = env_bool("HR_PUBLIC_WRITE_API", False)
+# P2: media раздаётся через защищённый view. В production отдаём байты через
+# nginx X-Accel-Redirect (internal /protected-media/); в dev — FileResponse.
+HR_MEDIA_X_ACCEL = env_bool("HR_MEDIA_X_ACCEL", not DEBUG)
 HR_BOT_API_SECRET = os.getenv("HR_BOT_API_SECRET", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 HR_TELEGRAM_SENDER_BACKEND = os.getenv("HR_TELEGRAM_SENDER_BACKEND", "telegram_bot_api")
