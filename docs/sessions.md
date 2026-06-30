@@ -43,6 +43,20 @@ employees 167 · departments 26 · clinics 7 · positions 80 · leave_req 218 ·
 
 ## Сесії
 
+### 2026-06-30 (пізно) — Roles UI: склад ролі Адміністратори + план PF-редактора
+- **Адміністратори**: people-picker замінено на **таблицю складу** (аватари, Посада/
+  Департамент/Локація, сортування за іменем) + «+ Додати» (модалка з пошуком) +
+  kebab-меню рядка (Деактивувати/Видалити). Backend: `members` GET зі станом
+  `is_active`, POST `{add}` additive, екшен `member-action` з guard останнього
+  активного адміна; авторитетний `people_count` у відповіді. Купа верстки-фіксів
+  (центрована колонка, фон/позиція модалки, kebab без рамки). Коміти `ea89cdf`,
+  `56904d4`, `8292b6e`. Live-баг: 404 members = стейл backend-процес → restart.
+- **План PF-редактора ролей** (роль «Усі люди» як старт): зібрано таксономію PF,
+  узгоджено з Alex (registry → PF 1:1; старт із вкладки «Компанія»). Документи
+  локально (gitignored): `docs/роли/all-people-role-editor-plan.md`,
+  `docs/роли/peopleforce-company-permissions-reference.md`. **Далі — Фаза 1** (B1:
+  розширення реєстру `section`+коди). Детально: [docs/сессии/2026-06-30-roles-ui-people-and-pf-plan.md](сессии/2026-06-30-roles-ui-people-and-pf-plan.md).
+
 ### 2026-06-30 — Security hardening + RBAC backend
 - Hardening: P0 safety gate, P2 приватна media (X-Accel), P11 CI-гейти, P4 nh3-санітайзер, P1 negative authz-тести.
 - **Весь backend RBAC (Этапи 0–6)**: permission registry, моделі ролей/прав/призначень/audit (`access/0002`), scope engine (`rbac.py`), DRF enforcement flag-gated (`RBAC_ENFORCE` default OFF=shadow), management API `/api/access/`, AuthStatus.access. Матриця прав узгоджена Alex (5 рішень), засіяна (71 grant). **Alex (user 2) — admin у dev.**
