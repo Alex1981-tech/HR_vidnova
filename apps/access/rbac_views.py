@@ -119,49 +119,83 @@ class AccessRoleViewSet(viewsets.ModelViewSet):
         role.refresh_from_db()
         return Response(AccessRoleSerializer(role).data)
 
+    def _members_payload(self, role):
+        rows = list(
+            AccessRoleAssignment.objects.filter(role=role, employee__isnull=False)
+            .values('employee_id', 'is_active')
+        )
+        return {'members': [{'employee_id': r['employee_id'], 'is_active': r['is_active']} for r in rows]}
+
     @action(detail=True, methods=["get", "post"], url_path="members")
     def members(self, request, pk=None):
-        """Состав роли через явные employee-назначения (для people-picker)."""
+        """Состав роли: GET — список со статусом, POST {add:[ids]} — добавить/реактивировать."""
         role = self.get_object()
         if request.method.lower() == 'get':
-            ids = list(
-                AccessRoleAssignment.objects.filter(role=role, is_active=True, employee__isnull=False)
-                .values_list('employee_id', flat=True)
-            )
-            return Response({'employee_ids': sorted(ids)})
+            return Response(self._members_payload(role))
 
-        raw = request.data.get('employee_ids', [])
+        raw = request.data.get('add', [])
         if not isinstance(raw, list):
-            raise DRFValidationError('employee_ids має бути списком.')
+            raise DRFValidationError('add має бути списком id.')
         try:
             wanted = {int(x) for x in raw}
         except (TypeError, ValueError):
-            raise DRFValidationError('employee_ids містить некоректні значення.')
+            raise DRFValidationError('add містить некоректні значення.')
+        if not wanted:
+            return Response(self._members_payload(role))
 
-        if role.slug == ADMIN_ROLE_SLUG and not wanted:
-            raise DRFValidationError('Повинен бути хоча б один адміністратор.')
-
-        current = {
+        existing = {
             a.employee_id: a
-            for a in AccessRoleAssignment.objects.filter(role=role, employee__isnull=False)
+            for a in AccessRoleAssignment.objects.filter(role=role, employee_id__in=wanted)
         }
-        for emp_id, assignment in current.items():
-            if emp_id not in wanted:
-                assignment.delete()
         for emp_id in wanted:
-            if emp_id not in current:
+            assignment = existing.get(emp_id)
+            if assignment is None:
                 AccessRoleAssignment.objects.create(
                     role=role, employee_id=emp_id,
                     scope_type=AccessRoleAssignment.ScopeType.ALL_COMPANY, is_active=True,
                 )
-            elif not current[emp_id].is_active:
-                current[emp_id].is_active = True
-                current[emp_id].save(update_fields=['is_active', 'updated_at'])
+            elif not assignment.is_active:
+                assignment.is_active = True
+                assignment.save(update_fields=['is_active', 'updated_at'])
         _audit(
-            request.user, role, Action.ASSIGNMENT_UPDATED,
-            f'Склад ролі {role.slug}: {len(wanted)} осіб',
+            request.user, role, Action.ASSIGNMENT_CREATED,
+            f'До ролі {role.slug} додано {len(wanted)} осіб',
         )
-        return Response({'employee_ids': sorted(wanted)})
+        return Response(self._members_payload(role))
+
+    @action(detail=True, methods=["post"], url_path="member-action")
+    def member_action(self, request, pk=None):
+        """Дія над одним членом ролі: remove | deactivate | activate."""
+        role = self.get_object()
+        try:
+            emp_id = int(request.data.get('employee_id'))
+        except (TypeError, ValueError):
+            raise DRFValidationError('employee_id обовʼязковий.')
+        op = request.data.get('action')
+        if op not in {'remove', 'deactivate', 'activate'}:
+            raise DRFValidationError('action має бути remove | deactivate | activate.')
+
+        assignment = AccessRoleAssignment.objects.filter(role=role, employee_id=emp_id).first()
+        if assignment is None:
+            raise DRFValidationError('Цю людину не призначено на роль.')
+
+        if op in {'remove', 'deactivate'} and would_remove_last_admin(assignment):
+            raise DRFValidationError('Не можна зняти останнього адміністратора системи.')
+
+        if op == 'remove':
+            assignment.delete()
+            _audit(request.user, role, Action.ASSIGNMENT_REMOVED, f'Знято з ролі {role.slug}: emp {emp_id}')
+        elif op == 'deactivate':
+            if assignment.is_active:
+                assignment.is_active = False
+                assignment.save(update_fields=['is_active', 'updated_at'])
+            _audit(request.user, role, Action.ASSIGNMENT_UPDATED, f'Деактивовано в ролі {role.slug}: emp {emp_id}')
+        else:  # activate
+            if not assignment.is_active:
+                assignment.is_active = True
+                assignment.save(update_fields=['is_active', 'updated_at'])
+            _audit(request.user, role, Action.ASSIGNMENT_UPDATED, f'Активовано в ролі {role.slug}: emp {emp_id}')
+        return Response(self._members_payload(role))
 
 
 class AccessRoleAssignmentViewSet(viewsets.ModelViewSet):

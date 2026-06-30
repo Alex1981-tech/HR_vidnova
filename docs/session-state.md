@@ -53,7 +53,15 @@
 - **Запушено в origin/main** (`2e52ef2` + Этап 7): весь RBAC backend + hardening +
   leave Alex задеплоены на прод (auto-migrate). RBAC дремлет (RBAC_ENFORCE off,
   роли не засеяны на проде). CI workflow-файлы НЕ запушены (нет workflow scope).
-- **Дальше / отложено**: assignments-вкладка (Люди) + audit на странице ролей;
+- ✅ **People-picker роли «Адміністратори»** (`ea89cdf`, локально): `AdminRoleEditor`
+  (пошук/аватари/посади) для slug=admin замість редактора прав; бекенд
+  `AccessRoleViewSet.members` (GET/POST синхронизирует состав через employee-
+  назначения, guard «хотя бы один admin», audit) + 2 теста (16 OK). changelog 1.0.33.
+  ⚠️ Был live-404 на `roles/<id>/members/` — бэкенд НЕ bind-mounted, процесс
+  стартовал до `docker cp` нового `rbac_views.py`; **restart backend** починил
+  (тесты видели свежий код → проходили; live-процесс был стейл).
+- **Дальше / отложено**: audit-вкладка на странице ролей; редактор НЕ-admin ролей
+  (members-picker сейчас только для admin); assignments-вкладка (Люди) + audit;
   Этап 4ч2 field-level; на проде — seed ролей/прав + назначить admins + (опц.)
   ENVIRONMENT=production когда решим включать enforcement.
 - **Отложено**: Этап 4 ч.2 — field-level serializer (компенсация — Alex: «полей

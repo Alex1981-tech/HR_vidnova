@@ -158,32 +158,52 @@ class RbacApiTests(APITestCase):
         resp = self.client.get("/api/auth/status/")
         self.assertTrue(resp.data["access"]["is_admin"])  # superuser
 
-    # ── members (people-picker) ───────────────────────────────────────────────
-    def test_role_members_get_and_set(self):
+    # ── members (people management) ───────────────────────────────────────────
+    def _active_ids(self, payload):
+        return {m["employee_id"] for m in payload["members"] if m["is_active"]}
+
+    def test_role_members_add_and_actions(self):
         self._as_admin()
         from apps.employees.models import Employee
 
         e1 = Employee.objects.create(first_name="A", last_name="T")
         e2 = Employee.objects.create(first_name="B", last_name="T")
         admin_role = AccessRole.objects.get(slug=ADMIN_ROLE_SLUG)
+        # add both
         resp = self.client.post(
-            f"/api/access/roles/{admin_role.id}/members/",
-            {"employee_ids": [e1.id, e2.id]}, format="json",
+            f"/api/access/roles/{admin_role.id}/members/", {"add": [e1.id, e2.id]}, format="json",
         )
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(set(resp.data["employee_ids"]), {e1.id, e2.id})
-        # снять одного
+        self.assertEqual(self._active_ids(resp.data), {e1.id, e2.id})
+        # deactivate one — stays in list, but inactive
         resp2 = self.client.post(
-            f"/api/access/roles/{admin_role.id}/members/", {"employee_ids": [e1.id]}, format="json",
+            f"/api/access/roles/{admin_role.id}/member-action/",
+            {"employee_id": e1.id, "action": "deactivate"}, format="json",
         )
-        self.assertEqual(set(resp2.data["employee_ids"]), {e1.id})
-        g = self.client.get(f"/api/access/roles/{admin_role.id}/members/")
-        self.assertEqual(set(g.data["employee_ids"]), {e1.id})
+        self.assertEqual(resp2.status_code, 200, resp2.data)
+        self.assertEqual(self._active_ids(resp2.data), {e2.id})
+        self.assertIn(e1.id, {m["employee_id"] for m in resp2.data["members"]})
+        # reactivate e1
+        self.client.post(
+            f"/api/access/roles/{admin_role.id}/member-action/",
+            {"employee_id": e1.id, "action": "activate"}, format="json",
+        )
+        # remove e2 — e1 still active, allowed
+        resp3 = self.client.post(
+            f"/api/access/roles/{admin_role.id}/member-action/",
+            {"employee_id": e2.id, "action": "remove"}, format="json",
+        )
+        self.assertEqual(self._active_ids(resp3.data), {e1.id})
 
-    def test_admin_members_cannot_be_empty(self):
+    def test_cannot_remove_last_active_admin(self):
         self._as_admin()
+        from apps.employees.models import Employee
+
+        e1 = Employee.objects.create(first_name="Solo", last_name="Admin")
         admin_role = AccessRole.objects.get(slug=ADMIN_ROLE_SLUG)
+        self.client.post(f"/api/access/roles/{admin_role.id}/members/", {"add": [e1.id]}, format="json")
         resp = self.client.post(
-            f"/api/access/roles/{admin_role.id}/members/", {"employee_ids": []}, format="json",
+            f"/api/access/roles/{admin_role.id}/member-action/",
+            {"employee_id": e1.id, "action": "deactivate"}, format="json",
         )
         self.assertEqual(resp.status_code, 400)

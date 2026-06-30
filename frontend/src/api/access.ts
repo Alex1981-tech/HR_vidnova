@@ -33,8 +33,13 @@ export type PickEmployee = {
   id: number;
   full_name: string;
   position_name?: string;
+  department_name?: string;
+  clinic_name?: string;
   avatar_local_url?: string;
 };
+
+export type RoleMember = { employee_id: number; is_active: boolean };
+export type MemberAction = 'remove' | 'deactivate' | 'activate';
 
 function getCookie(name: string): string {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
@@ -88,12 +93,17 @@ export const accessApi = {
       body: JSON.stringify(items),
     }),
   getMembers: (id: number) =>
-    apiFetch<{ employee_ids: number[] }>(`/api/access/roles/${id}/members/`).then((r) => r.employee_ids),
-  setMembers: (id: number, employee_ids: number[]) =>
-    apiFetch<{ employee_ids: number[] }>(`/api/access/roles/${id}/members/`, {
+    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/members/`).then((r) => r.members),
+  addMembers: (id: number, add: number[]) =>
+    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/members/`, {
       method: 'POST',
-      body: JSON.stringify({ employee_ids }),
-    }).then((r) => r.employee_ids),
+      body: JSON.stringify({ add }),
+    }).then((r) => r.members),
+  memberAction: (id: number, employee_id: number, action: MemberAction) =>
+    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/member-action/`, {
+      method: 'POST',
+      body: JSON.stringify({ employee_id, action }),
+    }).then((r) => r.members),
   listEmployees: () =>
     apiFetch<{ results?: PickEmployee[] } | PickEmployee[]>(
       '/api/employees/employees/?compact=1&page_size=500',
