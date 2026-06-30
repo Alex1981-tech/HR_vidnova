@@ -42,9 +42,20 @@ Alex дал референс PF `/settings/roles/54297/edit` (роль «Усі 
 > Тонкость реализации: `is_graded` теперь = «есть EDIT» (для UI kind); валидация
 > уровня (models.clean / serializer) — по `perm.levels` (view-only хранит `view`).
 
+### Фаза 2 — вкладка «Люди» (field-level) — ✅ ГОТОВО (коммит `d5019ad`)
+- Backend: `roles/<id>/field-access/` (GET tabs→groups→fields/tables з рівнями;
+  POST upsert/delete). Грант поля = `people.field.<tab>.field_<id>`/`table_<id>`
+  через `AccessRolePermission` (`models.clean` пропускає динамічні field-коди).
+  `rbac.field_access` — per-field грант пріоритетніший за tab-level. +1 тест (103 OK).
+- Frontend: `PeopleFieldsTab` (ліва навігація вкладок профілю, акордеони
+  `EmployeeFieldGroup`, поля/таблиці з сегментом). Спільний футер зберігає обидві
+  вкладки. Візуально звірено з PF (Особисте розкрито — поля з Немає·Перегляд·Редагування,
+  збереження «Збережено ✓» + reload).
+
 ## Состояние
 
-- Прод не трогали. RBAC дремлет (`RBAC_ENFORCE` off). Локально 9 коммитов впереди
+- Прод не трогали. RBAC дремлет (`RBAC_ENFORCE` off). Локально ~12 коммитов впереди
   `origin/main`.
-- **Фаза 1 закрыта.** Дальше — **Фаза 2**: вкладка «Люди» (field-level доступ,
-  backend Этап 4ч2 per-field grants + интеграция `EmployeeField`/«Дані про людей»).
+- **Фазы 1 и 2 закрыты** — редактор ролі повторює PeopleForce (вкладки Компанія+Люди).
+- Возможное дальше (Фаза 3): спец-контролы «Звіти компанії»/«Налаштування» (выбор
+  конкретных звітів/розділів), bulk-«вибрати все» на секцію, dirty-guard при уходе.
