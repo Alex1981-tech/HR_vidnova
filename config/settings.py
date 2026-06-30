@@ -18,8 +18,15 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-insecure-change-me")
-DEBUG = env_bool("DEBUG", True)
+# Production safety gate (P0): явный маркер окружения + fail-closed defaults.
+from config.safety import DEV_SECRET_FALLBACK, production_safety_problems  # noqa: E402
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", os.getenv("DJANGO_ENV", "development")).strip().lower()
+IS_PRODUCTION = ENVIRONMENT == "production"
+
+SECRET_KEY = os.getenv("SECRET_KEY", DEV_SECRET_FALLBACK)
+# В production DEBUG по умолчанию False (fail-closed); в dev — по-прежнему True.
+DEBUG = env_bool("DEBUG", not IS_PRODUCTION)
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
@@ -152,7 +159,7 @@ CSRF_COOKIE_HTTPONLY = False
 # https are accepted.
 if env_bool("USE_X_FORWARDED_PROTO", not DEBUG):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-HR_PUBLIC_READ_API = env_bool("HR_PUBLIC_READ_API", DEBUG)
+HR_PUBLIC_READ_API = env_bool("HR_PUBLIC_READ_API", DEBUG and not IS_PRODUCTION)
 HR_PUBLIC_WRITE_API = env_bool("HR_PUBLIC_WRITE_API", False)
 HR_BOT_API_SECRET = os.getenv("HR_BOT_API_SECRET", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -200,3 +207,22 @@ PEOPLEFORCE_WEBHOOK_SECRET = os.getenv("PEOPLEFORCE_WEBHOOK_SECRET", "")
 PEOPLEFORCE_WEBHOOK_ENFORCE = os.getenv("PEOPLEFORCE_WEBHOOK_ENFORCE", "false").lower() in {"1", "true", "yes", "on"}
 PEOPLEFORCE_TIMESHEET_START_DATE = os.getenv("PEOPLEFORCE_TIMESHEET_START_DATE", "2022-01-01")
 PEOPLEFORCE_DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS = int(os.getenv("PEOPLEFORCE_DOCUMENT_DOWNLOAD_TIMEOUT_SECONDS", "30"))
+
+
+# ── Production safety gate (P0) ──────────────────────────────────────────────
+# В production приложение не стартует при небезопасной конфигурации:
+# DEBUG=True, fallback SECRET_KEY, HR_PUBLIC_READ_API/WRITE_API=True.
+_safety_problems = production_safety_problems(
+    environment=ENVIRONMENT,
+    debug=DEBUG,
+    secret_key=SECRET_KEY,
+    public_read=HR_PUBLIC_READ_API,
+    public_write=HR_PUBLIC_WRITE_API,
+)
+if _safety_problems:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        "Unsafe production configuration (ENVIRONMENT=production): "
+        + "; ".join(_safety_problems)
+    )
