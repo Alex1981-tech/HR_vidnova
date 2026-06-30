@@ -1,8 +1,33 @@
 # План рефакторинга и улучшения структуры
 
 Дата: 2026-06-30  
+Обновлено: 2026-06-30 (ревизия после verification на проде)
 Основание: `docs/analysis/performance-security-code-quality-review-2026-06-30.md`  
 Цель: безопасно довести HR Vidnova до production-ready состояния для HR/PII данных и снизить стоимость дальнейшей разработки.
+
+## Проверенный статус прода (2026-06-30)
+
+Перед планированием проверены реальные значения на `hr.vidnova.app` (172.16.33.14):
+
+- `DEBUG=False`, `HR_PUBLIC_READ_API=False`, `HR_PUBLIC_WRITE_API=False`, `PEOPLEFORCE_WEBHOOK_ENFORCE=true`.
+- Анонимный `GET /api/employees/employees/` -> **403**.
+- **НО:** анонимный `GET` медиа-файла -> **200** (любой `/media/...` отдается без auth).
+
+Выводы, корректирующие приоритеты review:
+
+- **C1 (safety gate) и M1 (webhook fail-open) на проде уже сконфигурированы безопасно.** Это не активная дыра, а отсутствие fail-closed defaults / startup guard. Оставляем как превентивный hardening (P0), но не как "анонимный доступ к HR API открыт сейчас".
+- **H2 (public media) — единственная подтвержденная активная утечка PII.** Документы сотрудников и вложения сертификатов лежат в том же публичном `/media/`. Это поднимается в приоритете **выше RBAC**.
+- **Текущая фича-работа добавляет в H2/H4:** загрузка вложений сертификатов пишет в публичный `/media/` (H2); заметки сотрудника сохраняют `body_html` и рендерятся через `dangerouslySetInnerHTML` без backend-санитайзера (H4). Это надо закрыть вместе с P2/P4.
+
+## Минимальный hardening — первый спринт
+
+Сначала самое дешевое-и-важное, до новой фича-работы:
+
+1. **P0** — production safety gate (fail-closed defaults + startup guard). Дешево, страхует от мисконфига.
+2. **P2** — private media для employee documents + cert attachments (закрывает активную утечку PII).
+3. **P11** — CI quality gates + починить failing `test_filter_q` (SQLite artifact). Дешево, высокий рычаг.
+4. **P4** — backend HTML-санитайзер для announcements/notes/knowledge (закрывает активный stored-XSS).
+5. **P1 (старт)** — добавить negative API tests + согласовать с Alex role matrix (продуктовое решение, не чисто техническое).
 
 ## Общие правила исполнения
 
@@ -16,9 +41,11 @@
 
 ## P0. Production Safety Gate
 
-Priority: Critical  
-Owner: backend/devops  
-Impact: блокирует accidental public HR API и debug leaks.
+Priority: High (превентивно; прод сейчас сконфигурирован безопасно)
+Owner: backend/devops
+Impact: страхует от accidental public HR API и debug leaks при будущем мисконфиге.
+
+Примечание: на 2026-06-30 прод уже имеет `DEBUG=False` и `HR_PUBLIC_*=False`. Цель пункта — сделать это невозможным сломать (fail-closed + startup guard), а не латать активную дыру.
 
 Checklist:
 
@@ -44,13 +71,17 @@ Executor prompt:
 
 ## P1. RBAC и object-level permissions
 
-Priority: Critical  
-Owner: backend  
+Priority: Critical (по объему — самый большой workstream)
+Owner: backend + продуктовое решение (Alex)
 Impact: закрывает доступ обычных сотрудников к чужим HR/PII данным.
+
+Продуктовая зависимость: role matrix (особенно кто видит компенсацию/документы) — это решение Alex, не чисто техническое. Не реализовывать scope «на свое усмотрение» — сперва согласовать матрицу. Разбить на инкременты: (1) self-data scope + самое чувствительное (документы/заметки/зарплата), (2) manager-scope (только подчиненные), (3) полная role matrix и справочники.
+
+Также покрыть scope-ом новые self-fill эндпоинты этой сессии: `educations/`, `certificates/`, `employee-skills/`, `skill-categories/`, `skills-catalog/`, и календарные `leave-requests`/`holidays` (сейчас любой authenticated видит отсутствия всей компании).
 
 Checklist:
 
-- [ ] Описать role matrix: HR admin, HR manager, manager, employee, compensation/documents roles.
+- [ ] Согласовать с Alex role matrix: HR admin, HR manager, manager, employee, compensation/documents roles.
 - [ ] Добавить role source: Django groups/permissions или `apps.access` profile policy.
 - [ ] Разделить admin HR endpoints и self-service endpoints.
 - [ ] Для `EmployeeApiViewSet`, child records, documents, leave, SKUD добавить scoped querysets.
@@ -73,13 +104,15 @@ Executor prompt:
 
 ## P2. Private Media Architecture
 
-Priority: High  
+Priority: **Critical/active** (подтверждено: `/media/` файл анонимно отдается 200)
 Owner: backend/devops  
-Impact: закрывает утечку HR documents через прямые `/media/` URL.
+Impact: закрывает **активную** утечку HR documents и cert-вложений через прямые `/media/` URL.
+
+Scope расширен: кроме `peopleforce_employee_documents/`, под private flow попадают **вложения сертификатов** этой сессии (`certificates/%Y/%m/...`, эндпоинт `certificates/upload/`). Аватары/баннеры остаются public.
 
 Checklist:
 
-- [ ] Разделить public media и private document storage paths.
+- [ ] Разделить public media (аватары/баннеры) и private storage (employee documents, cert attachments).
 - [ ] Убрать direct `file_url` для private employee documents из serializers.
 - [ ] Сделать authenticated download/preview endpoints с RBAC/object scope.
 - [ ] В nginx добавить private/internal location или временно отдавать private files через Django stream.
@@ -111,7 +144,8 @@ Checklist:
 - [ ] Добавить extension + MIME + magic-byte validation.
 - [ ] Уменьшить default upload limits, вынести большие файлы в отдельный async flow.
 - [ ] Preview разрешить только safe formats; risky text/code отдавать download attachment.
-- [ ] Для media upload knowledge/announcements проверить размеры и типы независимо от frontend.
+- [ ] Для media upload knowledge/announcements **и нового `certificates/upload/`** проверить размеры и типы независимо от frontend.
+- [ ] Добавить rate-limit на upload-эндпоинты (cert/documents/media) — защита от disk-fill DoS; сейчас лимита нет.
 - [ ] Добавить tests на запрещенные SVG/HTML/JS/PHP и oversized files.
 
 Acceptance criteria:
@@ -136,7 +170,7 @@ Impact: закрывает stored XSS.
 Checklist:
 
 - [ ] Выбрать sanitizer: backend allowlist (`bleach` или другой поддерживаемый sanitizer) + frontend defense-in-depth.
-- [ ] Централизовать sanitizer для `Announcement.body_html`, `EmployeeNote.body_html`, `KnowledgeDocument.body_html/body`.
+- [ ] Централизовать sanitizer для `Announcement.body_html`, `EmployeeNote.body_html` (добавлен этой сессией — rich-text заметки), `KnowledgeDocument.body_html/body`.
 - [ ] Добавить shared frontend `safeExternalUrl()` для links/images/video sources.
 - [ ] Убрать scattered raw HTML transforms или пропустить их через sanitizer boundary.
 - [ ] Добавить CSP headers в nginx/edge, сначала report-only если политика ломает текущий UI.
@@ -332,7 +366,7 @@ Checklist:
 
 - [ ] В GitHub Actions добавить backend job: install deps, `manage.py check`, `makemigrations --check --dry-run`, tests.
 - [ ] В frontend job: `npm ci --legacy-peer-deps`, `npm run build`.
-- [ ] Исправить текущий failing test `apps.projects.tests.ProjectApiTests.test_filter_q`.
+- [ ] Исправить текущий failing test `apps.projects.tests.ProjectApiTests.test_filter_q` (это **артефакт SQLite** — `LIKE`/`icontains` не делает Unicode case-folding для кириллицы; на Postgres-проде работает. Не прод-баг, но ломает зеленый CI на sqlite. Сделать тест DB-agnostic или гонять CI на Postgres).
 - [ ] Добавить dependency audit scheduled/manual: `pip-audit`, `npm audit` или Dependabot/Renovate.
 - [ ] Спланировать upgrade Django 4.2 -> supported LTS 5.2.
 - [ ] Перестать auto-deploy только по `latest`; использовать SHA tag promotion.
@@ -377,18 +411,45 @@ Executor prompt:
 Наведи порядок в docs/artifacts. Прочитай README.md, docs/development.md, .gitignore, docs/sessions.md и текущие ignored docs. Обнови quickstart под committed migrations, создай sanitized production runbook без secrets/PII, убери или документируй tracked backup CSS. Не трогай реальные PII материалы. Проверь, что git status содержит только ожидаемые doc/artifact изменения.
 ```
 
+## P13. PII Governance (аудит, retention, бекапы)
+
+Priority: High (HR/PII/GDPR-обязательства)
+Owner: backend/devops
+Impact: закрывает пробелы вокруг хранения и доступа к персональным данным, не покрытые review.
+
+Checklist:
+
+- [ ] **Audit log доступа к PII**: кто просматривал/экспортировал данные сотрудников (профиль, документы, компенсация, reports export). Сейчас нет.
+- [ ] **Retention/erasure для PII сотрудников** после увольнения: политика хранения + механизм удаления/анонимизации (review покрывает только retention логов в M2/P5, но не PII самих сотрудников).
+- [ ] **Безопасность бекапов БД**: где хранятся, шифрование at-rest, доступ, retention (в дампе — полный PII всей компании).
+- [ ] Экспорт-эндпоинты (reports/calendar export) логировать и ограничивать по RBAC.
+
+Acceptance criteria:
+
+- [ ] Есть журнал доступа к чувствительным PII-операциям.
+- [ ] Документирована и реализована политика хранения/удаления PII уволенных.
+- [ ] Бекапы БД зашифрованы и доступ ограничен.
+
+Executor prompt:
+
+```text
+Реализуй PII governance. Прочитай apps/employees (модели/views/экспорты), apps/dashboard reports export, docs по бекапам/deploy. Добавь audit-лог доступа к PII (просмотр/экспорт), политику retention/erasure для уволенных, проверь шифрование и доступ к бекапам БД. Согласуй политику хранения с Alex (продуктовое/юридическое решение). Не удаляй реальные данные без явного подтверждения; начни с soft-delete/анонимизации и tests.
+```
+
 ## Suggested Execution Order
 
-1. P0 Production Safety Gate.
-2. P11 CI/tests/dependency gates, включая failing test.
-3. P1 RBAC/object permissions.
-4. P2 Private media.
-5. P4 HTML sanitization/CSP.
-6. P5 Integration hardening.
-7. P6 Auth/rate-limit.
-8. P7 Performance.
-9. P8 Import batching.
-10. P9 API client/mutation UX.
-11. P10 Frontend decomposition.
-12. P12 Docs/artifact hygiene.
+Скорректировано после verification (private media — активная утечка, выше RBAC; safety gate и webhook на проде уже ок).
 
+1. **P0** Production Safety Gate (превентивно, дешево).
+2. **P2** Private media (единственная подтвержденная активная утечка PII).
+3. **P11** CI/tests/dependency gates, включая failing SQLite test (дешево, высокий рычаг).
+4. **P4** HTML sanitization/CSP (активный stored-XSS, включая новые заметки).
+5. **P1** RBAC/object permissions (старт с negative tests + согласование role matrix с Alex; затем инкременты).
+6. **P5** Integration hardening (webhook на проде уже fail-closed — остаются redaction/SSRF/retention).
+7. **P6** Auth/rate-limit.
+8. **P13** PII governance (audit/retention/бекапы).
+9. **P7** Performance.
+10. **P8** Import batching.
+11. **P9** API client/mutation UX.
+12. **P10** Frontend decomposition (учесть: фича-работа сессии увеличила App.tsx; новые крупные фичи выносить в отдельные файлы уже сейчас).
+13. **P12** Docs/artifact hygiene.

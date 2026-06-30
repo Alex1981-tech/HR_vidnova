@@ -460,3 +460,27 @@ env DB_ENGINE=sqlite python3 manage.py test -v 1
 apps.projects.tests.ProjectApiTests.test_filter_q
 ```
 
+### Production verification (2026-06-30, дополнение)
+
+Проверены реальные значения на проде `hr.vidnova.app` (172.16.33.14), чтобы отделить активные дыры от теоретических defaults:
+
+```text
+prod .env (значения булевых флагов, не secrets):
+  DEBUG=False
+  HR_PUBLIC_READ_API=False
+  HR_PUBLIC_WRITE_API=False
+  PEOPLEFORCE_WEBHOOK_ENFORCE=true
+
+curl анонимно:
+  GET /api/employees/employees/   -> HTTP 403   (HR API закрыт)
+  GET /media/employee_avatars/... -> HTTP 200   (media отдается без auth)
+```
+
+Корректировки к выводам:
+
+- **C1 (safety gate) и M1 (webhook fail-open):** на проде уже сконфигурированы безопасно. Это не активная утечка, а отсутствие fail-closed defaults / startup guard. Executive summary («могут открыть HR API без авторизации») описывает риск мисконфига, а не текущее состояние.
+- **H2 (public media):** подтверждена как **активная** утечка — любой `/media/...` (включая employee documents и вложения сертификатов) отдается анонимно с 200. Это приоритет №1 после safety gate.
+- **T2 (failing test):** `test_filter_q` падает из-за SQLite (нет Unicode case-folding для кириллицы в `LIKE`/`icontains`); на Postgres-проде корректно. Не прод-баг, а несоответствие тест-БД.
+
+См. обновленные приоритеты в `refactoring-and-structure-improvement-plan-2026-06-30.md`.
+
