@@ -6063,11 +6063,19 @@ function EmployeeAdminProfileView({
       const bar = heroBarRef.current;
       if (!bar) return;
       const topbarHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar-h')) || 52;
-      // Гістерезис проти циклу «закріплення↔відкріплення»: коли pin зменшує висоту
-      // сторінки, скрол клампиться → раніше це відкріплювало → знову росло → loop.
-      // Закріплюємо лише після помітного скролу (>80px) і тримаємо закріпленим,
-      // доки не повернемось майже до верху (<=8px). Мертва зона 8..80 гасить дрижання.
+      // Колапс хедера при закріпленні зменшує висоту сторінки на ~22-30px. На короткій
+      // вкладці (напр. /time) це з'їдає майже весь запас прокрутки → scrollY клампиться
+      // до ~0 → умова unpin (<=8) спрацьовує → бар росте → знову можна доскролити → loop
+      // (аватар «дихає»). Гістерезис цього не лікує, бо unpin тут провокує сам кламп.
+      // Рішення: не закріплювати, якщо запасу прокрутки не вистачить пережити колапс.
+      const COLLAPSE_RESERVE = 56; // px, з запасом більший за реальну різницю висот
+      const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+      // Гістерезис: закріплюємо лише після помітного скролу (>80px) і тримаємо
+      // закріпленим, доки не повернемось майже до верху (<=8px). Зона 8..80 гасить фліп.
       setHeroPinned((current) => {
+        // Поки не закріплено — пинимо тільки якщо сторінка достатньо висока, щоб
+        // після колапсу залишився запас прокрутки вище порога unpin.
+        if (!current && maxScroll < 80 + COLLAPSE_RESERVE) return current;
         const atTop = bar.getBoundingClientRect().top <= topbarHeight + 1;
         const next = current ? window.scrollY > 8 : window.scrollY > 80 && atTop;
         return next === current ? current : next;
@@ -6160,7 +6168,7 @@ function EmployeeAdminProfileView({
               { key: 'work', label: copy.people.work || 'Робота' },
               { key: 'compensation', label: copy.people.compensation || 'Компенсація' },
               { key: 'absence', label: copy.people.absence || 'Відсутності' },
-              { key: 'time', label: copy.people.time || 'Time' },
+              { key: 'time', label: copy.people.time || 'Присутності' },
               { key: 'documents', label: copy.people.documents || 'Документи' },
             ]}
             active={MORE_TABS.some((t) => t.key === activeTab) ? '' : activeTab}
