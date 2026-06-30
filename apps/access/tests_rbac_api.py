@@ -136,3 +136,24 @@ class RbacApiTests(APITestCase):
         self.assertEqual(resp.status_code, 200)
         rows = resp.data["results"] if "results" in resp.data else resp.data
         self.assertTrue(rows)
+
+    # ── AuthStatus.access (Этап 5) ────────────────────────────────────────────
+    def test_auth_status_exposes_access(self):
+        from apps.employees.models import Employee
+
+        u = self.user_model.objects.create_user("emp")
+        Employee.objects.create(first_name="E", last_name="T", user=u)
+        self.client.force_authenticate(u)
+        resp = self.client.get("/api/auth/status/")
+        self.assertEqual(resp.status_code, 200)
+        access = resp.data["access"]
+        self.assertIn("self", access["roles"])
+        self.assertIn("all_people", access["roles"])
+        self.assertIn("is_admin", access)
+        self.assertIn("permissions", access)
+        self.assertFalse(access["enforced"])  # default shadow
+
+    def test_auth_status_admin_flag(self):
+        self._as_admin()
+        resp = self.client.get("/api/auth/status/")
+        self.assertTrue(resp.data["access"]["is_admin"])  # superuser

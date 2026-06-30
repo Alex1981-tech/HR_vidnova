@@ -42,7 +42,12 @@
   last-admin guard + audit), `audit/` (read-only), `permissions/` (каталог из
   registry), `effective-preview/` (превью людей по scope). Гейт `RolesAPIPermission`
   (всегда требует roles.view/manage — НЕ shadow-gated). 12 тестов.
-- **Дальше — Этап 7**: фронтенд `/settings/roles` (RolesSettingsView) поверх этого API.
+- ✅ **Этап 5 (backend) — AuthStatus.access**: `/api/auth/status/` теперь отдаёт
+  `access: {is_admin, roles, permissions, enforced}` для frontend-gating (не источник
+  enforcement). 2 теста.
+- **Дальше — Этап 7**: фронтенд `/settings/roles` (RolesSettingsView) + helper
+  `can(code)` поверх AuthStatus.access. ⚠️ Frontend в активной работе Alex
+  (App.tsx/client.ts/types/api.ts uncommitted) — координировать, чтобы не конфликтовать.
 - **Отложено**: Этап 4 ч.2 — field-level serializer (компенсация — Alex: «полей
   компенсации пока нет, распишем потом»); enforcement leave/knowledge (leave —
   активная работа Alex).

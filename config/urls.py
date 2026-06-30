@@ -49,8 +49,28 @@ class AuthStatusView(APIView):
                 else None,
                 "employee": employee,
                 "preferences": preferences,
+                "access": self._access_payload(user),
             }
         )
+
+    @staticmethod
+    def _access_payload(user):
+        # RBAC (Этап 5): эффективные роли/права для frontend-gating.
+        # НЕ источник enforcement — backend permissions остаются обязательными.
+        from django.conf import settings
+
+        from apps.access import rbac
+
+        if user is None:
+            return {"is_admin": False, "roles": [], "permissions": {}, "enforced": bool(settings.RBAC_ENFORCE)}
+        return {
+            "is_admin": rbac.is_admin(user),
+            "roles": sorted(rbac.get_effective_roles(user)),
+            "permissions": {
+                code: sorted(levels) for code, levels in rbac.get_effective_permissions(user).items()
+            },
+            "enforced": bool(settings.RBAC_ENFORCE),
+        }
 
 
 urlpatterns = [
