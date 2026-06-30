@@ -123,6 +123,7 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
             "decided_at",
             "decided_by",
             "approval_steps",
+            "created_at",
         )
 
     def get_employee_avatar_local_url(self, obj):

@@ -9414,10 +9414,181 @@ const CAL_MONTHS_GEN = ['січ', 'лют', 'бер', 'квіт', 'трав', '�
 const CAL_WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
 const CAL_APPROVED_STATUSES = ['approved', 'applied'];
 const CAL_PENDING_STATUSES = ['submitted'];
+const CAL_SCHEDULE_PERSON_COL = 270;
+const CAL_SCHEDULE_DAY_MIN_COL = 42;
+type CalendarHolidayTone = 'non-working' | 'working' | 'compensated';
+type CalendarHolidayMeta = {
+  events: HolidayCalendarEvent[];
+  tone: CalendarHolidayTone | '';
+  className: string;
+  title?: string;
+};
+type CalendarFilterKey = 'people' | 'position' | 'department' | 'division' | 'location' | 'team' | 'leaveType' | 'status';
+type CalendarFilterState = Record<CalendarFilterKey, string[]>;
+
+const CALENDAR_FILTER_DEFS: Array<{ key: CalendarFilterKey; label: string }> = [
+  { key: 'people', label: 'Люди' },
+  { key: 'position', label: 'Посада' },
+  { key: 'department', label: 'Департамент' },
+  { key: 'division', label: 'Підрозділ' },
+  { key: 'location', label: 'Локація' },
+  { key: 'team', label: 'Команда' },
+  { key: 'leaveType', label: 'Тип відсутності' },
+  { key: 'status', label: 'Статус' },
+];
+
+const CALENDAR_STATUS_OPTIONS: PeopleFilterOption[] = [
+  { value: 'approved', label: 'Схвалено' },
+  { value: 'submitted', label: 'Очікує на розгляд' },
+  { value: 'rejected', label: 'Відхилено' },
+  { value: 'cancelled', label: 'Скасовано' },
+];
+
+function emptyCalendarFilters(): CalendarFilterState {
+  return {
+    people: [],
+    position: [],
+    department: [],
+    division: [],
+    location: [],
+    team: [],
+    leaveType: [],
+    status: [],
+  };
+}
+
+function calendarEntityFilterValue(id: number | null | undefined, label: string | null | undefined, prefix: string): string {
+  if (id != null) return String(id);
+  const normalized = String(label ?? '').trim().toLocaleLowerCase('uk-UA');
+  return normalized ? `${prefix}:${normalized}` : '';
+}
+
+function filterText(value: string): string {
+  return value.trim().toLocaleLowerCase('uk-UA');
+}
+
+function calendarOptionMatches(option: PeopleFilterOption, query: string): boolean {
+  const normalized = filterText(query);
+  if (!normalized) return true;
+  return filterText(option.label).includes(normalized);
+}
+
+function addCalendarOption(
+  target: PeopleFilterOption[],
+  seen: Set<string>,
+  value: string | null | undefined,
+  label: string | null | undefined,
+) {
+  const normalizedValue = String(value ?? '').trim();
+  const normalizedLabel = String(label ?? '').trim();
+  if (!normalizedValue || !normalizedLabel || seen.has(normalizedValue)) return;
+  seen.add(normalizedValue);
+  target.push({ value: normalizedValue, label: normalizedLabel });
+}
+
+function sortCalendarOptions(options: PeopleFilterOption[]): PeopleFilterOption[] {
+  return [...options].sort((first, second) => first.label.localeCompare(second.label, 'uk'));
+}
+
+function calendarSelectedLabel(values: string[], options: PeopleFilterOption[]): string {
+  if (values.length > 1) return `${values.length} items`;
+  return options.find((option) => option.value === values[0])?.label ?? values[0] ?? '';
+}
+
+function calendarFilterIncludes(selected: string[], value: string): boolean {
+  return !selected.length || (Boolean(value) && selected.includes(value));
+}
+
+function calendarStatusFilterLabel(status: string): string {
+  return CALENDAR_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? leaveStatusLabel(status);
+}
+
+function calendarTooltipAlign(day: number, daysInMonth: number): 'start' | 'end' | undefined {
+  if (day <= 4) return 'start';
+  if (day >= daysInMonth - 3) return 'end';
+  return undefined;
+}
+
+function calendarBandTooltipAlign(start: number, span: number, daysInMonth: number): 'start' | 'end' | undefined {
+  if (start <= 4) return 'start';
+  if (start + span - 1 >= daysInMonth - 3) return 'end';
+  return undefined;
+}
 
 function calWeekdayMon(date: Date): number {
   const day = date.getDay();
   return day === 0 ? 6 : day - 1;
+}
+
+function buildCalendarHolidayEvents(holidays: HolidayOption[], year: number): Record<string, HolidayCalendarEvent[]> {
+  const grouped: Record<string, HolidayCalendarEvent[]> = {};
+  const addEvent = (event: HolidayCalendarEvent) => {
+    if (!event.isoDate.startsWith(`${year}-`)) return;
+    grouped[event.isoDate] = [...(grouped[event.isoDate] ?? []), event];
+  };
+  holidays.forEach((holiday) => {
+    const isoDate = holidayOccurrenceIso(holiday, year);
+    addEvent({
+      id: `holiday:${holiday.id}:date`,
+      kind: 'holiday',
+      name: holiday.name,
+      isoDate,
+      className: holidayTypeClass(holiday),
+      holiday,
+      recurring: holiday.recurrence === 'yearly',
+      source: 'holiday',
+    });
+    const observedIso = holiday.observed_on ? recurringDateIso(holiday.observed_on, holiday.recurrence, year) : '';
+    if (observedIso && observedIso !== isoDate) {
+      addEvent({
+        id: `holiday:${holiday.id}:observed`,
+        kind: 'holiday',
+        name: `Перенесення вихідного дня: ${holiday.name}`,
+        isoDate: observedIso,
+        className: 'non-working',
+        holiday,
+        recurring: holiday.recurrence === 'yearly',
+        source: 'observed',
+      });
+    }
+    const compensatedIso = holiday.compensated_on ? recurringDateIso(holiday.compensated_on, holiday.recurrence, year) : '';
+    if (compensatedIso && compensatedIso !== isoDate) {
+      addEvent({
+        id: `holiday:${holiday.id}:compensated`,
+        kind: 'holiday',
+        name: `День відпрацювання: ${holiday.name}`,
+        isoDate: compensatedIso,
+        className: 'compensated',
+        holiday,
+        recurring: holiday.recurrence === 'yearly',
+        source: 'compensated',
+      });
+    }
+  });
+  return grouped;
+}
+
+function holidayToneForEvents(events: HolidayCalendarEvent[]): CalendarHolidayTone | '' {
+  if (events.some((event) => event.className === 'compensated')) return 'compensated';
+  if (events.some((event) => event.className === 'working')) return 'working';
+  if (events.some((event) => event.className === 'non-working')) return 'non-working';
+  return '';
+}
+
+function holidayTooltip(events: HolidayCalendarEvent[]): string {
+  return events
+    .map((event) => {
+      const policyName = event.holiday?.policy_name ? ` (${event.holiday.policy_name})` : '';
+      if (event.source === 'compensated') return `День відпрацювання: ${event.holiday?.name || event.name}${policyName}`;
+      if (event.source === 'observed') return `Перенесений вихідний: ${event.holiday?.name || event.name}${policyName}`;
+      if (event.className === 'working') return `Робоче свято: ${event.name}${policyName}`;
+      return `Неробоче свято: ${event.name}${policyName}`;
+    })
+    .join('\n');
+}
+
+function emptyHolidayMeta(): CalendarHolidayMeta {
+  return { events: [], tone: '', className: '', title: undefined };
 }
 
 function CompanyCalendarView({ copy }: { copy: AppCopy }) {
@@ -9431,7 +9602,11 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showEmptyRows, setShowEmptyRows] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState<CalendarFilterKey | null>(null);
+  const [calendarFilters, setCalendarFilters] = useState<CalendarFilterState>(() => emptyCalendarFilters());
+  const [showEmptyRows, setShowEmptyRows] = useState(false);
   const [showHolidays, setShowHolidays] = useState(true);
   const [showRequests, setShowRequests] = useState(true);
   const [drawer, setDrawer] = useState<{ kind: 'absence'; req: LeaveRequest } | { kind: 'day'; date: string } | null>(null);
@@ -9447,6 +9622,88 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   })();
   const dateStr = (day: number) => `${year}-${pad(monthIndex + 1)}-${pad(day)}`;
+  const activeCalendarFilterCount = Object.values(calendarFilters).reduce((total, values) => total + values.length, 0);
+
+  const calendarFilterOptions = useMemo<Record<CalendarFilterKey, PeopleFilterOption[]>>(() => {
+    const options: Record<CalendarFilterKey, PeopleFilterOption[]> = {
+      people: [],
+      position: [],
+      department: [],
+      division: [],
+      location: [],
+      team: [],
+      leaveType: [],
+      status: [...CALENDAR_STATUS_OPTIONS],
+    };
+    const seen: Record<Exclude<CalendarFilterKey, 'status'>, Set<string>> = {
+      people: new Set(),
+      position: new Set(),
+      department: new Set(),
+      division: new Set(),
+      location: new Set(),
+      team: new Set(),
+      leaveType: new Set(),
+    };
+    employees.forEach((employee) => {
+      const fullName = employee.full_name || `${employee.last_name ?? ''} ${employee.first_name ?? ''}`.trim();
+      addCalendarOption(options.people, seen.people, String(employee.id), fullName);
+      addCalendarOption(options.position, seen.position, calendarEntityFilterValue(employee.position, employee.position_name, 'position'), employee.position_name);
+      addCalendarOption(options.department, seen.department, calendarEntityFilterValue(employee.department, employee.department_name, 'department'), employee.department_name);
+      addCalendarOption(options.division, seen.division, calendarEntityFilterValue(employee.division, employee.division_name, 'division'), employee.division_name);
+      addCalendarOption(options.location, seen.location, calendarEntityFilterValue(employee.clinic, employee.clinic_name, 'location'), compactLocationName(employee.clinic_name || ''));
+      (employee.teams ?? []).forEach((team) => {
+        addCalendarOption(options.team, seen.team, String(team.id), team.name);
+      });
+    });
+    leaveTypes.forEach((type) => {
+      addCalendarOption(options.leaveType, seen.leaveType, String(type.id), type.name);
+    });
+    return {
+      people: sortCalendarOptions(options.people),
+      position: sortCalendarOptions(options.position),
+      department: sortCalendarOptions(options.department),
+      division: sortCalendarOptions(options.division),
+      location: sortCalendarOptions(options.location),
+      team: sortCalendarOptions(options.team),
+      leaveType: sortCalendarOptions(options.leaveType),
+      status: options.status,
+    };
+  }, [employees, leaveTypes]);
+
+  const activeCalendarChips = useMemo(
+    () =>
+      CALENDAR_FILTER_DEFS.flatMap((definition) => {
+        const values = calendarFilters[definition.key];
+        if (!values.length) return [];
+        return [{
+          key: definition.key,
+          label: definition.label,
+          value: calendarSelectedLabel(values, calendarFilterOptions[definition.key]),
+        }];
+      }),
+    [calendarFilterOptions, calendarFilters],
+  );
+
+  const visibleFilterDefinitions = useMemo(
+    () => CALENDAR_FILTER_DEFS.filter((definition) => calendarOptionMatches({ value: definition.key, label: definition.label }, filterSearch)),
+    [filterSearch],
+  );
+  const visibleFilterOptions = useMemo(
+    () => (filterCategory ? calendarFilterOptions[filterCategory].filter((option) => calendarOptionMatches(option, filterSearch)) : []),
+    [calendarFilterOptions, filterCategory, filterSearch],
+  );
+
+  function toggleCalendarFilterValue(key: CalendarFilterKey, value: string) {
+    setCalendarFilters((current) => {
+      const selected = current[key];
+      const nextSelected = selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
+      return { ...current, [key]: nextSelected };
+    });
+  }
+
+  function clearCalendarFilter(key: CalendarFilterKey) {
+    setCalendarFilters((current) => ({ ...current, [key]: [] }));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -9454,7 +9711,7 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     Promise.all([
       api.employees({ q: search, status: 'active', page_size: 300 }),
       api.leaveRequests({ date_from: monthFirst, date_to: monthLast, page_size: 1000 }),
-      api.holidays({ page_size: 500 }),
+      api.holidays({ year, is_active: true, page_size: 1000 }),
       leaveTypes.length ? Promise.resolve({ items: leaveTypes }) : api.leaveTypes({ page_size: 100 }),
     ])
       .then(([emp, reqs, hol, types]) => {
@@ -9475,32 +9732,30 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, year, monthIndex]);
 
-  const visibleRequests = useMemo(
+  const requestFilteredRequests = useMemo(
     () =>
       requests.filter((req) => {
+        if (calendarFilters.leaveType.length && !calendarFilters.leaveType.includes(String(req.leave_type))) return false;
+        if (calendarFilters.status.length && !calendarFilters.status.includes(req.status)) return false;
         if (CAL_APPROVED_STATUSES.includes(req.status)) return true;
         if (showRequests && CAL_PENDING_STATUSES.includes(req.status)) return true;
         return false;
       }),
-    [requests, showRequests],
+    [calendarFilters.leaveType, calendarFilters.status, requests, showRequests],
   );
 
-  const reqByEmp = useMemo(() => {
-    const map = new Map<number, LeaveRequest[]>();
-    for (const req of visibleRequests) {
-      if (req.employee == null) continue;
-      const list = map.get(req.employee) ?? [];
-      list.push(req);
-      map.set(req.employee, list);
-    }
-    return map;
-  }, [visibleRequests]);
-
-  const holidaysInMonth = useMemo(
-    () => holidays.filter((h) => h.occurs_on >= monthFirst && h.occurs_on <= monthLast),
-    [holidays, monthFirst, monthLast],
-  );
-  const holidayByDate = useMemo(() => new Set(holidaysInMonth.map((h) => h.occurs_on)), [holidaysInMonth]);
+  const holidayEventsByDate = useMemo(() => buildCalendarHolidayEvents(holidays, year), [holidays, year]);
+  const holidayByDate = useMemo(() => new Set(Object.keys(holidayEventsByDate)), [holidayEventsByDate]);
+  function holidayMeta(dateValue: string): CalendarHolidayMeta {
+    const events = holidayEventsByDate[dateValue] ?? [];
+    const tone = holidayToneForEvents(events);
+    return {
+      events,
+      tone,
+      className: tone ? ` holiday holiday-${tone}` : '',
+      title: events.length ? holidayTooltip(events) : undefined,
+    };
+  }
 
   function typeColor(id: number): string {
     return leaveTypes.find((t) => t.id === id)?.color || '#a79cf7';
@@ -9521,8 +9776,41 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     return visibleRequests.filter((req) => req.date_from <= dateValue && req.date_to >= dateValue);
   }
 
-  const rows = scope === 'company' ? employees : employees; // «Мої» наразі показує ту саму компанію
-  const scheduleRows = showEmptyRows ? rows : rows.filter((e) => (reqByEmp.get(e.id)?.length ?? 0) > 0);
+  const rows = useMemo(() => {
+    const filtered = employees.filter((employee) => {
+      if (!calendarFilterIncludes(calendarFilters.people, String(employee.id))) return false;
+      if (!calendarFilterIncludes(calendarFilters.position, calendarEntityFilterValue(employee.position, employee.position_name, 'position'))) return false;
+      if (!calendarFilterIncludes(calendarFilters.department, calendarEntityFilterValue(employee.department, employee.department_name, 'department'))) return false;
+      if (!calendarFilterIncludes(calendarFilters.division, calendarEntityFilterValue(employee.division, employee.division_name, 'division'))) return false;
+      if (!calendarFilterIncludes(calendarFilters.location, calendarEntityFilterValue(employee.clinic, employee.clinic_name, 'location'))) return false;
+      if (calendarFilters.team.length) {
+        const teams = employee.teams ?? [];
+        if (!teams.some((team) => calendarFilters.team.includes(String(team.id)))) return false;
+      }
+      return true;
+    });
+    return scope === 'company' ? filtered : filtered; // «Мої» наразі показує ту саму компанію
+  }, [calendarFilters, employees, scope]);
+  const visibleEmployeeIds = useMemo(() => new Set(rows.map((employee) => employee.id)), [rows]);
+  const visibleRequests = useMemo(
+    () => requestFilteredRequests.filter((req) => req.employee == null || visibleEmployeeIds.has(req.employee)),
+    [requestFilteredRequests, visibleEmployeeIds],
+  );
+  const reqByEmp = useMemo(() => {
+    const map = new Map<number, LeaveRequest[]>();
+    for (const req of visibleRequests) {
+      if (req.employee == null) continue;
+      const list = map.get(req.employee) ?? [];
+      list.push(req);
+      map.set(req.employee, list);
+    }
+    return map;
+  }, [visibleRequests]);
+  const hasRequestFilters = Boolean(calendarFilters.leaveType.length || calendarFilters.status.length);
+  const scheduleRows = useMemo(() => {
+    const rowsWithMatchingRequests = hasRequestFilters ? rows.filter((employee) => (reqByEmp.get(employee.id)?.length ?? 0) > 0) : rows;
+    return showEmptyRows ? rowsWithMatchingRequests : rowsWithMatchingRequests.filter((employee) => (reqByEmp.get(employee.id)?.length ?? 0) > 0);
+  }, [hasRequestFilters, reqByEmp, rows, showEmptyRows]);
 
   function shiftMonth(delta: number) {
     setMonth((cur) => new Date(cur.getFullYear(), cur.getMonth() + delta, 1));
@@ -9530,6 +9818,16 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
 
   // ── Місячна сітка (вид «Календар») ──
   const gridBlanks = calWeekdayMon(new Date(year, monthIndex, 1));
+  const scheduleGridTemplate = `${CAL_SCHEDULE_PERSON_COL}px repeat(${daysInMonth}, minmax(${CAL_SCHEDULE_DAY_MIN_COL}px, 1fr))`;
+  const scheduleGridMinWidth = CAL_SCHEDULE_PERSON_COL + daysInMonth * CAL_SCHEDULE_DAY_MIN_COL;
+  const activeCalendarSettings = [showEmptyRows, showHolidays, showRequests].filter(Boolean).length;
+  const scheduleTotal = scheduleRows.length;
+  const scheduleCountLabel =
+    loadState === 'loading' && !employees.length
+      ? copy.common.loading
+      : scheduleRows.length
+        ? `Відображено 1 - ${scheduleRows.length} з ${scheduleTotal}`
+        : `Відображено 0 - 0 з ${scheduleTotal}`;
 
   return (
     <main className="workspace calendar-page">
@@ -9571,6 +9869,82 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
           <button type="button" className="toolbar-icon" onClick={() => setMonth(getInitialMonth())} aria-label="Поточний місяць">
             <Clock3 size={18} />
           </button>
+          <div className="calendar-filter">
+            <button
+              type="button"
+              className={`toolbar-button calendar-filter-button ${filterOpen ? 'active' : ''}`}
+              onClick={() => {
+                setSettingsOpen(false);
+                setFilterOpen((current) => !current);
+                setFilterCategory(null);
+                setFilterSearch('');
+              }}
+            >
+              <Filter size={16} />
+              {activeCalendarFilterCount ? 'Фільтри' : copy.common.addFilter}
+              {activeCalendarFilterCount ? <span className="calendar-filter-count">{activeCalendarFilterCount}</span> : null}
+            </button>
+            {filterOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="calendar-filter-backdrop"
+                  aria-label="Закрити фільтри"
+                  onClick={() => {
+                    setFilterOpen(false);
+                    setFilterCategory(null);
+                  }}
+                />
+                <div className="calendar-filter-pop">
+                  <label className="calendar-filter-search">
+                    <Search size={18} />
+                    <input
+                      type="search"
+                      placeholder={copy.common.search}
+                      value={filterSearch}
+                      onChange={(event) => setFilterSearch(event.target.value)}
+                    />
+                  </label>
+                  {filterCategory ? (
+                    <div className="calendar-filter-subhead">
+                      <button type="button" className="toolbar-icon" aria-label="Назад" onClick={() => setFilterCategory(null)}>
+                        <ChevronLeft size={16} />
+                      </button>
+                      <strong>{CALENDAR_FILTER_DEFS.find((definition) => definition.key === filterCategory)?.label}</strong>
+                    </div>
+                  ) : null}
+                  <div className="calendar-filter-list">
+                    {filterCategory ? (
+                      visibleFilterOptions.length ? visibleFilterOptions.map((option) => {
+                        const checked = calendarFilters[filterCategory].includes(option.value);
+                        return (
+                          <button
+                            type="button"
+                            className={`calendar-filter-option ${checked ? 'checked' : ''}`}
+                            key={option.value}
+                            onClick={() => toggleCalendarFilterValue(filterCategory, option.value)}
+                          >
+                            <span className="calendar-filter-check">{checked ? <Check size={14} /> : null}</span>
+                            <span>{option.label}</span>
+                            {option.count != null ? <em>{option.count}</em> : null}
+                          </button>
+                        );
+                      }) : (
+                        <div className="calendar-filter-empty">Нічого не знайдено</div>
+                      )
+                    ) : (
+                      visibleFilterDefinitions.map((definition) => (
+                        <button type="button" className="calendar-filter-row" key={definition.key} onClick={() => setFilterCategory(definition.key)}>
+                          <span>{definition.label}</span>
+                          <ChevronRight size={18} />
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
         <div className="calendar-tools-right">
           <label className="small-search">
@@ -9578,9 +9952,10 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
             <input type="search" placeholder={copy.common.search} value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
           <div className="calendar-settings">
-            <button type="button" className="toolbar-button" onClick={() => setSettingsOpen((v) => !v)}>
+            <button type="button" className={`toolbar-button calendar-settings-button ${settingsOpen ? 'active' : ''}`} onClick={() => setSettingsOpen((v) => !v)}>
               <Settings size={18} />
               {copy.common.viewSettings}
+              <span className="calendar-settings-count">{activeCalendarSettings}</span>
               <ChevronDown size={15} />
             </button>
             {settingsOpen ? (
@@ -9589,14 +9964,17 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
                 <div className="calendar-settings-pop">
                   <label className="calendar-toggle">
                     <input type="checkbox" checked={showEmptyRows} onChange={(e) => setShowEmptyRows(e.target.checked)} />
+                    <span className="calendar-switch" aria-hidden="true" />
                     <span>Показати порожні рядки</span>
                   </label>
                   <label className="calendar-toggle">
                     <input type="checkbox" checked={showHolidays} onChange={(e) => setShowHolidays(e.target.checked)} />
+                    <span className="calendar-switch" aria-hidden="true" />
                     <span>Показати державні свята</span>
                   </label>
                   <label className="calendar-toggle">
                     <input type="checkbox" checked={showRequests} onChange={(e) => setShowRequests(e.target.checked)} />
+                    <span className="calendar-switch" aria-hidden="true" />
                     <span>Показати запити на відсутність</span>
                   </label>
                 </div>
@@ -9606,19 +9984,40 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
         </div>
       </div>
 
-      <div className="calendar-count">
-        {loadState === 'loading' ? copy.common.loading : `Відображено ${scheduleRows.length} із ${employees.length}`}
-      </div>
+      {activeCalendarChips.length ? (
+        <div className="calendar-filter-chips">
+          {activeCalendarChips.map((chip) => (
+            <span className="calendar-filter-chip" key={chip.key}>
+              <strong>{chip.label}</strong>
+              <em>is</em>
+              <span>{chip.value}</span>
+              <button type="button" aria-label={`Очистити ${chip.label}`} onClick={() => clearCalendarFilter(chip.key)}>
+                <X size={16} />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="calendar-count">{scheduleCountLabel}</div>
 
       {view === 'schedule' ? (
         <div className="schedule-shell">
-          <div className="schedule-grid header-row" style={{ gridTemplateColumns: `220px repeat(${daysInMonth}, minmax(30px, 1fr))` }}>
+          <div className="schedule-grid header-row" style={{ gridTemplateColumns: scheduleGridTemplate, minWidth: scheduleGridMinWidth }}>
             <div className="employee-head" />
             {days.map((day) => {
-              const isToday = dateStr(day) === todayStr;
-              const isHoliday = showHolidays && holidayByDate.has(dateStr(day));
+              const dayIso = dateStr(day);
+              const isToday = dayIso === todayStr;
+              const holiday = showHolidays ? holidayMeta(dayIso) : emptyHolidayMeta();
+              const tooltipAlign = calendarTooltipAlign(day, daysInMonth);
               return (
-                <div className={`day-head${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}`} key={day}>
+                <div
+                  className={`day-head${isToday ? ' today' : ''}${holiday.className}`}
+                  key={day}
+                  data-tooltip={holiday.title || undefined}
+                  data-tooltip-align={tooltipAlign}
+                  aria-label={holiday.title}
+                >
                   <strong>{day}</strong>
                   <span>{CAL_WEEKDAYS[calWeekdayMon(new Date(year, monthIndex, day))]}</span>
                 </div>
@@ -9629,7 +10028,7 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
             const person = employeeToPerson(employee, employee.id, copy);
             const empReqs = reqByEmp.get(employee.id) ?? [];
             return (
-              <div className="schedule-grid schedule-row" key={employee.id} style={{ gridTemplateColumns: `220px repeat(${daysInMonth}, minmax(30px, 1fr))` }}>
+              <div className="schedule-grid schedule-row" key={employee.id} style={{ gridTemplateColumns: scheduleGridTemplate, minWidth: scheduleGridMinWidth }}>
                 <div className="schedule-person" style={{ gridColumn: 1, gridRow: 1 }}>
                   <Avatar name={person.fullName} src={employeeAvatarUrl(employee)} accent={person.accent} size="sm" />
                   <div>
@@ -9638,12 +10037,27 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
                   </div>
                 </div>
                 {days.map((day) => {
-                  const isHoliday = showHolidays && holidayByDate.has(dateStr(day));
-                  return <div className={`schedule-day${isHoliday ? ' holiday' : ''}`} key={day} style={{ gridColumn: day + 1, gridRow: 1 }} />;
+                  const dayIso = dateStr(day);
+                  const holiday = showHolidays ? holidayMeta(dayIso) : emptyHolidayMeta();
+                  const isToday = dayIso === todayStr;
+                  const tooltipAlign = calendarTooltipAlign(day, daysInMonth);
+                  return (
+                    <div
+                      className={`schedule-day${holiday.className}${isToday ? ' today' : ''}`}
+                      key={day}
+                      style={{ gridColumn: day + 1, gridRow: 1 }}
+                      data-tooltip={holiday.title || undefined}
+                      data-tooltip-align={tooltipAlign}
+                      aria-label={holiday.title}
+                    />
+                  );
                 })}
                 {empReqs.map((req) => {
                   const band = bandFor(req);
+                  const leaveType = leaveTypes.find((item) => item.id === req.leave_type);
                   const color = typeColor(req.leave_type);
+                  const bandTooltip = `${req.leave_type_name} - ${isPending(req) ? 'Очікує на розгляд' : calendarStatusFilterLabel(req.status)}`;
+                  const tooltipAlign = calendarBandTooltipAlign(band.start, band.span, daysInMonth);
                   return (
                     <button
                       type="button"
@@ -9651,8 +10065,12 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
                       key={req.id}
                       style={{ gridColumn: `${band.start + 1} / span ${band.span}`, ['--band' as string]: color }}
                       onClick={() => setDrawer({ kind: 'absence', req })}
+                      data-tooltip={bandTooltip}
+                      data-tooltip-align={tooltipAlign}
+                      aria-label={bandTooltip}
                     >
-                      {req.leave_type_name}
+                      <LeaveTypeIcon iconKey={leaveType?.icon || 'plane'} size={16} />
+                      <span>{req.leave_type_name}</span>
                     </button>
                   );
                 })}
@@ -9679,14 +10097,23 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
             const ds = dateStr(day);
             const absent = absencesOn(ds);
             const bdays = birthdaysOn(day);
-            const isHoliday = showHolidays && holidayByDate.has(ds);
+            const holiday = showHolidays ? holidayMeta(ds) : emptyHolidayMeta();
+            const tooltipAlign = calendarTooltipAlign(day, daysInMonth);
             return (
-              <button type="button" className={`cal-cell${ds === todayStr ? ' today' : ''}`} key={day} onClick={() => setDrawer({ kind: 'day', date: ds })}>
+              <button
+                type="button"
+                className={`cal-cell${ds === todayStr ? ' today' : ''}${holiday.className}`}
+                key={day}
+                data-tooltip={holiday.title || undefined}
+                data-tooltip-align={tooltipAlign}
+                aria-label={holiday.title || formatDate(ds)}
+                onClick={() => setDrawer({ kind: 'day', date: ds })}
+              >
                 <span className="cal-day-num">{day} {CAL_MONTHS_GEN[monthIndex]}.</span>
                 <div className="cal-day-tags">
                   {absent.length ? <span className="cal-tag absent"><CalendarCheck size={12} /> {absent.length}</span> : null}
                   {bdays.length ? <span className="cal-tag bday"><Star size={12} /> {bdays.length}</span> : null}
-                  {isHoliday ? <span className="cal-tag holiday">Свято</span> : null}
+                  {holiday.events?.length ? <span className={`cal-tag holiday ${holiday.tone || ''}`}>Свято</span> : null}
                 </div>
               </button>
             );
@@ -9706,9 +10133,82 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
           birthdaysOn={(d) => birthdaysOn(Number(d.slice(8, 10)))}
           holidayByDate={holidayByDate}
           typeColor={typeColor}
+          leaveTypes={leaveTypes}
         />
       ) : null}
     </main>
+  );
+}
+
+function leaveRequestDayCount(req: LeaveRequest): number {
+  const start = new Date(`${req.date_from}T00:00:00`);
+  const end = new Date(`${req.date_to}T00:00:00`);
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+}
+
+function leaveRequestAmountLabel(req: LeaveRequest): string {
+  if (req.amount) return leaveAmountLabel(req.amount, req.tracking_time_in);
+  return `${leaveRequestDayCount(req).toLocaleString('uk-UA', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} дн.`;
+}
+
+function leaveRequestRangeLabel(req: LeaveRequest): string {
+  const from = new Date(`${req.date_from}T00:00:00`);
+  const to = new Date(`${req.date_to}T00:00:00`);
+  const start = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short' }).format(from);
+  const end = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'short', year: 'numeric' }).format(to);
+  return `${start} - ${end}`;
+}
+
+function calendarMonthTitle(year: number, monthIndex: number): string {
+  const value = new Intl.DateTimeFormat('uk-UA', { month: 'long', year: 'numeric' }).format(new Date(year, monthIndex, 1));
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function approvalStepLabel(status: string): string {
+  const labels: Record<string, string> = {
+    approved: 'Схвалено',
+    pending: 'Очікує',
+    rejected: 'Відхилено',
+    skipped: 'Пропущено',
+  };
+  return labels[status] ?? statusLabel(status);
+}
+
+function LeaveRequestMiniCalendar({ req, accent }: { req: LeaveRequest; accent: string }) {
+  const start = new Date(`${req.date_from}T00:00:00`);
+  const year = start.getFullYear();
+  const monthIndex = start.getMonth();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const blanks = calWeekdayMon(new Date(year, monthIndex, 1));
+  const rangeStart = req.date_from;
+  const rangeEnd = req.date_to;
+  return (
+    <div className="leave-mini-calendar" style={{ ['--drawer-band' as string]: accent } as CSSProperties}>
+      <div className="leave-mini-nav">
+        <button type="button" className="toolbar-icon" aria-label="Попередній місяць" disabled><ChevronLeft size={16} /></button>
+        <strong>{calendarMonthTitle(year, monthIndex)}</strong>
+        <button type="button" className="toolbar-icon" aria-label="Наступний місяць" disabled><ChevronRight size={16} /></button>
+      </div>
+      <div className="leave-mini-weekdays">
+        {CAL_WEEKDAYS.map((day) => <span key={day}>{day}</span>)}
+      </div>
+      <div className="leave-mini-grid">
+        {Array.from({ length: blanks }, (_, index) => <span className="leave-mini-day muted" key={`blank-${index}`} />)}
+        {Array.from({ length: daysInMonth }, (_, index) => {
+          const day = index + 1;
+          const iso = `${year}-${pad(monthIndex + 1)}-${pad(day)}`;
+          const isInRange = iso >= rangeStart && iso <= rangeEnd;
+          const isStart = iso === rangeStart;
+          const isEnd = iso === rangeEnd;
+          return (
+            <span className={`leave-mini-day${isInRange ? ' in-range' : ''}${isStart ? ' start' : ''}${isEnd ? ' end' : ''}`} key={iso}>
+              <strong>{day}</strong>
+              {isInRange ? <small>1.0д</small> : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -9720,6 +10220,7 @@ function CalendarDrawer({
   birthdaysOn,
   holidayByDate,
   typeColor,
+  leaveTypes,
 }: {
   drawer: { kind: 'absence'; req: LeaveRequest } | { kind: 'day'; date: string };
   onClose: () => void;
@@ -9728,6 +10229,7 @@ function CalendarDrawer({
   birthdaysOn: (date: string) => EmployeeListItem[];
   holidayByDate: Set<string>;
   typeColor: (id: number) => string;
+  leaveTypes: LeaveType[];
 }) {
   const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   useEffect(() => {
@@ -9735,6 +10237,10 @@ function CalendarDrawer({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+  const activeRequest = drawer.kind === 'absence' ? drawer.req : null;
+  const activeLeaveType = activeRequest ? leaveTypes.find((type) => type.id === activeRequest.leave_type) : undefined;
+  const activeColor = activeRequest ? typeColor(activeRequest.leave_type) : 'var(--primary)';
+  const approvalSteps = activeRequest?.approval_steps ?? [];
 
   return createPortal(
     <div className="cal-drawer-layer">
@@ -9742,24 +10248,64 @@ function CalendarDrawer({
       <aside className="cal-drawer">
         {drawer.kind === 'absence' ? (
           <>
-            <header className="cal-drawer-head">
-              <strong>{drawer.req.leave_type_name}</strong>
+            <header className="cal-drawer-head leave-detail-head" style={{ ['--drawer-band' as string]: activeColor } as CSSProperties}>
+              <div className="leave-detail-title">
+                <span className="leave-detail-icon">
+                  <LeaveTypeIcon iconKey={activeLeaveType?.icon || 'calendar'} size={18} />
+                </span>
+                <strong>{drawer.req.leave_type_name}</strong>
+              </div>
               <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}><X size={18} /></button>
             </header>
-            <div className="cal-drawer-body">
-              <div className="cal-drawer-person">
-                <Avatar name={drawer.req.employee_name || '—'} src={drawer.req.employee_avatar_local_url || drawer.req.employee_avatar_url || ''} />
+            <div className="cal-drawer-body leave-detail-body" style={{ ['--drawer-band' as string]: activeColor } as CSSProperties}>
+              <div className="leave-detail-person">
+                <Avatar name={drawer.req.employee_name || '—'} src={drawer.req.employee_avatar_local_url || drawer.req.employee_avatar_url || ''} size="lg" />
                 <div>
                   <strong>{drawer.req.employee_name || '—'}</strong>
                   <span>{drawer.req.employee_position_name || ''}</span>
                 </div>
+                <button type="button" className="toolbar-icon leave-detail-more" aria-label="Дії">
+                  <MoreHorizontal size={18} />
+                </button>
               </div>
-              <div className="cal-drawer-range">
-                <CalendarCheck size={15} style={{ color: typeColor(drawer.req.leave_type) }} />
-                {formatDate(drawer.req.date_from)} – {formatDate(drawer.req.date_to)}
+              <div className="leave-detail-summary">
+                <strong>{leaveRequestRangeLabel(drawer.req)}</strong>
+                <span>{leaveRequestAmountLabel(drawer.req)} · Створено {formatDateTime(drawer.req.created_at || drawer.req.submitted_at)}</span>
               </div>
-              <div className="cal-drawer-status"><StatusPill status={drawer.req.status} /></div>
-              {drawer.req.reason ? <p className="cal-drawer-reason">{drawer.req.reason}</p> : null}
+              <section className="leave-detail-section">
+                <h4>Поденно</h4>
+                <LeaveRequestMiniCalendar req={drawer.req} accent={activeColor} />
+                <div className="leave-mini-footer">
+                  {leaveRequestRangeLabel(drawer.req)}, <strong>{leaveRequestAmountLabel(drawer.req)}</strong>
+                </div>
+              </section>
+              <section className="leave-detail-section">
+                <h4>Примітки</h4>
+                <p className="cal-drawer-reason">{drawer.req.reason || drawer.req.leave_type_name}</p>
+              </section>
+              {approvalSteps.length ? (
+                <section className="leave-detail-section">
+                  <h4>Затверджуючі</h4>
+                  <div className="leave-approval-list">
+                    {approvalSteps.map((step) => (
+                      <div className="leave-approval-card" key={step.id}>
+                        <span className={`leave-approval-state ${step.status}`}>
+                          <Check size={14} />
+                        </span>
+                        <Avatar name={step.approver_name || '—'} size="sm" />
+                        <div>
+                          <strong>{step.approver_name || '—'}</strong>
+                          <span>
+                            {approvalStepLabel(step.status)}
+                            {step.decided_at ? ` · ${formatDateTime(step.decided_at)}` : ''}
+                          </span>
+                          {step.comment ? <small>{step.comment}</small> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
             </div>
           </>
         ) : (

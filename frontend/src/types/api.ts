@@ -651,6 +651,17 @@ export type LeaveRequest = {
   decided_at: string | null;
   decided_by?: number | null;
   created_at: string;
+  approval_steps?: LeaveApprovalStep[];
+};
+
+export type LeaveApprovalStep = {
+  id: number;
+  approver: number;
+  approver_name: string;
+  order: number;
+  status: string;
+  decided_at: string | null;
+  comment: string;
 };
 
 export type LeaveBalance = {
