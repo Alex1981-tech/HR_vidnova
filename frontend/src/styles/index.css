@@ -7460,9 +7460,22 @@ textarea.profile-field-input {
   margin: 0;
   font-size: var(--font-sm);
   color: var(--text);
-  white-space: pre-wrap;
   word-break: break-word;
 }
+.more-card.note .note-body > :first-child { margin-top: 0; }
+.more-card.note .note-body > :last-child { margin-bottom: 0; }
+.more-card.note .note-body p { margin: 0 0 6px; }
+.more-card.note .note-body h2 { margin: 8px 0 4px; font-size: var(--font-body); font-weight: 600; }
+.more-card.note .note-body h3 { margin: 8px 0 4px; font-size: var(--font-sm); font-weight: 600; }
+.more-card.note .note-body ul,
+.more-card.note .note-body ol { margin: 0 0 6px; padding-left: 20px; }
+.more-card.note .note-body li { margin: 2px 0; }
+.more-card.note .note-body blockquote {
+  margin: 6px 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-strong); color: var(--muted);
+}
+.more-card.note .note-body a { color: var(--primary-strong); text-decoration: underline; }
+.more-card.note .note-body img,
+.more-card.note .note-body video { max-width: 100%; height: auto; border-radius: 6px; }
 
 /* Картки активів у вкладці «Активи» співробітника використовують спільні
    класи .asset-grid/.asset-card зі сторінки /assets (визначені нижче). */
@@ -17680,6 +17693,9 @@ textarea:focus-visible {
 .more-modal {
   width: min(600px, calc(100vw - 40px));
   max-height: calc(100vh - 96px);
+}
+.more-modal.more-modal-wide {
+  width: min(720px, calc(100vw - 40px));
 }
 .more-modal .people-data-modal-head {
   padding-right: 56px;

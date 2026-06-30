@@ -100,6 +100,7 @@ import {
   type AnnouncementConditionOption,
 } from './components/CreateAnnouncementModal';
 import { CreateQuickPollModal } from './components/CreateQuickPollModal';
+import { RichTextEditor } from './components/RichTextEditor';
 import { LeaveTypeIcon } from './lib/leaveIcons';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
@@ -7094,6 +7095,42 @@ function DocumentDeleteConfirmModal({
   );
 }
 
+function NoteDeleteConfirmModal({
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="settings-option-modal-layer document-delete-layer" role="dialog" aria-modal="true" aria-label="Видалити примітку">
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
+      <section className="settings-option-modal settings-delete-modal">
+        <header>
+          <strong>Видалити примітку?</strong>
+          <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="settings-delete-body">
+          <p>Примітку буде видалено з профілю співробітника. Цю дію не можна скасувати.</p>
+        </div>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onCancel} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="danger-action" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Видалення…' : 'Видалити'}
+          </button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function MoreSubPanel({ title, onAdd, children }: { title: string; onAdd?: () => void; children: ReactNode }) {
   return (
     <section className="panel employee-info-panel more-subpanel">
@@ -7118,6 +7155,7 @@ function MoreModalShell({
   onClose,
   onSave,
   children,
+  wide,
 }: {
   title: string;
   saving: boolean;
@@ -7125,11 +7163,12 @@ function MoreModalShell({
   onClose: () => void;
   onSave: () => void;
   children: ReactNode;
+  wide?: boolean;
 }) {
   return createPortal(
     <div className="people-data-modal-layer more-modal-layer" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
-      <section className="people-data-modal more-modal">
+      <section className={`people-data-modal more-modal${wide ? ' more-modal-wide' : ''}`}>
         <header className="people-data-modal-head">
           <strong>{title}</strong>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Закрити">
@@ -7479,6 +7518,9 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
   const [edit, setEdit] = useState<Partial<EmployeeNote> | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeNote | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function load() {
     setState('loading');
@@ -7493,6 +7535,14 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
+
+  // Закриваємо «...»-меню при кліку поза ним.
+  useEffect(() => {
+    if (menuOpenId == null) return;
+    const close = () => setMenuOpenId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menuOpenId]);
 
   async function save() {
     if (!edit?.body_html?.trim()) {
@@ -7512,6 +7562,20 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
     }
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteEmployeeNote(deleteTarget.id);
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      setError('Не вдалося видалити.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <MoreSubPanel title="Примітки" onAdd={() => setEdit({})}>
       {state === 'loading' ? (
@@ -7523,23 +7587,32 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
           {items.map((n) => (
             <div className="more-card note" key={n.id}>
               <div className="more-card-body">
-                <p className="note-body">{n.body_html}</p>
+                <div className="note-body" dangerouslySetInnerHTML={{ __html: n.body_html }} />
                 <span className="more-card-sub">
                   {n.author_name || 'Невідомо'} · {formatDate(n.created_at.slice(0, 10))}
                 </span>
               </div>
               <div className="more-card-actions">
-                <button type="button" className="icon-button" onClick={() => setEdit(n)} aria-label="Редагувати">
-                  <Pencil size={15} />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => void api.deleteEmployeeNote(n.id).then(load)}
-                  aria-label="Видалити"
-                >
-                  <Trash2 size={15} />
-                </button>
+                <div className="settings-option-row-menu" onClick={(event) => event.stopPropagation()}>
+                  <button
+                    type="button"
+                    className="settings-option-row-action"
+                    aria-label="Дії"
+                    onClick={() => setMenuOpenId((current) => (current === n.id ? null : n.id))}
+                  >
+                    <MoreHorizontal size={17} />
+                  </button>
+                  {menuOpenId === n.id ? (
+                    <div className="settings-option-row-popover">
+                      <button type="button" onClick={() => { setMenuOpenId(null); setEdit(n); }}>
+                        Редагувати
+                      </button>
+                      <button type="button" className="danger" onClick={() => { setMenuOpenId(null); setDeleteTarget(n); }}>
+                        Видалити
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
@@ -7557,12 +7630,25 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
           error={error}
           onClose={() => setEdit(null)}
           onSave={save}
+          wide
         >
-          <label className="people-data-modal-field">
-            <span>Текст</span>
-            <textarea className="people-data-input" rows={5} value={edit.body_html ?? ''} onChange={(e) => setEdit({ ...edit, body_html: e.target.value })} autoFocus />
-          </label>
+          <div className="people-data-modal-field">
+            <RichTextEditor
+              value={edit.body_html ?? ''}
+              onChange={(html) => setEdit((cur) => ({ ...(cur ?? {}), body_html: html }))}
+              placeholder="Текст примітки…"
+              onUploadMedia={api.uploadAnnouncementMedia}
+            />
+          </div>
         </MoreModalShell>
+      ) : null}
+
+      {deleteTarget ? (
+        <NoteDeleteConfirmModal
+          busy={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDelete()}
+        />
       ) : null}
     </MoreSubPanel>
   );
