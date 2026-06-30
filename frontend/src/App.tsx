@@ -7690,16 +7690,26 @@ function ComboboxWithAdd({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const selected = options.find((o) => o.id === value) || null;
 
   useEffect(() => {
-    if (!open) return;
-    const onDoc = (event: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    if (!open || !inputRef.current) {
+      setPos(null);
+      return;
+    }
+    const rect = inputRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    const onDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (wrapRef.current?.contains(target) || popRef.current?.contains(target)) return;
+      setOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
   const q = query.trim().toLowerCase();
@@ -7724,6 +7734,7 @@ function ComboboxWithAdd({
   return (
     <div className="combobox" ref={wrapRef}>
       <input
+        ref={inputRef}
         className="people-data-input"
         value={display}
         placeholder={placeholder}
@@ -7731,26 +7742,33 @@ function ComboboxWithAdd({
         onFocus={() => { setOpen(true); setQuery(''); }}
         onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
       />
-      {open && !disabled ? (
-        <div className="combobox-pop">
-          {filtered.map((o) => (
-            <button
-              type="button"
-              key={o.id}
-              className={`combobox-opt${o.id === value ? ' active' : ''}`}
-              onClick={() => { onChange(o.id); setOpen(false); setQuery(''); }}
+      {open && pos && !disabled
+        ? createPortal(
+            <div
+              ref={popRef}
+              className="combobox-pop combobox-pop-portal"
+              style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width }}
             >
-              {o.name}
-            </button>
-          ))}
-          {q && !exact ? (
-            <button type="button" className="combobox-opt combobox-add" onClick={handleCreate} disabled={creating}>
-              <Plus size={14} /> Додати «{query.trim()}»
-            </button>
-          ) : null}
-          {!filtered.length && !q ? <div className="combobox-empty">Почніть вводити…</div> : null}
-        </div>
-      ) : null}
+              {filtered.map((o) => (
+                <button
+                  type="button"
+                  key={o.id}
+                  className={`combobox-opt${o.id === value ? ' active' : ''}`}
+                  onClick={() => { onChange(o.id); setOpen(false); setQuery(''); }}
+                >
+                  {o.name}
+                </button>
+              ))}
+              {q && !exact ? (
+                <button type="button" className="combobox-opt combobox-add" onClick={handleCreate} disabled={creating}>
+                  <Plus size={14} /> Додати «{query.trim()}»
+                </button>
+              ) : null}
+              {!filtered.length && !q ? <div className="combobox-empty">Почніть вводити…</div> : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -21085,6 +21103,7 @@ function SettingsSkillsView({ onBack }: { onBack: () => void }) {
   const [catDelete, setCatDelete] = useState<SkillCategory | null>(null);
   const [skillEdit, setSkillEdit] = useState<{ id?: number; category: number; name: string } | null>(null);
   const [skillDelete, setSkillDelete] = useState<{ id: number; name: string; category: number } | null>(null);
+  const [drawer, setDrawer] = useState<{ title: string; kind: string; skill?: number; category?: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -21219,6 +21238,15 @@ function SettingsSkillsView({ onBack }: { onBack: () => void }) {
                     <ChevronDown size={16} className={`skill-group-chevron${isOpen ? '' : ' collapsed'}`} />
                     <span className="skill-cat-name">{cat.name}</span>
                   </button>
+                  <button
+                    type="button"
+                    className="skill-count-badge"
+                    title="Люди з навичками цієї категорії"
+                    onClick={() => setDrawer({ title: cat.name, kind: 'Категорія', category: cat.id })}
+                  >
+                    <Users size={13} />
+                    {cat.employee_count}
+                  </button>
                   <div className="skill-cat-head-actions">
                     <button
                       type="button"
@@ -21241,6 +21269,15 @@ function SettingsSkillsView({ onBack }: { onBack: () => void }) {
                       {catSkills.map((sk) => (
                         <div className="skill-row" key={sk.id}>
                           <strong className="skill-row-name">{sk.name}</strong>
+                          <button
+                            type="button"
+                            className="skill-count-badge"
+                            title="Люди з цією навичкою"
+                            onClick={() => setDrawer({ title: sk.name, kind: 'Навичка', skill: sk.id })}
+                          >
+                            <Users size={13} />
+                            {sk.employee_count}
+                          </button>
                           <MoreCardMenu
                             open={openMenu === `skill-${sk.id}`}
                             onToggle={() => setOpenMenu((cur) => (cur === `skill-${sk.id}` ? null : `skill-${sk.id}`))}
@@ -21311,7 +21348,84 @@ function SettingsSkillsView({ onBack }: { onBack: () => void }) {
           onConfirm={() => void confirmSkillDelete()}
         />
       ) : null}
+      {drawer ? <SkillPeopleDrawer target={drawer} onClose={() => setDrawer(null)} /> : null}
     </main>
+  );
+}
+
+function SkillPeopleDrawer({
+  target,
+  onClose,
+}: {
+  target: { title: string; kind: string; skill?: number; category?: number };
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const [items, setItems] = useState<EmployeeSkill[]>([]);
+  const [state, setState] = useState<LoadState>('loading');
+
+  useEffect(() => {
+    setState('loading');
+    api
+      .skillEmployees(target.skill ? { skill: target.skill } : { category: target.category })
+      .then((r) => { setItems(r.items); setState('ok'); })
+      .catch(() => setState('error'));
+  }, [target.skill, target.category]);
+
+  // Для категорії людина може мати кілька навичок — показуємо її один раз
+  // з найвищим рівнем. Для навички записи й так унікальні по людині.
+  const LEVEL_RANK: Record<string, number> = { interested: 0, beginner: 1, experienced: 2, expert: 3 };
+  const displayItems = target.skill
+    ? items
+    : [...items.reduce((map, it) => {
+        const cur = map.get(it.employee);
+        if (!cur || (LEVEL_RANK[it.level] ?? 0) > (LEVEL_RANK[cur.level] ?? 0)) map.set(it.employee, it);
+        return map;
+      }, new Map<number, EmployeeSkill>()).values()];
+
+  return createPortal(
+    <div className="skill-drawer-layer" role="dialog" aria-modal="true" aria-label={target.title}>
+      <button type="button" className="skill-drawer-backdrop" aria-label="Закрити" onClick={onClose} />
+      <aside className="skill-drawer">
+        <header className="skill-drawer-head">
+          <div className="skill-drawer-title">
+            <span className="skill-drawer-kind">{target.kind}</span>
+            <strong>{target.title}</strong>
+          </div>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="skill-drawer-body">
+          {state === 'loading' ? (
+            <p className="people-data-empty">Завантаження…</p>
+          ) : displayItems.length ? (
+            displayItems.map((it) => (
+              <button
+                type="button"
+                className="skill-person-card"
+                key={it.id}
+                onClick={() => navigate(peopleEmployeePath(it.employee))}
+              >
+                <Avatar
+                  name={it.employee_detail?.full_name || '—'}
+                  src={employeeAvatarUrl(it.employee_detail)}
+                  accent={employeeAccentClasses[it.employee % employeeAccentClasses.length]}
+                />
+                <div className="skill-person-info">
+                  <strong>{it.employee_detail?.full_name || '—'}</strong>
+                  <span>{it.employee_detail?.position_name || ''}</span>
+                </div>
+                <span className={`skill-level-badge skill-level-${it.level}`}>{it.level_display}</span>
+              </button>
+            ))
+          ) : (
+            <p className="more-empty">Поки нікого з цією навичкою</p>
+          )}
+        </div>
+      </aside>
+    </div>,
+    document.body,
   );
 }
 

@@ -159,6 +159,7 @@ export type SkillCategory = {
   name: string;
   order: number;
   is_active: boolean;
+  employee_count: number;
 };
 
 export type SkillCatalogItem = {
@@ -167,6 +168,7 @@ export type SkillCatalogItem = {
   category_name: string;
   name: string;
   is_active: boolean;
+  employee_count: number;
 };
 
 export type EmployeeSkill = {
@@ -179,6 +181,7 @@ export type EmployeeSkill = {
   level: string;
   level_display: string;
   order: number;
+  employee_detail?: EmployeeListItem;
 };
 
 export type EmployeeNote = {

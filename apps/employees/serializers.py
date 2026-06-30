@@ -982,17 +982,26 @@ class EmployeeCertificateSerializer(serializers.ModelSerializer):
 
 
 class SkillCategorySerializer(serializers.ModelSerializer):
+    employee_count = serializers.SerializerMethodField()
+
     class Meta:
         model = SkillCategory
-        fields = ("id", "name", "order", "is_active")
+        fields = ("id", "name", "order", "is_active", "employee_count")
+
+    def get_employee_count(self, obj):
+        return EmployeeSkill.objects.filter(skill__category=obj).values("employee").distinct().count()
 
 
 class SkillSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True)
+    employee_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Skill
-        fields = ("id", "category", "category_name", "name", "is_active")
+        fields = ("id", "category", "category_name", "name", "is_active", "employee_count")
+
+    def get_employee_count(self, obj):
+        return obj.employee_entries.values("employee").distinct().count()
 
 
 class EmployeeSkillSerializer(serializers.ModelSerializer):
@@ -1000,10 +1009,14 @@ class EmployeeSkillSerializer(serializers.ModelSerializer):
     category = serializers.IntegerField(source="skill.category_id", read_only=True)
     category_name = serializers.CharField(source="skill.category.name", read_only=True)
     level_display = serializers.CharField(source="get_level_display", read_only=True)
+    employee_detail = EmployeeCompactSerializer(source="employee", read_only=True)
 
     class Meta:
         model = EmployeeSkill
-        fields = ("id", "employee", "skill", "skill_name", "category", "category_name", "level", "level_display", "order")
+        fields = (
+            "id", "employee", "skill", "skill_name", "category", "category_name",
+            "level", "level_display", "order", "employee_detail",
+        )
 
 
 class EmployeeNoteSerializer(serializers.ModelSerializer):

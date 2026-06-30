@@ -950,7 +950,17 @@ class EmployeeSkillViewSet(_EmployeeScopedViewSet):
     serializer_class = EmployeeSkillSerializer
 
     def get_queryset(self):
-        return super().get_queryset().select_related("skill", "skill__category")
+        qs = super().get_queryset().select_related(
+            "skill", "skill__category", "employee", "employee__position",
+            "employee__clinic", "employee__department", "employee__division",
+        )
+        skill = self.request.query_params.get("skill")
+        if skill:
+            qs = qs.filter(skill_id=skill)
+        category = self.request.query_params.get("category")
+        if category:
+            qs = qs.filter(skill__category_id=category)
+        return qs.order_by("employee__last_name", "employee__first_name")
 
 
 class EmployeeNoteViewSet(_EmployeeScopedViewSet):

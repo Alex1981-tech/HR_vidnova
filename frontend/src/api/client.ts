@@ -986,6 +986,10 @@ export const api = {
       ? request<EmployeeSkill>(`/api/employees/employee-skills/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
       : request<EmployeeSkill>('/api/employees/employee-skills/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteEmployeeSkill: (id: number) => request<void>(`/api/employees/employee-skills/${id}/`, { method: 'DELETE' }),
+  skillEmployees: (params: { skill?: number; category?: number }) =>
+    request<ApiList<EmployeeSkill> | EmployeeSkill[]>(
+      `/api/employees/employee-skills/${buildQuery({ ...params, page_size: 500 })}`,
+    ).then(normalizeList),
   employeeNotes: (employee: number) =>
     request<ApiList<EmployeeNote> | EmployeeNote[]>(
       `/api/employees/employee-notes/${buildQuery({ employee, page_size: 200 })}`,
