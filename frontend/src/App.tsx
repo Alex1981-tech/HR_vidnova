@@ -9423,6 +9423,12 @@ type CalendarHolidayMeta = {
   className: string;
   title?: string;
 };
+type CalendarMonthData = {
+  employees: EmployeeListItem[];
+  requests: LeaveRequest[];
+  holidays: HolidayOption[];
+  leaveTypes: LeaveType[];
+};
 type CalendarFilterKey = 'people' | 'position' | 'department' | 'division' | 'location' | 'team' | 'leaveType' | 'status';
 type CalendarFilterState = Record<CalendarFilterKey, string[]>;
 
@@ -9587,8 +9593,34 @@ function holidayTooltip(events: HolidayCalendarEvent[]): string {
     .join('\n');
 }
 
+function holidayDrawerStatus(event: HolidayCalendarEvent): { label: string; tone: CalendarHolidayTone } {
+  if (event.source === 'compensated' || event.className === 'compensated') return { label: 'День відпрацювання', tone: 'compensated' };
+  if (event.source === 'observed') return { label: 'Перенесений вихідний', tone: 'non-working' };
+  if (event.className === 'working') return { label: 'Робоче свято', tone: 'working' };
+  return { label: 'Неробоче свято', tone: 'non-working' };
+}
+
+function drawerBirthdayAge(employee: EmployeeListItem, dateValue: string): number | null {
+  if (!employee.birth_date || employee.birth_date.length < 10) return null;
+  const birthYear = Number(employee.birth_date.slice(0, 4));
+  const targetYear = Number(dateValue.slice(0, 4));
+  if (!Number.isFinite(birthYear) || !Number.isFinite(targetYear) || birthYear <= 0) return null;
+  const age = targetYear - birthYear;
+  return age > 0 ? age : null;
+}
+
+function drawerBirthdayLabel(employee: EmployeeListItem, dateValue: string): string {
+  const age = drawerBirthdayAge(employee, dateValue);
+  if (age && age % 5 === 0) return 'Ювілей';
+  return 'День народження';
+}
+
 function emptyHolidayMeta(): CalendarHolidayMeta {
   return { events: [], tone: '', className: '', title: undefined };
+}
+
+function calendarMonthKey(year: number, monthIndex: number, search: string): string {
+  return `${year}-${pad(monthIndex + 1)}::${search.trim()}`;
 }
 
 function CompanyCalendarView({ copy }: { copy: AppCopy }) {
@@ -9610,6 +9642,13 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
   const [showHolidays, setShowHolidays] = useState(true);
   const [showRequests, setShowRequests] = useState(true);
   const [drawer, setDrawer] = useState<{ kind: 'absence'; req: LeaveRequest } | { kind: 'day'; date: string } | null>(null);
+  const calendarDataCacheRef = useRef(new Map<string, CalendarMonthData>());
+  const calendarInFlightRef = useRef(new Map<string, Promise<CalendarMonthData>>());
+  const leaveTypesRef = useRef<LeaveType[]>([]);
+
+  useEffect(() => {
+    leaveTypesRef.current = leaveTypes;
+  }, [leaveTypes]);
 
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
@@ -9622,6 +9661,7 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   })();
   const dateStr = (day: number) => `${year}-${pad(monthIndex + 1)}-${pad(day)}`;
+  const currentCalendarKey = calendarMonthKey(year, monthIndex, search);
   const activeCalendarFilterCount = Object.values(calendarFilters).reduce((total, values) => total + values.length, 0);
 
   const calendarFilterOptions = useMemo<Record<CalendarFilterKey, PeopleFilterOption[]>>(() => {
@@ -9705,21 +9745,68 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     setCalendarFilters((current) => ({ ...current, [key]: [] }));
   }
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoadState('loading');
-    Promise.all([
-      api.employees({ q: search, status: 'active', page_size: 300 }),
-      api.leaveRequests({ date_from: monthFirst, date_to: monthLast, page_size: 1000 }),
-      api.holidays({ year, is_active: true, page_size: 1000 }),
-      leaveTypes.length ? Promise.resolve({ items: leaveTypes }) : api.leaveTypes({ page_size: 100 }),
+  const applyCalendarData = useCallback((data: CalendarMonthData) => {
+    setEmployees(data.employees);
+    setRequests(data.requests);
+    setHolidays(data.holidays);
+    setLeaveTypes(data.leaveTypes);
+  }, []);
+
+  const fetchCalendarData = useCallback((targetYear: number, targetMonthIndex: number, targetSearch: string) => {
+    const key = calendarMonthKey(targetYear, targetMonthIndex, targetSearch);
+    const cached = calendarDataCacheRef.current.get(key);
+    if (cached) return Promise.resolve(cached);
+    const inFlight = calendarInFlightRef.current.get(key);
+    if (inFlight) return inFlight;
+
+    const targetDays = new Date(targetYear, targetMonthIndex + 1, 0).getDate();
+    const targetFirst = `${targetYear}-${pad(targetMonthIndex + 1)}-01`;
+    const targetLast = `${targetYear}-${pad(targetMonthIndex + 1)}-${pad(targetDays)}`;
+    const knownLeaveTypes = leaveTypesRef.current;
+
+    const promise = Promise.all([
+      api.employees({ q: targetSearch, status: 'active', page_size: 300 }),
+      api.leaveRequests({ date_from: targetFirst, date_to: targetLast, page_size: 1000 }),
+      api.holidays({ year: targetYear, is_active: true, page_size: 1000 }),
+      knownLeaveTypes.length ? Promise.resolve({ items: knownLeaveTypes }) : api.leaveTypes({ page_size: 100 }),
     ])
       .then(([emp, reqs, hol, types]) => {
+        const data: CalendarMonthData = {
+          employees: emp.items,
+          requests: reqs.items,
+          holidays: hol.items,
+          leaveTypes: types.items,
+        };
+        calendarDataCacheRef.current.set(key, data);
+        return data;
+      })
+      .finally(() => {
+        calendarInFlightRef.current.delete(key);
+      });
+
+    calendarInFlightRef.current.set(key, promise);
+    return promise;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = calendarDataCacheRef.current.get(currentCalendarKey);
+    if (cached) {
+      applyCalendarData(cached);
+      setLoadState('ok');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setEmployees([]);
+    setRequests([]);
+    setHolidays([]);
+    setLoadState('loading');
+    fetchCalendarData(year, monthIndex, search)
+      .then((data) => {
         if (cancelled) return;
-        setEmployees(emp.items);
-        setRequests(reqs.items);
-        setHolidays(hol.items);
-        setLeaveTypes(types.items);
+        applyCalendarData(data);
         setLoadState('ok');
       })
       .catch(() => {
@@ -9729,8 +9816,15 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, year, monthIndex]);
+  }, [applyCalendarData, currentCalendarKey, fetchCalendarData, monthIndex, search, year]);
+
+  useEffect(() => {
+    if (loadState !== 'ok') return;
+    const prev = new Date(year, monthIndex - 1, 1);
+    const next = new Date(year, monthIndex + 1, 1);
+    fetchCalendarData(prev.getFullYear(), prev.getMonth(), search).catch(() => undefined);
+    fetchCalendarData(next.getFullYear(), next.getMonth(), search).catch(() => undefined);
+  }, [fetchCalendarData, loadState, monthIndex, search, year]);
 
   const requestFilteredRequests = useMemo(
     () =>
@@ -9745,7 +9839,6 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
   );
 
   const holidayEventsByDate = useMemo(() => buildCalendarHolidayEvents(holidays, year), [holidays, year]);
-  const holidayByDate = useMemo(() => new Set(Object.keys(holidayEventsByDate)), [holidayEventsByDate]);
   function holidayMeta(dateValue: string): CalendarHolidayMeta {
     const events = holidayEventsByDate[dateValue] ?? [];
     const tone = holidayToneForEvents(events);
@@ -9828,6 +9921,7 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
       : scheduleRows.length
         ? `Відображено 1 - ${scheduleRows.length} з ${scheduleTotal}`
         : `Відображено 0 - 0 з ${scheduleTotal}`;
+  const scheduleSkeletonRows = 12;
 
   return (
     <main className="workspace calendar-page">
@@ -10076,7 +10170,27 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
                 })}
               </div>
             );
-          }) : (
+          }) : loadState === 'loading' ? (
+            Array.from({ length: scheduleSkeletonRows }, (_, rowIndex) => (
+              <div
+                className="schedule-grid schedule-row schedule-row-loading"
+                key={`loading-${rowIndex}`}
+                style={{ gridTemplateColumns: scheduleGridTemplate, minWidth: scheduleGridMinWidth }}
+              >
+                <div className="schedule-person schedule-person-loading" style={{ gridColumn: 1, gridRow: 1 }}>
+                  <span className="schedule-avatar-placeholder" />
+                  <span className="schedule-text-placeholder" />
+                </div>
+                {days.map((day) => (
+                  <div
+                    className={`schedule-day${dateStr(day) === todayStr ? ' today' : ''}`}
+                    key={day}
+                    style={{ gridColumn: day + 1, gridRow: 1 }}
+                  />
+                ))}
+              </div>
+            ))
+          ) : (
             <div className="schedule-empty">
               <EmptyState
                 title={loadState === 'error' ? copyValue(copy.calendar.loadErrorTitle, 'Не вдалося завантажити календар') : copyValue(copy.calendar.notLoadedTitle, 'Немає даних')}
@@ -10131,7 +10245,7 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
           employees={employees}
           absencesOn={absencesOn}
           birthdaysOn={(d) => birthdaysOn(Number(d.slice(8, 10)))}
-          holidayByDate={holidayByDate}
+          holidayEventsByDate={holidayEventsByDate}
           typeColor={typeColor}
           leaveTypes={leaveTypes}
         />
@@ -10218,7 +10332,7 @@ function CalendarDrawer({
   employees,
   absencesOn,
   birthdaysOn,
-  holidayByDate,
+  holidayEventsByDate,
   typeColor,
   leaveTypes,
 }: {
@@ -10227,7 +10341,7 @@ function CalendarDrawer({
   employees: EmployeeListItem[];
   absencesOn: (date: string) => LeaveRequest[];
   birthdaysOn: (date: string) => EmployeeListItem[];
-  holidayByDate: Set<string>;
+  holidayEventsByDate: Record<string, HolidayCalendarEvent[]>;
   typeColor: (id: number) => string;
   leaveTypes: LeaveType[];
 }) {
@@ -10241,6 +10355,8 @@ function CalendarDrawer({
   const activeLeaveType = activeRequest ? leaveTypes.find((type) => type.id === activeRequest.leave_type) : undefined;
   const activeColor = activeRequest ? typeColor(activeRequest.leave_type) : 'var(--primary)';
   const approvalSteps = activeRequest?.approval_steps ?? [];
+  const dayHolidayEvents = drawer.kind === 'day' ? (holidayEventsByDate[drawer.date] ?? []) : [];
+  const dayBirthdays = drawer.kind === 'day' ? birthdaysOn(drawer.date) : [];
 
   return createPortal(
     <div className="cal-drawer-layer">
@@ -10315,7 +10431,25 @@ function CalendarDrawer({
             </header>
             <button type="button" className="modal-close cal-drawer-x" aria-label="Закрити" onClick={onClose}><X size={18} /></button>
             <div className="cal-drawer-body">
-              {holidayByDate.has(drawer.date) ? <div className="cal-drawer-holiday"><Star size={14} /> Державне свято</div> : null}
+              {dayHolidayEvents.length ? (
+                <section className="cal-drawer-holidays">
+                  <h4>Свята ({dayHolidayEvents.length})</h4>
+                  {dayHolidayEvents.map((event) => {
+                    const status = holidayDrawerStatus(event);
+                    const policyName = event.holiday?.policy_name;
+                    return (
+                      <div className={`cal-drawer-holiday-card ${status.tone}`} key={event.id}>
+                        <span className="cal-drawer-holiday-icon"><Star size={14} /></span>
+                        <div>
+                          <strong>{event.name}</strong>
+                          {policyName ? <small>{policyName}</small> : null}
+                        </div>
+                        <em>{status.label}</em>
+                      </div>
+                    );
+                  })}
+                </section>
+              ) : null}
               <h4>Відсутні ({absencesOn(drawer.date).length})</h4>
               {absencesOn(drawer.date).length ? absencesOn(drawer.date).map((req) => {
                 const emp = req.employee != null ? empById.get(req.employee) : undefined;
@@ -10329,16 +10463,25 @@ function CalendarDrawer({
                   </div>
                 );
               }) : <p className="more-empty">Усі на місці</p>}
-              <h4>Дні народження ({birthdaysOn(drawer.date).length})</h4>
-              {birthdaysOn(drawer.date).length ? birthdaysOn(drawer.date).map((emp) => (
-                <div className="cal-drawer-person" key={emp.id}>
-                  <Avatar name={emp.full_name} src={employeeAvatarUrl(emp)} />
-                  <div>
-                    <strong>{emp.full_name}</strong>
-                    <span>{emp.position_name || ''}</span>
-                  </div>
+              <h4>Дні народження ({dayBirthdays.length})</h4>
+              {dayBirthdays.length ? (
+                <div className="cal-drawer-birthday-list">
+                  {dayBirthdays.map((emp) => (
+                    <div className="cal-drawer-birthday-card" key={emp.id}>
+                      <Avatar name={emp.full_name} src={employeeAvatarUrl(emp)} />
+                      <div>
+                        <strong>{emp.full_name}</strong>
+                        <span>{emp.position_name || '—'}</span>
+                        {emp.birth_date ? <small>{formatDate(emp.birth_date)}</small> : null}
+                      </div>
+                      <span className="cal-drawer-birthday-badges">
+                        <em>{drawerBirthdayLabel(emp, drawer.date)}</em>
+                        {drawerBirthdayAge(emp, drawer.date) ? <b>{drawerBirthdayAge(emp, drawer.date)} років</b> : null}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )) : <p className="more-empty">Немає</p>}
+              ) : <p className="more-empty">Немає</p>}
             </div>
           </>
         )}
