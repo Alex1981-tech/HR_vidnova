@@ -184,6 +184,15 @@ def get_effective_roles(user) -> set[str]:
     return {grant.role_slug for grant in get_effective_grants(user)}
 
 
+def is_admin(user) -> bool:
+    """Admin — суперроль с полным доступом (не через матрицу). Включает superuser."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+    return ADMIN_ROLE_SLUG in {grant.role_slug for grant in _cached_grants(user)}
+
+
 def get_effective_permissions(user) -> dict[str, set[str]]:
     """code -> множество уровней. 'edit' подразумевает 'view'."""
     perms: dict[str, set[str]] = {}
@@ -248,7 +257,7 @@ def _org_scope_ids(scope, grant, subject_emp):
 def has_perm(user, code: str, level: str | None = None, employee=None) -> bool:
     if user is None or not getattr(user, "is_authenticated", False):
         return False
-    if getattr(user, "is_superuser", False):
+    if is_admin(user):
         return True
     perms = get_effective_permissions(user)
     levels = perms.get(code)
@@ -268,7 +277,7 @@ def employee_scope_queryset(user, code: str, base_qs=None):
     base = base_qs if base_qs is not None else Employee.objects.all()
     if user is None or not getattr(user, "is_authenticated", False):
         return base.none()
-    if getattr(user, "is_superuser", False):
+    if is_admin(user):
         return base
 
     subject = _subject_employee(user)
@@ -291,7 +300,7 @@ def field_access(user, employee, field) -> str:
         return "none"
     if not getattr(field, "is_enabled", True):
         return "none"
-    if getattr(user, "is_superuser", False):
+    if is_admin(user):
         return "edit"
 
     tab = field.group.tab

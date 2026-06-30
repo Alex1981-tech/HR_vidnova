@@ -103,6 +103,21 @@ class ScopeEngineTests(TestCase):
         qs = rbac.employee_scope_queryset(emp.user, "people.profile")
         self.assertEqual(qs.count(), 0)
 
+    def test_admin_role_full_bypass_without_grants(self):
+        # Admin — суперроль: полный доступ даже без permission grants.
+        admin_emp = self._emp("admin", user=True)
+        self._emp("x")
+        AccessRoleAssignment.objects.create(
+            role=AccessRole.objects.get(slug=ADMIN_ROLE_SLUG), user=admin_emp.user,
+            scope_type=AccessRoleAssignment.ScopeType.ALL_COMPANY,
+        )
+        self.assertTrue(rbac.is_admin(admin_emp.user))
+        self.assertTrue(rbac.has_perm(admin_emp.user, "people.profile"))  # право не выдано роли
+        self.assertEqual(
+            rbac.employee_scope_queryset(admin_emp.user, "documents.view").count(),
+            Employee.objects.count(),
+        )
+
     # ── roles / permissions ──────────────────────────────────────────────────
     def test_inactive_employee_no_all_people_role(self):
         emp = self._emp("inact", user=True, status=Employee.Status.DISMISSED)
