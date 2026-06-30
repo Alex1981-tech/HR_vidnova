@@ -17708,6 +17708,29 @@ textarea:focus-visible {
   box-shadow: var(--shadow); display: flex; flex-direction: column; padding: 4px;
 }
 .combobox-pop-portal { z-index: 1300; }
+.skill-multi { display: grid; gap: 8px; }
+.skill-multi-list {
+  display: grid; gap: 2px; max-height: 220px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 7px; padding: 4px;
+}
+.skill-multi-opt {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 5px;
+}
+.skill-multi-opt:hover { background: var(--panel-soft); }
+.skill-multi-check {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: var(--font-body); color: var(--text);
+}
+.skill-multi-check input { width: 16px; height: 16px; cursor: pointer; flex: 0 0 auto; accent-color: var(--primary); }
+.skill-multi-level {
+  flex: 0 0 auto; height: 30px; padding: 0 6px; font-size: var(--font-sm);
+  border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text);
+}
+.skill-multi-add {
+  display: flex; align-items: center; gap: 6px; border: 0; background: transparent;
+  padding: 7px 8px; border-radius: 5px; color: var(--primary-strong); font-size: var(--font-body); cursor: pointer; text-align: left;
+}
+.skill-multi-add:hover { background: var(--panel-soft); }
 .combobox-opt {
   text-align: left; border: 0; background: transparent; padding: 7px 8px; border-radius: 5px;
   font-size: var(--font-body); color: var(--text); cursor: pointer;
