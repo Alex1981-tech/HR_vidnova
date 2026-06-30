@@ -13,11 +13,18 @@
 ## Где мы сейчас
 
 Идёт **RBAC-эпик** по плану `docs/роли/hr-roles-implementation-plan.md` (9 этапов).
-- ✅ **Этап 1 — permission registry** сделан: `apps/access/permissions_registry.py`
-  (35 прав + field-code хелперы) + `apps/access/tests_permissions_registry.py` (12 тестов).
-  `apps.access` тесты: 43 OK.
-- **Дальше — Этап 2** (RBAC модели: AccessRole/Permission/Assignment/Audit + seed).
-  ⚠️ Seed системных ролей зависит от Этапа 0 (5 open questions Alex, ниже).
+- ✅ **Этап 1 — permission registry**: `apps/access/permissions_registry.py` (35 прав
+  + field-code хелперы) + 12 тестов.
+- ✅ **Этап 2 — RBAC модели + constraints + seed пустых ролей**:
+  `AccessRole/AccessRolePermission/AccessRoleAssignment/AccessRoleAuditEvent`
+  (migration `access/0002`), invariants (`rbac_invariants.py` last-admin),
+  admin, idempotent `seed_access_roles` (11 пустых system-ролей). 12 тестов.
+  Полный suite: 171 OK, 12 xfail.
+- **Дальше — Этап 3** (permission service + scope engine: get_effective_roles/
+  permissions, has_perm, employee_scope_queryset, field_access). НЕ зависит от
+  матрицы (вычисляет scope для system-ролей по ManagerAssignment/Team).
+  ⚠️ Наполнение прав ролей (permission grants) и Этап 4 enforcement зависят от
+  Этапа 0 (5 open questions Alex, ниже).
 
 Перед этим закрыт первый спринт hardening (P0/P2/P11/P4) и сделан P1 step-1
 (negative authz-тесты).
@@ -33,7 +40,8 @@
 | **P11** CI gates | `ci.yml` (тесты на Postgres) + тест-гейт деплоя в `build.yml`; `test_filter_q` skip вне Postgres | `f895fd6` |
 | **P4** HTML-санитайзер | nh3 allowlist на serializer-boundary (announcements/notes/knowledge); сохраняет галереи/`<video>`/YouTube-embed, режет script/on*/iframe/js:; 11 тестов; opt-in backfill-команда | `6991009` |
 | **P1 step-1** Negative authz | `apps/employees/tests_authz.py`: 12 `@expectedFailure` тестов (профиль/документы/заметки/контакты/иждивенцы/leave/attendance) | `87fa087` |
-| **RBAC Этап 1** Permission registry | `apps/access/permissions_registry.py` (35 прав, namespaces people/leave/time/knowledge/reports/settings/roles/integrations + field-code хелперы) + 12 тестов | (этот коммит) |
+| **RBAC Этап 1** Permission registry | `apps/access/permissions_registry.py` (35 прав, namespaces people/leave/time/knowledge/reports/settings/roles/integrations + field-code хелперы) + 12 тестов | `47e63d6` |
+| **RBAC Этап 2** Модели + seed | `apps/access/models.py` (AccessRole/Permission/Assignment/Audit), `rbac_invariants.py`, `role_seeds.py`, `seed_access_roles`, admin, migration `access/0002` + 12 тестов | (этот коммит) |
 | docs | Отметки done в плане refactoring; session-state.md | `7df0350`, `929f3d7` |
 
 Полный тест-сьют на Postgres: **148 OK, 12 expected failures**. CI зелёный.
@@ -111,4 +119,6 @@
   Alex подтвердил направление RBAC (`docs/роли/...`), выбрал старт с Этапа 1.
 - 2026-06-30: RBAC **Этап 1 (permission registry) готов** — registry + 12 тестов,
   apps.access 43 OK. Правило: периодически обновлять этот файл (просьба Alex).
-  Дальше Этап 2 (RBAC модели/seed), но seed блокируется 5 open questions Этапа 0.
+- 2026-06-30: RBAC **Этап 2 (модели + constraints + seed пустых ролей) готов** —
+  4 модели + migration 0002, last-admin инвариант, idempotent seed (11 ролей),
+  admin, 12 тестов. Полный suite 171 OK, 12 xfail. Дальше Этап 3 (scope engine).

@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import AuthAuditEvent, EmployeeTelegramLink, TelegramLoginCode
+from .models import (
+    AccessRole,
+    AccessRoleAssignment,
+    AccessRoleAuditEvent,
+    AccessRolePermission,
+    AuthAuditEvent,
+    EmployeeTelegramLink,
+    TelegramLoginCode,
+)
 
 
 def _mask_tail(value: object, visible: int = 4) -> str:
@@ -129,6 +137,63 @@ class AuthAuditEventAdmin(admin.ModelAdmin):
     @admin.display(description="Telegram chat")
     def masked_telegram_chat_id(self, obj: AuthAuditEvent) -> str:
         return _mask_tail(obj.telegram_chat_id)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+# ── RBAC admin (Этап 2) ──────────────────────────────────────────────────────
+
+
+class AccessRolePermissionInline(admin.TabularInline):
+    model = AccessRolePermission
+    extra = 0
+    fields = ("permission_code", "level")
+
+
+@admin.register(AccessRole)
+class AccessRoleAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "type", "is_active", "is_membership_computed", "order")
+    list_filter = ("type", "is_active", "is_membership_computed")
+    search_fields = ("slug", "name", "description")
+    inlines = (AccessRolePermissionInline,)
+    readonly_fields = ("created_at", "updated_at")
+
+    def get_readonly_fields(self, request, obj=None):
+        ro = list(super().get_readonly_fields(request, obj))
+        # slug system-роли менять нельзя (стабильный machine-id).
+        if obj is not None and obj.is_system:
+            ro.append("slug")
+        return tuple(ro)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        if obj is not None and obj.is_system:
+            return False
+        return super().has_delete_permission(request, obj)
+
+
+@admin.register(AccessRoleAssignment)
+class AccessRoleAssignmentAdmin(admin.ModelAdmin):
+    list_display = ("role", "user", "employee", "scope_type", "is_system_computed", "is_active")
+    list_filter = ("role", "scope_type", "is_active", "is_system_computed")
+    search_fields = ("user__username", "employee__last_name", "employee__first_name", "role__slug")
+    raw_id_fields = ("user", "employee")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(AccessRoleAuditEvent)
+class AccessRoleAuditEventAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "action", "role", "actor", "summary")
+    list_filter = ("action", "created_at")
+    search_fields = ("summary", "role__slug", "actor__username")
+    raw_id_fields = ("role", "actor")
+    readonly_fields = ("created_at", "action", "role", "actor", "summary", "payload")
 
     def has_add_permission(self, request) -> bool:
         return False
