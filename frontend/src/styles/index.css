@@ -12839,7 +12839,7 @@ button.org-graph-card-body {
   position: relative;
   min-height: 30px;
   display: grid;
-  grid-template-columns: 8px auto minmax(0, 1fr) auto;
+  grid-template-columns: 8px auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   border: 0;
@@ -12950,6 +12950,11 @@ button.org-graph-card-body {
   font-size: 10px;
   font-style: normal;
   white-space: nowrap;
+}
+
+.settings-holiday-event em.birthday-age {
+  background: #fff3f7;
+  color: #be185d;
 }
 
 .settings-holiday-birthday-tooltip {

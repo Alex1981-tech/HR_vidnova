@@ -9615,6 +9615,12 @@ function drawerBirthdayLabel(employee: EmployeeListItem, dateValue: string): str
   return 'День народження';
 }
 
+function drawerBirthdayAgeText(employee: EmployeeListItem, dateValue: string): string | null {
+  const age = drawerBirthdayAge(employee, dateValue);
+  if (!age) return null;
+  return `${age} ${ageUnitUk(age)}`;
+}
+
 function emptyHolidayMeta(): CalendarHolidayMeta {
   return { events: [], tone: '', className: '', title: undefined };
 }
@@ -10466,20 +10472,23 @@ function CalendarDrawer({
               <h4>Дні народження ({dayBirthdays.length})</h4>
               {dayBirthdays.length ? (
                 <div className="cal-drawer-birthday-list">
-                  {dayBirthdays.map((emp) => (
-                    <div className="cal-drawer-birthday-card" key={emp.id}>
-                      <Avatar name={emp.full_name} src={employeeAvatarUrl(emp)} />
-                      <div>
-                        <strong>{emp.full_name}</strong>
-                        <span>{emp.position_name || '—'}</span>
-                        {emp.birth_date ? <small>{formatDate(emp.birth_date)}</small> : null}
+                  {dayBirthdays.map((emp) => {
+                    const ageText = drawerBirthdayAgeText(emp, drawer.date);
+                    return (
+                      <div className="cal-drawer-birthday-card" key={emp.id}>
+                        <Avatar name={emp.full_name} src={employeeAvatarUrl(emp)} />
+                        <div>
+                          <strong>{emp.full_name}</strong>
+                          <span>{emp.position_name || '—'}</span>
+                          {emp.birth_date ? <small>{formatDate(emp.birth_date)}</small> : null}
+                        </div>
+                        <span className="cal-drawer-birthday-badges">
+                          <em>{drawerBirthdayLabel(emp, drawer.date)}</em>
+                          {ageText ? <b>{ageText}</b> : null}
+                        </span>
                       </div>
-                      <span className="cal-drawer-birthday-badges">
-                        <em>{drawerBirthdayLabel(emp, drawer.date)}</em>
-                        {drawerBirthdayAge(emp, drawer.date) ? <b>{drawerBirthdayAge(emp, drawer.date)} років</b> : null}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : <p className="more-empty">Немає</p>}
             </div>
@@ -18689,11 +18698,13 @@ function SettingsHolidayPoliciesView({ onBack, copy }: { onBack: () => void; cop
                     monthEventDates.flatMap(([isoDate, items]) =>
                       items.map((event) => {
                         const milestone = event.employee ? birthdayMilestoneForEmployee(event.employee, year) : null;
+                        const birthdayAge = event.employee ? employeeBirthdayAge(event.employee, year) : null;
                         return (
                           <button key={`${isoDate}-${event.id}`} type="button" className={`settings-holiday-event ${event.className}`} onClick={() => openCalendarEvent(event)}>
                             <span className="settings-holiday-event-dot" />
                             <strong>{formatHolidayDate(isoDate)}</strong>
                             <span className="settings-holiday-event-name">{event.name}</span>
+                            {event.kind === 'birthday' && birthdayAge !== null ? <em className="birthday-age">{birthdayAge} {ageUnitUk(birthdayAge)}</em> : null}
                             {milestone ? <BirthdayMilestoneMark milestone={milestone} /> : event.kind === 'birthday' ? null : event.source === 'observed' ? <em>перенесено</em> : event.source === 'compensated' ? <em>відпрацювання</em> : event.recurring ? <em>щороку</em> : null}
                             {event.kind === 'birthday' ? <BirthdayTooltip events={[event]} year={year} /> : null}
                           </button>
