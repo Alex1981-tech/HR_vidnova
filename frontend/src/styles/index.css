@@ -17699,6 +17699,9 @@ textarea:focus-visible {
 .people-data-modal-head strong { color: var(--text); font-size: var(--font-h2); }
 .people-data-modal-body { padding: 16px; }
 .people-data-modal-field { display: grid; gap: 6px; }
+.more-empty { margin: 0; padding: 2px 0; font-size: var(--font-sm); color: var(--muted); }
+.people-data-modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) { .people-data-modal-row { grid-template-columns: 1fr; } }
 .people-data-modal-field span { color: var(--text); font-size: 12px; font-weight: 600; }
 .required-star {
   color: var(--danger);

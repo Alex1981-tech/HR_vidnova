@@ -786,6 +786,42 @@ class Dependent(TimestampedModel):
         return f"{self.employee}: {self.name}"
 
 
+class EmployeeEducation(TimestampedModel):
+    """Освіта співробітника (вкладка «Більше», заповнюється вручну)."""
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="educations")
+    institution = models.CharField(max_length=300)
+    degree = models.CharField(max_length=300, blank=True)
+    start_year = models.PositiveIntegerField(null=True, blank=True)
+    end_year = models.PositiveIntegerField(null=True, blank=True)
+    gpa = models.CharField(max_length=40, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "-end_year", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.employee}: {self.institution}"
+
+
+class EmployeeCertificate(TimestampedModel):
+    """Ліцензія/сертифікат співробітника (вкладка «Більше», заповнюється вручну)."""
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="certificates")
+    name = models.CharField(max_length=300)
+    issuer = models.CharField(max_length=300, blank=True)
+    url = models.URLField(max_length=500, blank=True)
+    issued_on = models.DateField(null=True, blank=True)
+    expires_on = models.DateField(null=True, blank=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "-issued_on", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.employee}: {self.name}"
+
+
 class EmployeeNote(TimestampedModel):
     """Примітка про співробітника (вкладка «Більше»)."""
 

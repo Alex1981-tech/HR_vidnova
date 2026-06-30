@@ -133,6 +133,8 @@ import type {
   EmployeeDocumentFolder,
   EmergencyContact,
   Dependent,
+  EmployeeEducation,
+  EmployeeCertificate,
   EmployeeNote,
   GenderOption,
   HolidayOption,
@@ -6272,6 +6274,12 @@ function EmployeeAdminProfileView({
                 </>
               ) : null}
               {!tabGroups.length ? <ProfileTabPlaceholder tab={activeTab} /> : null}
+              {activeTab === 'personal' && employee ? (
+                <>
+                  <EmployeeEducationTab employeeId={employee.id} />
+                  <EmployeeCertificatesTab employeeId={employee.id} />
+                </>
+              ) : null}
             </>
           ) : activeTab === 'time' && employee ? (
             <EmployeeAttendanceDetailView employeeId={employee.id} copy={copy} embedded />
@@ -7540,6 +7548,369 @@ function DependentsTab({ employeeId }: { employeeId: number }) {
             <textarea className="people-data-input" rows={2} value={edit.description ?? ''} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
           </label>
         </MoreModalShell>
+      ) : null}
+    </MoreSubPanel>
+  );
+}
+
+function ProfileListDeleteModal({
+  title,
+  message,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="settings-option-modal-layer document-delete-layer" role="dialog" aria-modal="true" aria-label={title}>
+      <button type="button" className="settings-option-modal-backdrop" aria-label="Скасувати" onClick={onCancel} />
+      <section className="settings-option-modal settings-delete-modal">
+        <header>
+          <strong>{title}</strong>
+          <button type="button" className="modal-close" aria-label="Скасувати" onClick={onCancel}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="settings-delete-body">
+          <p>{message}</p>
+        </div>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onCancel} disabled={busy}>
+            Скасувати
+          </button>
+          <button type="button" className="danger-action" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Видалення…' : 'Видалити'}
+          </button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+// «...»-меню для карток self-fill блоків (Освіта/Сертифікати): закривається кліком поза ним.
+function useRowMenu() {
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  useEffect(() => {
+    if (menuOpenId == null) return;
+    const close = () => setMenuOpenId(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menuOpenId]);
+  return { menuOpenId, setMenuOpenId };
+}
+
+function MoreCardMenu({
+  open,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="more-card-actions">
+      <div className="settings-option-row-menu" onClick={(event) => event.stopPropagation()}>
+        <button type="button" className="settings-option-row-action" aria-label="Дії" onClick={onToggle}>
+          <MoreHorizontal size={17} />
+        </button>
+        {open ? (
+          <div className="settings-option-row-popover">
+            <button type="button" onClick={onEdit}>
+              Редагувати
+            </button>
+            <button type="button" className="danger" onClick={onDelete}>
+              Видалити
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function yearsLabel(start: number | null, end: number | null): string {
+  if (start && end) return `${start} – ${end}`;
+  if (start) return `з ${start}`;
+  if (end) return `до ${end}`;
+  return '';
+}
+
+function EmployeeEducationTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<EmployeeEducation[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<Partial<EmployeeEducation> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const { menuOpenId, setMenuOpenId } = useRowMenu();
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeEducation | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.educations(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  function numOrNull(value: string): number | null {
+    const n = Number.parseInt(value, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function save() {
+    if (!edit?.institution?.trim()) {
+      setError('Вкажіть навчальний заклад');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveEducation({ ...edit, employee: employeeId, institution: edit.institution.trim() });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteEducation(deleteTarget.id);
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      setError('Не вдалося видалити.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Освіта" onAdd={() => setEdit({})}>
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : items.length ? (
+        <div className="more-list">
+          {items.map((e) => (
+            <div className="more-card" key={e.id}>
+              <div className="more-card-body">
+                <strong>{e.institution}</strong>
+                <div className="more-card-fields">
+                  {e.degree ? <span>{e.degree}</span> : null}
+                  {yearsLabel(e.start_year, e.end_year) ? <span>{yearsLabel(e.start_year, e.end_year)}</span> : null}
+                  {e.gpa ? <span>Середній бал: {e.gpa}</span> : null}
+                </div>
+              </div>
+              <MoreCardMenu
+                open={menuOpenId === e.id}
+                onToggle={() => setMenuOpenId((cur) => (cur === e.id ? null : e.id))}
+                onEdit={() => { setMenuOpenId(null); setEdit(e); }}
+                onDelete={() => { setMenuOpenId(null); setDeleteTarget(e); }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="more-empty">Нічого не знайдено</p>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати освіту' : 'Додати освіту'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Навчальний заклад</span>
+            <input className="people-data-input" value={edit.institution ?? ''} onChange={(ev) => setEdit({ ...edit, institution: ev.target.value })} autoFocus />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Ступінь</span>
+            <input className="people-data-input" value={edit.degree ?? ''} onChange={(ev) => setEdit({ ...edit, degree: ev.target.value })} />
+          </label>
+          <div className="people-data-modal-row">
+            <label className="people-data-modal-field">
+              <span>Рік початку</span>
+              <input type="number" inputMode="numeric" className="people-data-input" value={edit.start_year ?? ''} onChange={(ev) => setEdit({ ...edit, start_year: numOrNull(ev.target.value) })} />
+            </label>
+            <label className="people-data-modal-field">
+              <span>Рік закінчення (або очікування)</span>
+              <input type="number" inputMode="numeric" className="people-data-input" value={edit.end_year ?? ''} onChange={(ev) => setEdit({ ...edit, end_year: numOrNull(ev.target.value) })} />
+            </label>
+          </div>
+          <label className="people-data-modal-field">
+            <span>Середній бал</span>
+            <input className="people-data-input" value={edit.gpa ?? ''} onChange={(ev) => setEdit({ ...edit, gpa: ev.target.value })} />
+          </label>
+        </MoreModalShell>
+      ) : null}
+
+      {deleteTarget ? (
+        <ProfileListDeleteModal
+          title="Видалити освіту?"
+          message="Запис про освіту буде видалено з профілю співробітника. Цю дію не можна скасувати."
+          busy={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
+    </MoreSubPanel>
+  );
+}
+
+function EmployeeCertificatesTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<EmployeeCertificate[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<Partial<EmployeeCertificate> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const { menuOpenId, setMenuOpenId } = useRowMenu();
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeCertificate | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.certificates(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  async function save() {
+    if (!edit?.name?.trim()) {
+      setError('Вкажіть назву');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveCertificate({ ...edit, employee: employeeId, name: edit.name.trim(), issued_on: edit.issued_on || null, expires_on: edit.expires_on || null });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteCertificate(deleteTarget.id);
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      setError('Не вдалося видалити.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Ліцензії та сертифікати" onAdd={() => setEdit({})}>
+      {state === 'loading' ? (
+        <div className="profile-tab-placeholder">
+          <p className="people-data-empty">Завантаження…</p>
+        </div>
+      ) : items.length ? (
+        <div className="more-list">
+          {items.map((c) => (
+            <div className="more-card" key={c.id}>
+              <div className="more-card-body">
+                <strong>{c.name}</strong>
+                <div className="more-card-fields">
+                  {c.issuer ? <span>Видав: {c.issuer}</span> : null}
+                  {c.issued_on ? <span>Видано: {formatDate(c.issued_on)}</span> : null}
+                  {c.expires_on ? <span>Дійсний до: {formatDate(c.expires_on)}</span> : null}
+                  {c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer">Посилання</a> : null}
+                </div>
+              </div>
+              <MoreCardMenu
+                open={menuOpenId === c.id}
+                onToggle={() => setMenuOpenId((cur) => (cur === c.id ? null : c.id))}
+                onEdit={() => { setMenuOpenId(null); setEdit(c); }}
+                onDelete={() => { setMenuOpenId(null); setDeleteTarget(c); }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="more-empty">Нічого не знайдено</p>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати сертифікат' : 'Додати сертифікат'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Ім’я</span>
+            <input className="people-data-input" value={edit.name ?? ''} onChange={(ev) => setEdit({ ...edit, name: ev.target.value })} autoFocus />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Видав</span>
+            <input className="people-data-input" value={edit.issuer ?? ''} onChange={(ev) => setEdit({ ...edit, issuer: ev.target.value })} />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Вебсайт / Посилання</span>
+            <input className="people-data-input" value={edit.url ?? ''} onChange={(ev) => setEdit({ ...edit, url: ev.target.value })} placeholder="https://" />
+          </label>
+          <div className="people-data-modal-row">
+            <label className="people-data-modal-field">
+              <span>Видано</span>
+              <input type="date" className="people-data-input" value={edit.issued_on ?? ''} onChange={(ev) => setEdit({ ...edit, issued_on: ev.target.value })} />
+            </label>
+            <label className="people-data-modal-field">
+              <span>Дійсний до</span>
+              <input type="date" className="people-data-input" value={edit.expires_on ?? ''} onChange={(ev) => setEdit({ ...edit, expires_on: ev.target.value })} />
+            </label>
+          </div>
+        </MoreModalShell>
+      ) : null}
+
+      {deleteTarget ? (
+        <ProfileListDeleteModal
+          title="Видалити сертифікат?"
+          message="Сертифікат буде видалено з профілю співробітника. Цю дію не можна скасувати."
+          busy={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDelete()}
+        />
       ) : null}
     </MoreSubPanel>
   );

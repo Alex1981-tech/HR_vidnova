@@ -132,6 +132,28 @@ export type Dependent = {
   order: number;
 };
 
+export type EmployeeEducation = {
+  id: number;
+  employee: number;
+  institution: string;
+  degree: string;
+  start_year: number | null;
+  end_year: number | null;
+  gpa: string;
+  order: number;
+};
+
+export type EmployeeCertificate = {
+  id: number;
+  employee: number;
+  name: string;
+  issuer: string;
+  url: string;
+  issued_on: string | null;
+  expires_on: string | null;
+  order: number;
+};
+
 export type EmployeeNote = {
   id: number;
   employee: number;

@@ -113,6 +113,8 @@ from .models import (
     EmployeeDocumentFolder,
     EmergencyContact,
     Dependent,
+    EmployeeEducation,
+    EmployeeCertificate,
     EmployeeNote,
     EmployeeFormTemplate,
     EmploymentType,
@@ -133,6 +135,8 @@ from .models import (
 from .serializers import (
     EmergencyContactSerializer,
     DependentSerializer,
+    EmployeeEducationSerializer,
+    EmployeeCertificateSerializer,
     EmployeeNoteSerializer,
     EmployeeFieldSerializer,
     EmployeeFieldGroupSerializer,
@@ -894,6 +898,16 @@ class EmergencyContactViewSet(_EmployeeScopedViewSet):
 class DependentViewSet(_EmployeeScopedViewSet):
     model = Dependent
     serializer_class = DependentSerializer
+
+
+class EmployeeEducationViewSet(_EmployeeScopedViewSet):
+    model = EmployeeEducation
+    serializer_class = EmployeeEducationSerializer
+
+
+class EmployeeCertificateViewSet(_EmployeeScopedViewSet):
+    model = EmployeeCertificate
+    serializer_class = EmployeeCertificateSerializer
 
 
 class EmployeeNoteViewSet(_EmployeeScopedViewSet):

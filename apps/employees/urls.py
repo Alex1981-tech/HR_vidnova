@@ -8,6 +8,8 @@ from .views import (
     DivisionViewSet,
     EmergencyContactViewSet,
     DependentViewSet,
+    EmployeeEducationViewSet,
+    EmployeeCertificateViewSet,
     EmployeeNoteViewSet,
     EmployeeDocumentFolderViewSet,
     EmployeeDocumentViewSet,
@@ -57,6 +59,8 @@ router.register("document-folders", EmployeeDocumentFolderViewSet, basename="emp
 router.register("documents", EmployeeDocumentViewSet, basename="employee-document")
 router.register("emergency-contacts", EmergencyContactViewSet, basename="emergency-contact")
 router.register("dependents", DependentViewSet, basename="dependent")
+router.register("educations", EmployeeEducationViewSet, basename="education")
+router.register("certificates", EmployeeCertificateViewSet, basename="certificate")
 router.register("employee-notes", EmployeeNoteViewSet, basename="employee-note")
 router.register("employees", EmployeeViewSet, basename="employee")
 router.register("manager-assignments", ManagerAssignmentViewSet, basename="manager-assignment")

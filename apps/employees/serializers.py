@@ -16,6 +16,8 @@ from .models import (
     EmployeeDocument,
     EmergencyContact,
     Dependent,
+    EmployeeEducation,
+    EmployeeCertificate,
     EmployeeNote,
     EmployeeDocumentFolder,
     EmployeeEmploymentStatus,
@@ -962,6 +964,18 @@ class DependentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Dependent
         fields = ("id", "employee", "name", "birth_date", "gender", "description", "order")
+
+
+class EmployeeEducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeEducation
+        fields = ("id", "employee", "institution", "degree", "start_year", "end_year", "gpa", "order")
+
+
+class EmployeeCertificateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeCertificate
+        fields = ("id", "employee", "name", "issuer", "url", "issued_on", "expires_on", "order")
 
 
 class EmployeeNoteSerializer(serializers.ModelSerializer):

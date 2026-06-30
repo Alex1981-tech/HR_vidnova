@@ -24,6 +24,8 @@ import type {
   EmployeeDocumentFolderPayload,
   EmergencyContact,
   Dependent,
+  EmployeeEducation,
+  EmployeeCertificate,
   EmployeeNote,
   EmployeeFormTemplate,
   EmployeeFormTemplateSummary,
@@ -934,6 +936,24 @@ export const api = {
       ? request<Dependent>(`/api/employees/dependents/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
       : request<Dependent>('/api/employees/dependents/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteDependent: (id: number) => request<void>(`/api/employees/dependents/${id}/`, { method: 'DELETE' }),
+  educations: (employee: number) =>
+    request<ApiList<EmployeeEducation> | EmployeeEducation[]>(
+      `/api/employees/educations/${buildQuery({ employee, page_size: 200 })}`,
+    ).then(normalizeList),
+  saveEducation: (payload: Partial<EmployeeEducation> & { employee: number }) =>
+    payload.id
+      ? request<EmployeeEducation>(`/api/employees/educations/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : request<EmployeeEducation>('/api/employees/educations/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteEducation: (id: number) => request<void>(`/api/employees/educations/${id}/`, { method: 'DELETE' }),
+  certificates: (employee: number) =>
+    request<ApiList<EmployeeCertificate> | EmployeeCertificate[]>(
+      `/api/employees/certificates/${buildQuery({ employee, page_size: 200 })}`,
+    ).then(normalizeList),
+  saveCertificate: (payload: Partial<EmployeeCertificate> & { employee: number }) =>
+    payload.id
+      ? request<EmployeeCertificate>(`/api/employees/certificates/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : request<EmployeeCertificate>('/api/employees/certificates/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteCertificate: (id: number) => request<void>(`/api/employees/certificates/${id}/`, { method: 'DELETE' }),
   employeeNotes: (employee: number) =>
     request<ApiList<EmployeeNote> | EmployeeNote[]>(
       `/api/employees/employee-notes/${buildQuery({ employee, page_size: 200 })}`,
