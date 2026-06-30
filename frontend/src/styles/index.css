@@ -4329,6 +4329,26 @@ button:disabled {
   width: min(100%, 1120px);
   margin: 0 auto;
 }
+/* Сторінка «Команди»: шапка+тулбар фіксовані, сітка команд прокручується */
+.people-page .teams-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.teams-workspace .team-toolbar { flex: 0 0 auto; }
+.teams-workspace .team-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.teams-workspace .team-grid::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.teams-workspace .people-card-empty { flex: 1 1 auto; }
 
 .team-card {
   min-height: 156px;

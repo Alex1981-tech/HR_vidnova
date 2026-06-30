@@ -7877,10 +7877,10 @@ function EmployeeSkillsTab({ employeeId }: { employeeId: number }) {
   const [deleting, setDeleting] = useState(false);
   const [categories, setCategories] = useState<SkillCategory[]>([]);
   const [skills, setSkills] = useState<SkillCatalogItem[]>([]);
-  const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
+  const [expandedCats, setExpandedCats] = useState<Set<number>>(new Set());
 
   function toggleCat(id: number) {
-    setCollapsedCats((cur) => {
+    setExpandedCats((cur) => {
       const next = new Set(cur);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -7975,7 +7975,7 @@ function EmployeeSkillsTab({ employeeId }: { employeeId: number }) {
       ) : items.length ? (
         <div className="skill-groups">
           {groupSkillsByCategory(items).map((group) => {
-            const isCollapsed = collapsedCats.has(group.id);
+            const isCollapsed = !expandedCats.has(group.id);
             return (
               <div className="skill-group" key={group.id}>
                 <button type="button" className="skill-group-head" onClick={() => toggleCat(group.id)}>
@@ -8098,6 +8098,24 @@ function EmployeeSkillsTab({ employeeId }: { employeeId: number }) {
   );
 }
 
+function YearSelect({ value, onChange }: { value: number | null; onChange: (year: number | null) => void }) {
+  const current = new Date().getFullYear();
+  const years: number[] = [];
+  for (let year = current + 8; year >= 1960; year -= 1) years.push(year);
+  return (
+    <select
+      className="people-data-input"
+      value={value ?? ''}
+      onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
+    >
+      <option value="">—</option>
+      {years.map((year) => (
+        <option key={year} value={year}>{year}</option>
+      ))}
+    </select>
+  );
+}
+
 function yearsLabel(start: number | null, end: number | null): string {
   if (start && end) return `${start} – ${end}`;
   if (start) return `з ${start}`;
@@ -8216,11 +8234,11 @@ function EmployeeEducationTab({ employeeId }: { employeeId: number }) {
           <div className="people-data-modal-row">
             <label className="people-data-modal-field">
               <span>Рік початку</span>
-              <input type="number" inputMode="numeric" className="people-data-input" value={edit.start_year ?? ''} onChange={(ev) => setEdit({ ...edit, start_year: numOrNull(ev.target.value) })} />
+              <YearSelect value={edit.start_year ?? null} onChange={(year) => setEdit({ ...edit, start_year: year })} />
             </label>
             <label className="people-data-modal-field">
               <span>Рік закінчення (або очікування)</span>
-              <input type="number" inputMode="numeric" className="people-data-input" value={edit.end_year ?? ''} onChange={(ev) => setEdit({ ...edit, end_year: numOrNull(ev.target.value) })} />
+              <YearSelect value={edit.end_year ?? null} onChange={(year) => setEdit({ ...edit, end_year: year })} />
             </label>
           </div>
           <label className="people-data-modal-field">
