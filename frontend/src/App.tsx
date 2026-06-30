@@ -9410,40 +9410,126 @@ function EmployeeConfigPanel({
   );
 }
 
+const CAL_MONTHS_GEN = ['січ', 'лют', 'бер', 'квіт', 'трав', 'черв', 'лип', 'серп', 'вер', 'жовт', 'лист', 'груд'];
+const CAL_WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+const CAL_APPROVED_STATUSES = ['approved', 'applied'];
+const CAL_PENDING_STATUSES = ['submitted'];
+
+function calWeekdayMon(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 6 : day - 1;
+}
+
 function CompanyCalendarView({ copy }: { copy: AppCopy }) {
-  const [scope, setScope] = useState('company');
-  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
-  const [totalEmployees, setTotalEmployees] = useState(0);
+  const [scope, setScope] = useState<'company' | 'mine'>('company');
+  const [view, setView] = useState<'schedule' | 'calendar'>('schedule');
+  const [month, setMonth] = useState<Date>(getInitialMonth());
   const [search, setSearch] = useState('');
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [holidays, setHolidays] = useState<HolidayOption[]>([]);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('idle');
-  const days = Array.from({ length: 31 }, (_, index) => index + 1);
-  const weekDays = copyArray(copy.calendar.weekdaysShort, ['Ср', 'Чт', 'Пт', 'Сб', 'Нд', 'Пн', 'Вт']);
-  const calendarPeople = useMemo(() => employees.map((employee, index) => employeeToPerson(employee, index, copy)), [copy, employees]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showEmptyRows, setShowEmptyRows] = useState(true);
+  const [showHolidays, setShowHolidays] = useState(true);
+  const [showRequests, setShowRequests] = useState(true);
+  const [drawer, setDrawer] = useState<{ kind: 'absence'; req: LeaveRequest } | { kind: 'day'; date: string } | null>(null);
+
+  const year = month.getFullYear();
+  const monthIndex = month.getMonth();
+  const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+  const days = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const monthFirst = `${year}-${pad(monthIndex + 1)}-01`;
+  const monthLast = `${year}-${pad(monthIndex + 1)}-${pad(daysInMonth)}`;
+  const todayStr = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  })();
+  const dateStr = (day: number) => `${year}-${pad(monthIndex + 1)}-${pad(day)}`;
 
   useEffect(() => {
     let cancelled = false;
-
-    async function loadPeople() {
-      setLoadState('loading');
-      try {
-        const result = await api.employees({ q: search, status: 'active', page_size: 200 });
+    setLoadState('loading');
+    Promise.all([
+      api.employees({ q: search, status: 'active', page_size: 300 }),
+      api.leaveRequests({ date_from: monthFirst, date_to: monthLast, page_size: 1000 }),
+      api.holidays({ page_size: 500 }),
+      leaveTypes.length ? Promise.resolve({ items: leaveTypes }) : api.leaveTypes({ page_size: 100 }),
+    ])
+      .then(([emp, reqs, hol, types]) => {
         if (cancelled) return;
-        setEmployees(result.items);
-        setTotalEmployees(result.total);
+        setEmployees(emp.items);
+        setRequests(reqs.items);
+        setHolidays(hol.items);
+        setLeaveTypes(types.items);
         setLoadState('ok');
-      } catch {
+      })
+      .catch(() => {
         if (cancelled) return;
-        setEmployees([]);
-        setTotalEmployees(0);
         setLoadState('error');
-      }
-    }
-
-    void loadPeople();
+      });
     return () => {
       cancelled = true;
     };
-  }, [search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, year, monthIndex]);
+
+  const visibleRequests = useMemo(
+    () =>
+      requests.filter((req) => {
+        if (CAL_APPROVED_STATUSES.includes(req.status)) return true;
+        if (showRequests && CAL_PENDING_STATUSES.includes(req.status)) return true;
+        return false;
+      }),
+    [requests, showRequests],
+  );
+
+  const reqByEmp = useMemo(() => {
+    const map = new Map<number, LeaveRequest[]>();
+    for (const req of visibleRequests) {
+      if (req.employee == null) continue;
+      const list = map.get(req.employee) ?? [];
+      list.push(req);
+      map.set(req.employee, list);
+    }
+    return map;
+  }, [visibleRequests]);
+
+  const holidaysInMonth = useMemo(
+    () => holidays.filter((h) => h.occurs_on >= monthFirst && h.occurs_on <= monthLast),
+    [holidays, monthFirst, monthLast],
+  );
+  const holidayByDate = useMemo(() => new Set(holidaysInMonth.map((h) => h.occurs_on)), [holidaysInMonth]);
+
+  function typeColor(id: number): string {
+    return leaveTypes.find((t) => t.id === id)?.color || '#a79cf7';
+  }
+  function bandFor(req: LeaveRequest) {
+    const start = req.date_from < monthFirst ? 1 : Number(req.date_from.slice(8, 10));
+    const end = req.date_to > monthLast ? daysInMonth : Number(req.date_to.slice(8, 10));
+    return { start, span: Math.max(1, end - start + 1) };
+  }
+  function isPending(req: LeaveRequest) {
+    return CAL_PENDING_STATUSES.includes(req.status);
+  }
+  function birthdaysOn(day: number) {
+    const mmdd = `${pad(monthIndex + 1)}-${pad(day)}`;
+    return employees.filter((e) => e.birth_date && e.birth_date.slice(5) === mmdd);
+  }
+  function absencesOn(dateValue: string) {
+    return visibleRequests.filter((req) => req.date_from <= dateValue && req.date_to >= dateValue);
+  }
+
+  const rows = scope === 'company' ? employees : employees; // «Мої» наразі показує ту саму компанію
+  const scheduleRows = showEmptyRows ? rows : rows.filter((e) => (reqByEmp.get(e.id)?.length ?? 0) > 0);
+
+  function shiftMonth(delta: number) {
+    setMonth((cur) => new Date(cur.getFullYear(), cur.getMonth() + delta, 1));
+  }
+
+  // ── Місячна сітка (вид «Календар») ──
+  const gridBlanks = calWeekdayMon(new Date(year, monthIndex, 1));
 
   return (
     <main className="workspace calendar-page">
@@ -9463,8 +9549,8 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
               { key: 'schedule', label: copyValue(copy.calendar.schedule, 'Графік') },
               { key: 'calendar', label: copyValue(copy.calendar.calendar, 'Календар') },
             ]}
-            active="schedule"
-            onChange={() => undefined}
+            active={view}
+            onChange={(key) => setView(key as 'schedule' | 'calendar')}
           />
         </div>
         <button type="button" className="primary-action">
@@ -9475,19 +9561,15 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
 
       <div className="calendar-toolbar">
         <div className="month-controls">
-          <button type="button" className="toolbar-icon">
+          <button type="button" className="toolbar-icon" onClick={() => shiftMonth(-1)} aria-label={copy.common.previous}>
             <ChevronLeft size={18} />
           </button>
-          <strong>{copyValue(copy.calendar.monthTitle, 'лип, 2026')}</strong>
-          <button type="button" className="toolbar-icon">
+          <strong>{`${CAL_MONTHS_GEN[monthIndex]}, ${year}`}</strong>
+          <button type="button" className="toolbar-icon" onClick={() => shiftMonth(1)} aria-label={copy.common.next}>
             <ChevronRight size={18} />
           </button>
-          <button type="button" className="toolbar-icon">
+          <button type="button" className="toolbar-icon" onClick={() => setMonth(getInitialMonth())} aria-label="Поточний місяць">
             <Clock3 size={18} />
-          </button>
-          <button type="button" className="toolbar-button">
-            <ListChecks size={18} />
-            {copy.common.addFilter}
           </button>
         </div>
         <div className="calendar-tools-right">
@@ -9495,62 +9577,228 @@ function CompanyCalendarView({ copy }: { copy: AppCopy }) {
             <Search size={18} />
             <input type="search" placeholder={copy.common.search} value={search} onChange={(event) => setSearch(event.target.value)} />
           </label>
-          <button type="button" className="toolbar-button">
-            <Settings size={18} />
-            {copy.common.viewSettings}
-            <span>2</span>
-            <ChevronDown size={15} />
-          </button>
+          <div className="calendar-settings">
+            <button type="button" className="toolbar-button" onClick={() => setSettingsOpen((v) => !v)}>
+              <Settings size={18} />
+              {copy.common.viewSettings}
+              <ChevronDown size={15} />
+            </button>
+            {settingsOpen ? (
+              <>
+                <button type="button" className="calendar-settings-backdrop" aria-label="Закрити" onClick={() => setSettingsOpen(false)} />
+                <div className="calendar-settings-pop">
+                  <label className="calendar-toggle">
+                    <input type="checkbox" checked={showEmptyRows} onChange={(e) => setShowEmptyRows(e.target.checked)} />
+                    <span>Показати порожні рядки</span>
+                  </label>
+                  <label className="calendar-toggle">
+                    <input type="checkbox" checked={showHolidays} onChange={(e) => setShowHolidays(e.target.checked)} />
+                    <span>Показати державні свята</span>
+                  </label>
+                  <label className="calendar-toggle">
+                    <input type="checkbox" checked={showRequests} onChange={(e) => setShowRequests(e.target.checked)} />
+                    <span>Показати запити на відсутність</span>
+                  </label>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <div className="calendar-count">
-        {loadState === 'loading' ? copy.common.loading : resultMetaLabel(calendarPeople.length, totalEmployees, copy)}
+        {loadState === 'loading' ? copy.common.loading : `Відображено ${scheduleRows.length} із ${employees.length}`}
       </div>
-      <div className="schedule-shell">
-        <div className="schedule-grid header-row">
-          <div className="employee-head" />
-          {days.map((day) => (
-            <div className="day-head" key={day}>
-              <strong>{day}</strong>
-              <span>{weekDays[(day - 1) % 7]}</span>
+
+      {view === 'schedule' ? (
+        <div className="schedule-shell">
+          <div className="schedule-grid header-row" style={{ gridTemplateColumns: `220px repeat(${daysInMonth}, minmax(30px, 1fr))` }}>
+            <div className="employee-head" />
+            {days.map((day) => {
+              const isToday = dateStr(day) === todayStr;
+              const isHoliday = showHolidays && holidayByDate.has(dateStr(day));
+              return (
+                <div className={`day-head${isToday ? ' today' : ''}${isHoliday ? ' holiday' : ''}`} key={day}>
+                  <strong>{day}</strong>
+                  <span>{CAL_WEEKDAYS[calWeekdayMon(new Date(year, monthIndex, day))]}</span>
+                </div>
+              );
+            })}
+          </div>
+          {scheduleRows.length ? scheduleRows.map((employee) => {
+            const person = employeeToPerson(employee, employee.id, copy);
+            const empReqs = reqByEmp.get(employee.id) ?? [];
+            return (
+              <div className="schedule-grid schedule-row" key={employee.id} style={{ gridTemplateColumns: `220px repeat(${daysInMonth}, minmax(30px, 1fr))` }}>
+                <div className="schedule-person" style={{ gridColumn: 1, gridRow: 1 }}>
+                  <Avatar name={person.fullName} src={employeeAvatarUrl(employee)} accent={person.accent} size="sm" />
+                  <div>
+                    <strong>{person.fullName}</strong>
+                    <span>{person.role}</span>
+                  </div>
+                </div>
+                {days.map((day) => {
+                  const isHoliday = showHolidays && holidayByDate.has(dateStr(day));
+                  return <div className={`schedule-day${isHoliday ? ' holiday' : ''}`} key={day} style={{ gridColumn: day + 1, gridRow: 1 }} />;
+                })}
+                {empReqs.map((req) => {
+                  const band = bandFor(req);
+                  const color = typeColor(req.leave_type);
+                  return (
+                    <button
+                      type="button"
+                      className={`leave-band${isPending(req) ? ' pending' : ''}`}
+                      key={req.id}
+                      style={{ gridColumn: `${band.start + 1} / span ${band.span}`, ['--band' as string]: color }}
+                      onClick={() => setDrawer({ kind: 'absence', req })}
+                    >
+                      {req.leave_type_name}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          }) : (
+            <div className="schedule-empty">
+              <EmptyState
+                title={loadState === 'error' ? copyValue(copy.calendar.loadErrorTitle, 'Не вдалося завантажити календар') : copyValue(copy.calendar.notLoadedTitle, 'Немає даних')}
+                text={loadState === 'error' ? copy.common.backendRetry : 'За вибраним пошуком немає рядків.'}
+              />
             </div>
+          )}
+        </div>
+      ) : (
+        <div className="cal-grid">
+          {CAL_WEEKDAYS.map((wd) => (
+            <div className="cal-weekday" key={wd}>{wd}</div>
+          ))}
+          {Array.from({ length: gridBlanks }, (_, i) => (
+            <div className="cal-cell muted" key={`blank-${i}`} />
+          ))}
+          {days.map((day) => {
+            const ds = dateStr(day);
+            const absent = absencesOn(ds);
+            const bdays = birthdaysOn(day);
+            const isHoliday = showHolidays && holidayByDate.has(ds);
+            return (
+              <button type="button" className={`cal-cell${ds === todayStr ? ' today' : ''}`} key={day} onClick={() => setDrawer({ kind: 'day', date: ds })}>
+                <span className="cal-day-num">{day} {CAL_MONTHS_GEN[monthIndex]}.</span>
+                <div className="cal-day-tags">
+                  {absent.length ? <span className="cal-tag absent"><CalendarCheck size={12} /> {absent.length}</span> : null}
+                  {bdays.length ? <span className="cal-tag bday"><Star size={12} /> {bdays.length}</span> : null}
+                  {isHoliday ? <span className="cal-tag holiday">Свято</span> : null}
+                </div>
+              </button>
+            );
+          })}
+          {Array.from({ length: (7 - ((gridBlanks + daysInMonth) % 7)) % 7 }, (_, i) => (
+            <div className="cal-cell muted" key={`tail-${i}`} />
           ))}
         </div>
-        {calendarPeople.length ? calendarPeople.map((person) => {
-          const band = leaveBands.find((item) => item.personId === person.id);
-          return (
-            <div className="schedule-grid schedule-row" key={person.id}>
-              <div className="schedule-person">
-                <Avatar name={person.fullName} accent={person.accent} size="sm" />
+      )}
+
+      {drawer ? (
+        <CalendarDrawer
+          drawer={drawer}
+          onClose={() => setDrawer(null)}
+          employees={employees}
+          absencesOn={absencesOn}
+          birthdaysOn={(d) => birthdaysOn(Number(d.slice(8, 10)))}
+          holidayByDate={holidayByDate}
+          typeColor={typeColor}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+function CalendarDrawer({
+  drawer,
+  onClose,
+  employees,
+  absencesOn,
+  birthdaysOn,
+  holidayByDate,
+  typeColor,
+}: {
+  drawer: { kind: 'absence'; req: LeaveRequest } | { kind: 'day'; date: string };
+  onClose: () => void;
+  employees: EmployeeListItem[];
+  absencesOn: (date: string) => LeaveRequest[];
+  birthdaysOn: (date: string) => EmployeeListItem[];
+  holidayByDate: Set<string>;
+  typeColor: (id: number) => string;
+}) {
+  const empById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="cal-drawer-layer">
+      <button type="button" className="cal-drawer-backdrop" aria-label="Закрити" onClick={onClose} />
+      <aside className="cal-drawer">
+        {drawer.kind === 'absence' ? (
+          <>
+            <header className="cal-drawer-head">
+              <strong>{drawer.req.leave_type_name}</strong>
+              <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}><X size={18} /></button>
+            </header>
+            <div className="cal-drawer-body">
+              <div className="cal-drawer-person">
+                <Avatar name={drawer.req.employee_name || '—'} src={drawer.req.employee_avatar_local_url || drawer.req.employee_avatar_url || ''} />
                 <div>
-                  <strong>{person.fullName}</strong>
-                  <span>{person.role}</span>
+                  <strong>{drawer.req.employee_name || '—'}</strong>
+                  <span>{drawer.req.employee_position_name || ''}</span>
                 </div>
               </div>
-              {days.map((day) => (
-                <div className="schedule-day" key={day}>
-                  {[15, 27].includes(day) ? <Star size={14} /> : null}
-                </div>
-              ))}
-              {band ? (
-                <div className="leave-band" style={{ gridColumn: `${band.start + 1} / span ${band.span}` }}>
-                  <CalendarCheck size={15} />
-                  {band.label}
-                </div>
-              ) : null}
+              <div className="cal-drawer-range">
+                <CalendarCheck size={15} style={{ color: typeColor(drawer.req.leave_type) }} />
+                {formatDate(drawer.req.date_from)} – {formatDate(drawer.req.date_to)}
+              </div>
+              <div className="cal-drawer-status"><StatusPill status={drawer.req.status} /></div>
+              {drawer.req.reason ? <p className="cal-drawer-reason">{drawer.req.reason}</p> : null}
             </div>
-          );
-        }) : (
-          <div className="schedule-empty">
-            <EmptyState
-              title={loadState === 'error' ? copyValue(copy.calendar.loadErrorTitle, 'Не вдалося завантажити календар') : copyValue(copy.calendar.notLoadedTitle, 'Календар не завантажений')}
-              text={loadState === 'error' ? copy.common.backendRetry : copyValue(copy.calendar.emptyText, 'За вибраним пошуком немає активних співробітників.')}
-            />
-          </div>
+          </>
+        ) : (
+          <>
+            <header className="cal-drawer-head">
+              <span className="cal-drawer-kind">{formatDate(drawer.date)}</span>
+            </header>
+            <button type="button" className="modal-close cal-drawer-x" aria-label="Закрити" onClick={onClose}><X size={18} /></button>
+            <div className="cal-drawer-body">
+              {holidayByDate.has(drawer.date) ? <div className="cal-drawer-holiday"><Star size={14} /> Державне свято</div> : null}
+              <h4>Відсутні ({absencesOn(drawer.date).length})</h4>
+              {absencesOn(drawer.date).length ? absencesOn(drawer.date).map((req) => {
+                const emp = req.employee != null ? empById.get(req.employee) : undefined;
+                return (
+                  <div className="cal-drawer-person" key={req.id}>
+                    <Avatar name={req.employee_name || '—'} src={emp ? employeeAvatarUrl(emp) : (req.employee_avatar_local_url || req.employee_avatar_url || '')} />
+                    <div>
+                      <strong>{req.employee_name || '—'}</strong>
+                      <span>{req.leave_type_name} · до {formatDate(req.date_to)}</span>
+                    </div>
+                  </div>
+                );
+              }) : <p className="more-empty">Усі на місці</p>}
+              <h4>Дні народження ({birthdaysOn(drawer.date).length})</h4>
+              {birthdaysOn(drawer.date).length ? birthdaysOn(drawer.date).map((emp) => (
+                <div className="cal-drawer-person" key={emp.id}>
+                  <Avatar name={emp.full_name} src={employeeAvatarUrl(emp)} />
+                  <div>
+                    <strong>{emp.full_name}</strong>
+                    <span>{emp.position_name || ''}</span>
+                  </div>
+                </div>
+              )) : <p className="more-empty">Немає</p>}
+            </div>
+          </>
         )}
-      </div>
-    </main>
+      </aside>
+    </div>,
+    document.body,
   );
 }
 
