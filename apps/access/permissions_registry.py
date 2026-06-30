@@ -207,8 +207,13 @@ PERMISSIONS: tuple[Permission, ...] = (
     # ═══════════════ КАТЕГОРИЯ «Звіти» (reports) ═══════════════
     _p("reports.custom", "reports", Group.REPORTS, "reports", "custom",
        "Створювати настроювані звіти", "Будувати настроювані звіти.", RiskLevel.MEDIUM),
-    _p("reports.company", "reports", Group.REPORTS, "reports", "company",
-       "Звіти компанії", "Доступ до звітів компанії.", RiskLevel.HIGH, _V),
+    # «Звіти компанії» — мультиселект конкретних звітів (див. MULTISELECTS).
+    _p("reports.company.headcount", "reports", Group.REPORTS, "reports", "company_headcount",
+       "Чисельність", "Звіт про чисельність персоналу.", RiskLevel.MEDIUM),
+    _p("reports.company.turnover", "reports", Group.REPORTS, "reports", "company_turnover",
+       "Плинність", "Звіт про плинність кадрів.", RiskLevel.MEDIUM),
+    _p("reports.company.tenure", "reports", Group.REPORTS, "reports", "company_tenure",
+       "Стаж", "Звіт про стаж співробітників.", RiskLevel.MEDIUM),
 
     # ═══════════════ КАТЕГОРИЯ «Налаштування» (settings) ═══════════════
     _p("settings.general", "settings", Group.SETTINGS, "settings", "general",
@@ -223,6 +228,15 @@ PERMISSIONS: tuple[Permission, ...] = (
        "Керування інтеграціями", "Керувати API-ключами, вебхуками та імпортами.", RiskLevel.CRITICAL),
     _p("audit.view", "audit", Group.SETTINGS, "settings", "view",
        "Перегляд журналу аудиту", "Читати журнали аудиту/безпеки.", RiskLevel.HIGH, _V),
+    # «Розділи налаштувань» — мультиселект конкретних розділів (див. MULTISELECTS).
+    _p("settings.section.people_data", "settings", Group.SETTINGS, "settings", "section_people_data",
+       "Дані про людей", "Доступ до налаштувань полів профілю.", RiskLevel.MEDIUM),
+    _p("settings.section.documents", "settings", Group.SETTINGS, "settings", "section_documents",
+       "Папки документів", "Доступ до налаштувань папок документів.", RiskLevel.MEDIUM),
+    _p("settings.section.forms", "settings", Group.SETTINGS, "settings", "section_forms",
+       "Форми", "Доступ до налаштувань форм.", RiskLevel.MEDIUM),
+    _p("settings.section.leave_types", "settings", Group.SETTINGS, "settings", "section_leave_types",
+       "Типи відсутностей", "Доступ до налаштувань політик відсутностей.", RiskLevel.MEDIUM),
 
     # ═══════════════ ГРУППА «self» (вкладка «Люди» / self-service, фаза 2) ═══════
     _p("people.profile", "people", Group.SELF, "personal", "profile",
@@ -298,6 +312,35 @@ SECTION_LABELS: dict[str, str] = {
 }
 
 
+# Мультиселекти (опції — звичайні atomic-права, але рендеряться одним дропдауном).
+MULTISELECTS: tuple[dict, ...] = (
+    {
+        "key": "company_reports",
+        "category": "reports",
+        "section": "reports",
+        "label": "Звіти компанії",
+        "description": "Виберіть звіти, до яких надати доступ цій ролі.",
+        "option_codes": ("reports.company.headcount", "reports.company.turnover", "reports.company.tenure"),
+    },
+    {
+        "key": "settings_sections",
+        "category": "settings",
+        "section": "settings",
+        "label": "Розділи налаштувань",
+        "description": "Надати доступ до певних розділів налаштувань.",
+        "option_codes": (
+            "settings.section.people_data",
+            "settings.section.documents",
+            "settings.section.forms",
+            "settings.section.leave_types",
+        ),
+    },
+)
+
+# Коди, що належать мультиселектам (не рендеряться окремими рядками).
+_MULTISELECT_OPTION_CODES = frozenset(c for ms in MULTISELECTS for c in ms["option_codes"])
+
+
 def get_permission(code: str) -> Permission | None:
     return PERMISSIONS_BY_CODE.get(code)
 
@@ -330,19 +373,36 @@ def company_catalog() -> list[dict]:
             continue
         by_group_section.setdefault(perm.group.value, {}).setdefault(perm.section, []).append(perm)
 
+    def multiselects_for(cat, sec):
+        out = []
+        for ms in MULTISELECTS:
+            if ms["category"] != cat or ms["section"] != sec:
+                continue
+            options = [
+                {"code": code, "label": PERMISSIONS_BY_CODE[code].label}
+                for code in ms["option_codes"]
+                if code in PERMISSIONS_BY_CODE
+            ]
+            out.append(
+                {"key": ms["key"], "label": ms["label"], "description": ms["description"], "options": options}
+            )
+        return out
+
     categories: list[dict] = []
     for cat in COMPANY_CATEGORY_ORDER:
         sections_map = by_group_section.get(cat, {})
         sections: list[dict] = []
         for sec in SECTION_ORDER.get(cat, tuple(sections_map.keys())):
-            perms = sections_map.get(sec, [])
-            if not perms:
+            perms = [p for p in sections_map.get(sec, []) if p.code not in _MULTISELECT_OPTION_CODES]
+            multiselects = multiselects_for(cat, sec)
+            if not perms and not multiselects:
                 continue
             sections.append(
                 {
                     "key": sec,
                     "label": SECTION_LABELS.get(sec, ""),
                     "permissions": [_perm_dict(p) for p in perms],
+                    "multiselects": multiselects,
                 }
             )
         if sections:

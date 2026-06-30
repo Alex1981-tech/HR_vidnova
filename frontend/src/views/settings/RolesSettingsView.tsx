@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronLeft,
@@ -18,6 +18,7 @@ import {
   type MemberAction,
   type PermissionCatalog,
   type PermissionItem,
+  type PermissionMultiselect,
   type PickEmployee,
   type Role,
   type RoleMember,
@@ -552,6 +553,17 @@ function RoleEditor({
   const [activeCat, setActiveCat] = useState(() => catalog.categories[0]?.key ?? '');
   const [fieldPayload, setFieldPayload] = useState<FieldAccessPayload | null>(null);
   const [fieldLevels, setFieldLevels] = useState<Map<string, string>>(new Map());
+  const sig = (m: Map<string, string>) =>
+    [...m.entries()].map(([k, v]) => `${k}=${v}`).sort().join('|');
+  const initialFieldSig = useRef('');
+  const initialGrantSig = useRef(sig(new Map(role.permissions.map((p) => [p.permission_code, p.level]))));
+  const dirty =
+    sig(grants) !== initialGrantSig.current || sig(fieldLevels) !== initialFieldSig.current;
+
+  const guardedBack = () => {
+    if (dirty && !window.confirm('Є незбережені зміни. Вийти без збереження?')) return;
+    onBack();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -564,6 +576,7 @@ function RoleEditor({
         for (const t of payload.tabs)
           for (const g of t.groups)
             for (const row of [...g.fields, ...g.tables]) if (row.level) levels.set(row.code, row.level);
+        initialFieldSig.current = sig(levels);
         setFieldLevels(levels);
       })
       .catch(() => {
@@ -611,6 +624,8 @@ function RoleEditor({
         await accessApi.saveFieldAccess(role.id, fieldItems);
       }
       onSaved(updated);
+      initialGrantSig.current = sig(grants);
+      initialFieldSig.current = sig(fieldLevels);
       setSavedAt(true);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
@@ -626,7 +641,7 @@ function RoleEditor({
     <main className="settings-page settings-option-page role-editor-page">
       <header className="settings-option-header">
         <div>
-          <button type="button" className="settings-back-link" onClick={onBack}>
+          <button type="button" className="settings-back-link" onClick={guardedBack}>
             <ChevronLeft size={17} /> Назад
           </button>
           <h1>{role.name}</h1>
@@ -678,17 +693,27 @@ function RoleEditor({
                 {category?.sections.map((sec) => (
                   <section key={sec.key} className="role-perm-section">
                     {sec.label ? <h3 className="role-perm-section-title">{sec.label}</h3> : null}
-                    <div className="roles-perm-rows">
-                      {sec.permissions.map((perm) => (
-                        <PermRow
-                          key={perm.code}
-                          perm={perm}
-                          current={grants.has(perm.code) ? grants.get(perm.code)! : null}
-                          present={grants.has(perm.code)}
-                          onSet={setLevel}
-                        />
-                      ))}
-                    </div>
+                    {sec.permissions.length ? (
+                      <div className="roles-perm-rows">
+                        {sec.permissions.map((perm) => (
+                          <PermRow
+                            key={perm.code}
+                            perm={perm}
+                            current={grants.has(perm.code) ? grants.get(perm.code)! : null}
+                            present={grants.has(perm.code)}
+                            onSet={setLevel}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {sec.multiselects.map((ms) => (
+                      <CompanyMultiselect
+                        key={ms.key}
+                        ms={ms}
+                        isOn={(code) => grants.has(code)}
+                        onToggle={(code, on) => setLevel(code, on ? '' : null)}
+                      />
+                    ))}
                   </section>
                 ))}
               </div>
@@ -700,7 +725,7 @@ function RoleEditor({
       </div>
 
       <footer className="role-editor-footer">
-        <button type="button" className="secondary-action" onClick={onBack}>
+        <button type="button" className="secondary-action" onClick={guardedBack}>
           Скасувати
         </button>
         <button type="button" className="primary-action" onClick={save} disabled={busy}>
@@ -757,6 +782,58 @@ function PermRow({
           />
         </label>
       )}
+    </div>
+  );
+}
+
+function CompanyMultiselect({
+  ms,
+  isOn,
+  onToggle,
+}: {
+  ms: PermissionMultiselect;
+  isOn: (code: string) => boolean;
+  onToggle: (code: string, on: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const selected = ms.options.filter((o) => isOn(o.code));
+  const summary = selected.length ? selected.map((o) => o.label).join(', ') : 'Нічого не обрано';
+
+  return (
+    <div className="role-multiselect">
+      <div className="roles-perm-info">
+        <span className="roles-perm-label">{ms.label}</span>
+        {ms.description ? <span className="roles-perm-desc">{ms.description}</span> : null}
+      </div>
+      <div className="roles-picker-field" ref={ref}>
+        <button type="button" className="roles-picker-control" onClick={() => setOpen((v) => !v)}>
+          <span className={`roles-picker-summary ${selected.length ? '' : 'is-empty'}`}>{summary}</span>
+          <ChevronDown size={16} />
+        </button>
+        {open ? (
+          <div className="roles-picker-panel">
+            <div className="roles-picker-list">
+              {ms.options.map((o) => (
+                <label key={o.code} className="roles-picker-row">
+                  <input type="checkbox" checked={isOn(o.code)} onChange={(e) => onToggle(o.code, e.target.checked)} />
+                  <span className="roles-picker-name">{o.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

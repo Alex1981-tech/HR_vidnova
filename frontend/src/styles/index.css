@@ -21460,3 +21460,7 @@ textarea:focus-visible {
 .role-acc-chevron.is-open { transform: rotate(180deg); }
 .role-acc-body { padding: 0 var(--space-3) var(--space-3); border-top: 1px solid var(--border-subtle); }
 .role-acc-subtitle { font-size: var(--font-sm); font-weight: 600; color: var(--text-muted); margin: var(--space-3) 0 var(--space-1); }
+
+/* Мультиселект (Звіти компанії / Розділи налаштувань) */
+.role-multiselect { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) 0; }
+.role-multiselect .roles-picker-field { max-width: none; }

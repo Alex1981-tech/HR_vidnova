@@ -27,7 +27,18 @@ export type PermissionItem = {
   risk: 'low' | 'medium' | 'high' | 'critical';
 };
 
-export type PermissionSection = { key: string; label: string; permissions: PermissionItem[] };
+export type PermissionMultiselect = {
+  key: string;
+  label: string;
+  description: string;
+  options: { code: string; label: string }[];
+};
+export type PermissionSection = {
+  key: string;
+  label: string;
+  permissions: PermissionItem[];
+  multiselects: PermissionMultiselect[];
+};
 export type PermissionCategory = { key: string; label: string; sections: PermissionSection[] };
 export type PermissionCatalog = { categories: PermissionCategory[] };
 
