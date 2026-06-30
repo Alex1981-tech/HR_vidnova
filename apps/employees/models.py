@@ -813,6 +813,9 @@ class EmployeeCertificate(TimestampedModel):
     url = models.URLField(max_length=500, blank=True)
     issued_on = models.DateField(null=True, blank=True)
     expires_on = models.DateField(null=True, blank=True)
+    attachment_url = models.CharField(max_length=500, blank=True)
+    thumbnail_url = models.CharField(max_length=500, blank=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

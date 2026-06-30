@@ -1,6 +1,7 @@
 import mimetypes
 import uuid
 
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.http import FileResponse
@@ -914,6 +915,29 @@ class EmployeeEducationViewSet(_EmployeeScopedViewSet):
 class EmployeeCertificateViewSet(_EmployeeScopedViewSet):
     model = EmployeeCertificate
     serializer_class = EmployeeCertificateSerializer
+
+    @action(detail=False, methods=["post"], url_path="upload", parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request):
+        """Завантаження вкладення сертифіката (одиночний файл ≤200МБ). Картинки клієнт
+        пережимає у webp + окремо шле мініатюру; інші типи зберігаємо як є."""
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"detail": "Файл не вибрано."}, status=status.HTTP_400_BAD_REQUEST)
+        if upload.size > 200 * 1024 * 1024:
+            return Response({"detail": "Файл більший за 200 МБ."}, status=status.HTTP_400_BAD_REQUEST)
+        content_type = (getattr(upload, "content_type", "") or "").strip().lower()
+        suffix = ""
+        if "." in upload.name:
+            suffix = "." + upload.name.rsplit(".", 1)[1].lower()
+        if not suffix or len(suffix) > 12:
+            suffix = mimetypes.guess_extension(content_type) or ".bin"
+        now = timezone.now()
+        storage_path = f"certificates/{now:%Y/%m}/{uuid.uuid4().hex}{suffix}"
+        saved_path = default_storage.save(storage_path, upload)
+        return Response(
+            {"url": default_storage.url(saved_path), "name": upload.name, "content_type": content_type},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class SkillCategoryViewSet(EmployeeApiViewSet):

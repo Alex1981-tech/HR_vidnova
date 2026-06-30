@@ -151,6 +151,9 @@ export type EmployeeCertificate = {
   url: string;
   issued_on: string | null;
   expires_on: string | null;
+  attachment_url: string;
+  thumbnail_url: string;
+  attachment_name: string;
   order: number;
 };
 

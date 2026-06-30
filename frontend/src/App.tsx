@@ -101,6 +101,7 @@ import {
 } from './components/CreateAnnouncementModal';
 import { CreateQuickPollModal } from './components/CreateQuickPollModal';
 import { RichTextEditor } from './components/RichTextEditor';
+import { fileToWebp } from './lib/imageProcessing';
 import { LeaveTypeIcon } from './lib/leaveIcons';
 import { getAppCopy, getTranslations, languageOptions, normalizeLanguage, normalizeTheme, themeOptions } from './i18n/locales';
 import type { AppCopy, LanguageCode, ThemePreference } from './i18n/locales';
@@ -8261,15 +8262,138 @@ function EmployeeEducationTab({ employeeId }: { employeeId: number }) {
   );
 }
 
+function attachmentKind(url: string): 'image' | 'pdf' | 'file' {
+  const clean = (url || '').toLowerCase().split('?')[0];
+  if (/\.(webp|png|jpe?g|gif|avif|bmp)$/.test(clean)) return 'image';
+  if (/\.pdf$/.test(clean)) return 'pdf';
+  return 'file';
+}
+
+function PhotoViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="photo-viewer" role="dialog" aria-modal="true" onClick={onClose}>
+      <button type="button" className="photo-viewer-close" aria-label="Закрити" onClick={onClose}>
+        <X size={22} />
+      </button>
+      <img src={url} alt="" onClick={(event) => event.stopPropagation()} />
+    </div>,
+    document.body,
+  );
+}
+
+function CertFileDrop({
+  onFile,
+  uploading,
+  attachmentName,
+  thumbnailUrl,
+}: {
+  onFile: (file: File) => void;
+  uploading: boolean;
+  attachmentName?: string;
+  thumbnailUrl?: string;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [drag, setDrag] = useState(false);
+  return (
+    <div
+      className={`cert-dropzone${drag ? ' drag' : ''}`}
+      role="button"
+      tabIndex={0}
+      onDragOver={(event) => { event.preventDefault(); setDrag(true); }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDrag(false);
+        const file = event.dataTransfer.files?.[0];
+        if (file) onFile(file);
+      }}
+      onClick={() => inputRef.current?.click()}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".doc,.docx,.pdf,.png,.jpeg,.jpg,.webp"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) onFile(file);
+        }}
+      />
+      {uploading ? (
+        <p className="cert-dropzone-status">Завантаження…</p>
+      ) : attachmentName ? (
+        <div className="cert-dropzone-file">
+          {thumbnailUrl ? <img src={thumbnailUrl} alt="" /> : <FileText size={22} />}
+          <div className="cert-dropzone-file-info">
+            <strong>{attachmentName}</strong>
+            <em>Натисніть, щоб замінити</em>
+          </div>
+        </div>
+      ) : (
+        <>
+          <strong className="cert-dropzone-title">Для завантаження перетягніть файл або натисніть сюди</strong>
+          <span className="cert-dropzone-hint">Макс. 1 файл, до 200 МБ. .doc, .docx, .pdf, .png, .jpeg, .jpg</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function EmployeeCertificatesTab({ employeeId }: { employeeId: number }) {
   const [items, setItems] = useState<EmployeeCertificate[]>([]);
   const [state, setState] = useState<LoadState>('idle');
   const [edit, setEdit] = useState<Partial<EmployeeCertificate> | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [viewer, setViewer] = useState<string | null>(null);
   const { menuOpenId, setMenuOpenId } = useRowMenu();
   const [deleteTarget, setDeleteTarget] = useState<EmployeeCertificate | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Фото — у переглядачі без рамок; PDF — нова вкладка (default href+target); решта — завантаження.
+  function openAttachment(event: ReactMouseEvent, cert: EmployeeCertificate) {
+    const kind = attachmentKind(cert.attachment_url);
+    if (kind === 'image') {
+      event.preventDefault();
+      setViewer(cert.attachment_url);
+    } else if (kind === 'file') {
+      event.preventDefault();
+      const link = document.createElement('a');
+      link.href = cert.attachment_url;
+      link.download = cert.attachment_name || '';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  }
+
+  async function handleFile(file: File) {
+    setUploading(true);
+    setError('');
+    try {
+      const base = file.name.replace(/\.[^.]+$/, '') || 'file';
+      if (file.type.startsWith('image/')) {
+        const [full, thumb] = await Promise.all([fileToWebp(file, 1600, 0.85), fileToWebp(file, 240, 0.8)]);
+        const fullRes = await api.uploadCertificateFile(full, `${base}.webp`);
+        const thumbRes = await api.uploadCertificateFile(thumb, `${base}-thumb.webp`);
+        setEdit((cur) => ({ ...(cur ?? {}), attachment_url: fullRes.url, thumbnail_url: thumbRes.url, attachment_name: file.name }));
+      } else {
+        const res = await api.uploadCertificateFile(file, file.name);
+        setEdit((cur) => ({ ...(cur ?? {}), attachment_url: res.url, thumbnail_url: '', attachment_name: file.name }));
+      }
+    } catch {
+      setError('Не вдалося завантажити файл.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function load() {
     setState('loading');
@@ -8326,13 +8450,20 @@ function EmployeeCertificatesTab({ employeeId }: { employeeId: number }) {
       ) : items.length ? (
         <div className="more-list">
           {items.map((c) => (
-            <div className="more-card" key={c.id}>
+            <div className="more-card cert-card" key={c.id}>
+              {c.thumbnail_url || c.attachment_url ? (
+                <a className="cert-thumb" href={c.attachment_url || undefined} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); openAttachment(e, c); }}>
+                  {c.thumbnail_url ? <img src={c.thumbnail_url} alt="" /> : <FileText size={22} />}
+                </a>
+              ) : null}
               <div className="more-card-body">
                 <strong>{c.name}</strong>
                 <div className="more-card-fields">
                   {c.issuer ? <span>Видав: {c.issuer}</span> : null}
                   {c.issued_on ? <span>Видано: {formatDate(c.issued_on)}</span> : null}
-                  {c.expires_on ? <span>Дійсний до: {formatDate(c.expires_on)}</span> : null}
+                  {c.attachment_url ? (
+                    <a href={c.attachment_url} target="_blank" rel="noopener noreferrer" onClick={(e) => openAttachment(e, c)}>{c.attachment_name || 'Вкладення'}</a>
+                  ) : null}
                   {c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer">Посилання</a> : null}
                 </div>
               </div>
@@ -8369,15 +8500,18 @@ function EmployeeCertificatesTab({ employeeId }: { employeeId: number }) {
             <span>Вебсайт / Посилання</span>
             <input className="people-data-input" value={edit.url ?? ''} onChange={(ev) => setEdit({ ...edit, url: ev.target.value })} placeholder="https://" />
           </label>
-          <div className="people-data-modal-row">
-            <label className="people-data-modal-field">
-              <span>Видано</span>
-              <input type="date" className="people-data-input" value={edit.issued_on ?? ''} onChange={(ev) => setEdit({ ...edit, issued_on: ev.target.value })} />
-            </label>
-            <label className="people-data-modal-field">
-              <span>Дійсний до</span>
-              <input type="date" className="people-data-input" value={edit.expires_on ?? ''} onChange={(ev) => setEdit({ ...edit, expires_on: ev.target.value })} />
-            </label>
+          <label className="people-data-modal-field">
+            <span>Видано</span>
+            <input type="date" className="people-data-input" value={edit.issued_on ?? ''} onChange={(ev) => setEdit({ ...edit, issued_on: ev.target.value })} />
+          </label>
+          <div className="people-data-modal-field">
+            <span>Вкладення <em className="field-optional">за бажанням</em></span>
+            <CertFileDrop
+              onFile={handleFile}
+              uploading={uploading}
+              attachmentName={edit.attachment_name}
+              thumbnailUrl={edit.thumbnail_url}
+            />
           </div>
         </MoreModalShell>
       ) : null}
@@ -8391,6 +8525,7 @@ function EmployeeCertificatesTab({ employeeId }: { employeeId: number }) {
           onConfirm={() => void confirmDelete()}
         />
       ) : null}
+      {viewer ? <PhotoViewer url={viewer} onClose={() => setViewer(null)} /> : null}
     </MoreSubPanel>
   );
 }

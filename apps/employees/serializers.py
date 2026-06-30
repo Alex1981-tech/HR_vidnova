@@ -978,7 +978,10 @@ class EmployeeEducationSerializer(serializers.ModelSerializer):
 class EmployeeCertificateSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeCertificate
-        fields = ("id", "employee", "name", "issuer", "url", "issued_on", "expires_on", "order")
+        fields = (
+            "id", "employee", "name", "issuer", "url", "issued_on", "expires_on",
+            "attachment_url", "thumbnail_url", "attachment_name", "order",
+        )
 
 
 class SkillCategorySerializer(serializers.ModelSerializer):

@@ -957,6 +957,14 @@ export const api = {
       ? request<EmployeeCertificate>(`/api/employees/certificates/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
       : request<EmployeeCertificate>('/api/employees/certificates/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteCertificate: (id: number) => request<void>(`/api/employees/certificates/${id}/`, { method: 'DELETE' }),
+  uploadCertificateFile: (file: Blob, filename: string) => {
+    const form = new FormData();
+    form.append('file', file, filename);
+    return request<{ url: string; name: string; content_type: string }>(
+      '/api/employees/certificates/upload/',
+      { method: 'POST', body: form },
+    );
+  },
   skillCategories: () =>
     request<ApiList<SkillCategory> | SkillCategory[]>(
       `/api/employees/skill-categories/${buildQuery({ is_active: true, page_size: 500 })}`,
