@@ -6025,7 +6025,9 @@ function EmployeeAdminProfileView({
     ['Facebook', facebook],
   ];
   const managerProfile = employee?.manager_profile ?? null;
-  const directReportsCount = Number(employee?.direct_reports_count || 0);
+  const directReports = employee?.direct_reports ?? [];
+  const directReportsCount = directReports.length || Number(employee?.direct_reports_count || 0);
+  const teams = employee?.teams ?? [];
   // Права панель «Головна» (image copy 40): label-зверху/значення-знизу, email/phone лінки.
   const homeFields: Array<{ label: string; value: string; href?: string; structureLink?: boolean }> = [
     { label: copy.people.email || 'Ел. пошта', value: employee?.email || '-', href: employee?.email ? `mailto:${employee.email}` : undefined },
@@ -6315,19 +6317,17 @@ function EmployeeAdminProfileView({
               </header>
               <div className="summary-card-body">
                 {managerProfile ? (
-                  <div className="summary-person">
-                    <div className="summary-person-avatar">
-                      {employeeAvatarUrl(managerProfile) ? (
-                        <img src={employeeAvatarUrl(managerProfile)} alt="" />
-                      ) : (
-                        <Users size={18} />
-                      )}
-                    </div>
+                  <button
+                    type="button"
+                    className="summary-person summary-person-clickable"
+                    onClick={() => navigate(peopleEmployeePath(managerProfile.id))}
+                  >
+                    <Avatar name={managerProfile.full_name} src={employeeAvatarUrl(managerProfile)} accent={birthdayAccent(managerProfile)} />
                     <div className="summary-person-info">
                       <strong>{managerProfile.full_name}</strong>
                       <span>{managerProfile.position_name || ''}</span>
                     </div>
-                  </div>
+                  </button>
                 ) : (
                   <p className="summary-empty">Менеджера не призначено</p>
                 )}
@@ -6338,10 +6338,26 @@ function EmployeeAdminProfileView({
               <header className="summary-card-head">
                 <Network size={15} />
                 Прямі підлеглі
+                {directReportsCount > 0 ? <span className="summary-card-count">{directReportsCount}</span> : null}
               </header>
               <div className="summary-card-body">
-                {directReportsCount > 0 ? (
-                  <strong>{directReportsCount}</strong>
+                {directReports.length ? (
+                  <div className="summary-person-list">
+                    {directReports.map((report) => (
+                      <button
+                        type="button"
+                        className="summary-person summary-person-clickable"
+                        key={report.id}
+                        onClick={() => navigate(peopleEmployeePath(report.id))}
+                      >
+                        <Avatar name={report.full_name} src={employeeAvatarUrl(report)} accent={birthdayAccent(report)} />
+                        <div className="summary-person-info">
+                          <strong>{report.full_name}</strong>
+                          <span>{report.position_name || ''}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <p className="summary-empty">Немає підлеглих людей</p>
                 )}
@@ -6354,7 +6370,18 @@ function EmployeeAdminProfileView({
                 Команди
               </header>
               <div className="summary-card-body">
-                <p className="summary-empty">Людина не належить до жодної команди</p>
+                {teams.length ? (
+                  <div className="summary-team-list">
+                    {teams.map((team) => (
+                      <div className="summary-team" key={team.id}>
+                        <strong>{team.name}</strong>
+                        <span>{team.role === 'lead' ? 'Менеджер команди' : 'Учасник команди'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="summary-empty">Людина не належить до жодної команди</p>
+                )}
               </div>
             </section>
 

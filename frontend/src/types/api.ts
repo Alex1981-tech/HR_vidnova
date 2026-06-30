@@ -412,6 +412,8 @@ export type EmployeeListItem = EmployeeProfile & {
   manager_name: string;
   manager_profile: EmployeeListItem | null;
   direct_reports_count: number;
+  direct_reports?: EmployeeListItem[];
+  teams?: Array<{ id: number; name: string; role: 'lead' | 'member' }>;
   dismissed_on: string | null;
   notes: string;
   documents: EmployeeDocument[];

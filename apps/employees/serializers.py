@@ -735,6 +735,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
     manager_name = serializers.SerializerMethodField()
     manager_profile = serializers.SerializerMethodField()
     direct_reports_count = serializers.SerializerMethodField()
+    direct_reports = serializers.SerializerMethodField()
+    teams = serializers.SerializerMethodField()
     external_links = ExternalEmployeeLinkSerializer(many=True, read_only=True)
     documents = EmployeeDocumentSerializer(many=True, read_only=True)
 
@@ -784,6 +786,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "manager_name",
             "manager_profile",
             "direct_reports_count",
+            "direct_reports",
+            "teams",
             "status",
             "hired_on",
             "dismissed_on",
@@ -845,6 +849,49 @@ class EmployeeSerializer(serializers.ModelSerializer):
             is_primary=True,
             valid_from__lte=today,
         ).filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today)).count()
+
+    def _current_reports(self, obj):
+        """Унікальні прямі підлеглі (можуть бути дублі assignment-рядків)."""
+        today = timezone.localdate()
+        assignments = (
+            obj.subordinate_assignments.filter(is_primary=True, valid_from__lte=today)
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+            .select_related(
+                "employee", "employee__position", "employee__clinic",
+                "employee__department", "employee__division",
+            )
+        )
+        seen = set()
+        reports = []
+        for assignment in assignments:
+            emp = assignment.employee
+            if not emp or emp.id in seen:
+                continue
+            seen.add(emp.id)
+            reports.append(emp)
+        reports.sort(key=lambda e: e.full_name or "")
+        return reports
+
+    def get_direct_reports(self, obj):
+        return EmployeeCompactSerializer(
+            self._current_reports(obj), many=True, context=self.context
+        ).data
+
+    def get_teams(self, obj):
+        """Команди людини: лідовані (роль lead) + членство (lead, якщо вона ж лід)."""
+        teams = {}
+        for team in obj.led_teams.all():
+            teams[team.id] = {"id": team.id, "name": team.name, "role": "lead"}
+        for membership in obj.team_memberships.filter(is_active=True).select_related("team"):
+            team = membership.team
+            if team.id in teams:
+                continue
+            teams[team.id] = {
+                "id": team.id,
+                "name": team.name,
+                "role": "lead" if team.lead_id == obj.id else "member",
+            }
+        return sorted(teams.values(), key=lambda item: item["name"])
 
 
 class EmployeeProfileBlockSerializer(serializers.ModelSerializer):

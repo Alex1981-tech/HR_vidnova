@@ -5597,6 +5597,20 @@ textarea.profile-field-input {
   align-items: center;
   gap: var(--space-3);
 }
+.summary-person-clickable {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  margin: -4px;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.summary-person-clickable:hover {
+  background: var(--panel-soft);
+}
 .summary-person-avatar {
   flex: 0 0 auto;
   width: 32px;
@@ -5624,6 +5638,41 @@ textarea.profile-field-input {
   color: var(--text);
 }
 .summary-person-info span {
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+.summary-person-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.summary-card-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.summary-team-list {
+  display: grid;
+  gap: var(--space-3);
+}
+.summary-team {
+  display: grid;
+  gap: 1px;
+}
+.summary-team strong {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.summary-team span {
   font-size: var(--font-sm);
   color: var(--muted);
 }
