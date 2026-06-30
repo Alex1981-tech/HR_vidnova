@@ -8,6 +8,7 @@ from django.http import Http404
 from config.media import protected_media
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 from config.safety import DEV_SECRET_FALLBACK, production_safety_problems
+from config.sanitize import sanitize_rich_html
 
 
 class ProductionSafetyGateTests(SimpleTestCase):
@@ -143,3 +144,60 @@ class ProtectedMediaTests(SimpleTestCase):
         request.user = User(username="u", is_active=True)
         with self.assertRaises(Http404):
             protected_media(request, "../../etc/passwd")
+
+
+class SanitizeRichHtmlTests(SimpleTestCase):
+    """P4: центральный HTML-санитайзер режет XSS, сохраняет легитимный rich-text."""
+
+    def test_empty(self):
+        self.assertEqual(sanitize_rich_html(""), "")
+        self.assertEqual(sanitize_rich_html(None), "")
+
+    def test_script_removed(self):
+        out = sanitize_rich_html("<p>hi</p><script>alert(1)</script>")
+        self.assertNotIn("<script", out)
+        self.assertIn("<p>hi</p>", out)
+
+    def test_event_handler_removed(self):
+        out = sanitize_rich_html('<img src="/media/a.webp" onerror="alert(1)">')
+        self.assertNotIn("onerror", out)
+        self.assertIn('src="/media/a.webp"', out)
+
+    def test_javascript_href_removed(self):
+        out = sanitize_rich_html('<a href="javascript:alert(1)">x</a>')
+        self.assertNotIn("javascript:", out)
+
+    def test_safe_href_kept(self):
+        out = sanitize_rich_html('<a href="https://example.com">x</a>')
+        self.assertIn('href="https://example.com"', out)
+        self.assertIn("noopener", out)
+
+    def test_style_attr_removed(self):
+        self.assertNotIn("style", sanitize_rich_html('<p style="position:fixed">x</p>'))
+
+    def test_svg_removed(self):
+        self.assertEqual(sanitize_rich_html("<svg onload=alert(1)></svg>").strip(), "")
+
+    def test_youtube_iframe_kept(self):
+        out = sanitize_rich_html('<iframe src="https://www.youtube.com/embed/abc"></iframe>')
+        self.assertIn("https://www.youtube.com/embed/abc", out)
+
+    def test_non_youtube_iframe_src_dropped(self):
+        out = sanitize_rich_html('<iframe src="https://evil.com/x"></iframe>')
+        self.assertNotIn("evil.com", out)
+
+    def test_gallery_structure_kept(self):
+        html = (
+            '<div class="announcement-gallery" data-ann-gallery="1">'
+            '<button type="button" data-ann-gallery-prev="true" aria-label="Prev">x</button>'
+            "</div>"
+        )
+        out = sanitize_rich_html(html)
+        self.assertIn('class="announcement-gallery"', out)
+        self.assertIn('data-ann-gallery-prev="true"', out)
+        self.assertIn("<button", out)
+
+    def test_video_with_media_src_kept(self):
+        out = sanitize_rich_html('<video src="/media/v.mp4" controls preload="none"></video>')
+        self.assertIn('src="/media/v.mp4"', out)
+        self.assertIn("controls", out)

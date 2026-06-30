@@ -2,6 +2,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 
+from config.sanitize import sanitize_rich_html
+
 from .models import KnowledgeAttachment, KnowledgeCategory, KnowledgeDocument
 
 
@@ -199,6 +201,10 @@ class KnowledgeDocumentSerializer(serializers.ModelSerializer):
         if isinstance(visitors, list):
             return len(visitors)
         return 0
+
+    def validate_body_html(self, value):
+        # P4: HTML-санитайзер на boundary — храним только безопасный HTML.
+        return sanitize_rich_html(value)
 
     def _apply_status_fields(self, validated_data, instance=None):
         status = validated_data.get("status", instance.status if instance else KnowledgeDocument.Status.DRAFT)

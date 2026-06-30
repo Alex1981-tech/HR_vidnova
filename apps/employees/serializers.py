@@ -3,6 +3,8 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import serializers
 
+from config.sanitize import sanitize_rich_html
+
 from .models import (
     Clinic,
     CompanyLink,
@@ -1029,6 +1031,10 @@ class EmployeeNoteSerializer(serializers.ModelSerializer):
         model = EmployeeNote
         fields = ("id", "employee", "body_html", "author", "author_name", "created_at", "updated_at")
         read_only_fields = ("author", "created_at", "updated_at")
+
+    def validate_body_html(self, value):
+        # P4: HTML-санитайзер на boundary — храним только безопасный HTML.
+        return sanitize_rich_html(value)
 
     def get_author_name(self, obj):
         if not obj.author_id:

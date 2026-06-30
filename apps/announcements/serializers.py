@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from config.sanitize import sanitize_rich_html
+
 from .models import Announcement, AnnouncementComment
 
 
@@ -155,6 +157,10 @@ class AnnouncementSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Назва обов'язкова.")
         return value
+
+    def validate_body_html(self, value):
+        # P4: HTML-санитайзер на boundary — храним только безопасный HTML.
+        return sanitize_rich_html(value)
 
     def validate_poll_options(self, value):
         if value in (None, ""):
