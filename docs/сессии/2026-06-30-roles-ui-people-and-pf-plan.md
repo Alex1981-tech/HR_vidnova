@@ -28,18 +28,23 @@ Alex дал референс PF `/settings/roles/54297/edit` (роль «Усі 
 - **`peopleforce-company-permissions-reference.md`** — снятая таксономия PF
   (6 категорий × секции × права, + структура вкладки «Люди»).
 
-### Этапы Фазы 1 (чеклист)
-- [ ] B1. `section` в `Permission`/`_p`; разложить существующие + ~25 новых кодов.
-- [ ] B2. `PermissionCatalogView` → `categories→sections→permissions` (+`kind`).
-- [ ] F1. `api/access.ts` типы каталога + `permissionCatalog()`.
-- [ ] F2. Новый RoleEditor: вкладки Компанія|Люди, левая навигация категорий,
+### Этапы Фазы 1 (чеклист) — ✅ ГОТОВО (коммит `f5f909c`)
+- [x] B1. `section` в `Permission`/`_p`; разложены существующие + ~20 новых кодов PF.
+- [x] B2. `PermissionCatalogView` → `categories→sections→permissions` (+`kind`/`on_level`).
+- [x] F1. `api/access.ts` типы каталога + `permissionCatalog()`.
+- [x] F2. Новый RoleEditor: вкладки Компанія|Люди, левая навигация категорий,
       секции, чекбоксы+описания, градуированные (Команди/Активи), sticky-футер.
-- [ ] F3. Вкладка «Люди» — плейсхолдер «У розробці».
-- [ ] M. `role_matrix.py` дефолты «Усі люди» по PF; re-seed.
-- [ ] V. tsc + `apps.access` тесты + визуальная сверка с PF; changelog/session-state.
+- [x] F3. Вкладка «Люди» — плейсхолдер «у розробці».
+- [x] M. `role_matrix.py` дефолты «Усі люди» по PF; re-seed (+4/-2).
+- [x] V. tsc чисто; `apps.access` 102 OK; визуально сверено с PF (Загальні+HR);
+      changelog 1.0.34.
+
+> Тонкость реализации: `is_graded` теперь = «есть EDIT» (для UI kind); валидация
+> уровня (models.clean / serializer) — по `perm.levels` (view-only хранит `view`).
 
 ## Состояние
 
-- Прод не трогали. RBAC дремлет (`RBAC_ENFORCE` off). Локально 7 коммитов впереди
+- Прод не трогали. RBAC дремлет (`RBAC_ENFORCE` off). Локально 9 коммитов впереди
   `origin/main`.
-- Дальше: реализация Фазы 1 по плану (начать с B1 — расширение реестра).
+- **Фаза 1 закрыта.** Дальше — **Фаза 2**: вкладка «Люди» (field-level доступ,
+  backend Этап 4ч2 per-field grants + интеграция `EmployeeField`/«Дані про людей»).
