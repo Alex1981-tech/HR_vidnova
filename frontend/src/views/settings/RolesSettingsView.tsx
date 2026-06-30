@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Lock, MoreHorizontal, Monitor, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  Lock,
+  MoreHorizontal,
+  Monitor,
+  Plus,
+  Search,
+  Trash2,
+  UserRound,
+  X,
+} from 'lucide-react';
 
 import {
   accessApi,
+  type FieldAccessPayload,
   type MemberAction,
   type PermissionCatalog,
   type PermissionItem,
@@ -538,6 +550,29 @@ function RoleEditor({
   const [savedAt, setSavedAt] = useState(false);
   const [tab, setTab] = useState<'company' | 'people'>('company');
   const [activeCat, setActiveCat] = useState(() => catalog.categories[0]?.key ?? '');
+  const [fieldPayload, setFieldPayload] = useState<FieldAccessPayload | null>(null);
+  const [fieldLevels, setFieldLevels] = useState<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    let alive = true;
+    accessApi
+      .getFieldAccess(role.id)
+      .then((payload) => {
+        if (!alive) return;
+        setFieldPayload(payload);
+        const levels = new Map<string, string>();
+        for (const t of payload.tabs)
+          for (const g of t.groups)
+            for (const row of [...g.fields, ...g.tables]) if (row.level) levels.set(row.code, row.level);
+        setFieldLevels(levels);
+      })
+      .catch(() => {
+        /* вкладка «Люди» необовʼязкова; ігноруємо помилку завантаження */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [role.id]);
 
   const setLevel = (code: string, level: string | null) => {
     setSavedAt(false);
@@ -545,6 +580,16 @@ function RoleEditor({
       const next = new Map(prev);
       if (level === null) next.delete(code);
       else next.set(code, level);
+      return next;
+    });
+  };
+
+  const setFieldLevel = (code: string, level: string) => {
+    setSavedAt(false);
+    setFieldLevels((prev) => {
+      const next = new Map(prev);
+      if (level) next.set(code, level);
+      else next.delete(code);
       return next;
     });
   };
@@ -557,7 +602,15 @@ function RoleEditor({
         permission_code,
         level,
       }));
-      onSaved(await accessApi.setRolePermissions(role.id, items));
+      const updated = await accessApi.setRolePermissions(role.id, items);
+      if (fieldPayload) {
+        const fieldItems = fieldPayload.tabs
+          .flatMap((t) => t.groups)
+          .flatMap((g) => [...g.fields, ...g.tables])
+          .map((row) => ({ code: row.code, level: fieldLevels.get(row.code) ?? '' }));
+        await accessApi.saveFieldAccess(role.id, fieldItems);
+      }
+      onSaved(updated);
       setSavedAt(true);
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
@@ -642,11 +695,7 @@ function RoleEditor({
             </div>
           </>
         ) : (
-          <div className="role-people-placeholder">
-            <p className="roles-empty">
-              Доступ на рівні полів (Особисте, Робота, Компенсація…) — у розробці.
-            </p>
-          </div>
+          <PeopleFieldsTab payload={fieldPayload} levels={fieldLevels} onSet={setFieldLevel} />
         )}
       </div>
 
@@ -709,5 +758,137 @@ function PermRow({
         </label>
       )}
     </div>
+  );
+}
+
+function FieldSeg({
+  level,
+  onSet,
+  label,
+}: {
+  level: string;
+  onSet: (level: string) => void;
+  label: string;
+}) {
+  return (
+    <div className="roles-seg" role="group" aria-label={label}>
+      <button type="button" className={!level ? 'is-on' : ''} onClick={() => onSet('')}>
+        Немає
+      </button>
+      <button type="button" className={level === 'view' ? 'is-on' : ''} onClick={() => onSet('view')}>
+        Перегляд
+      </button>
+      <button type="button" className={level === 'edit' ? 'is-on' : ''} onClick={() => onSet('edit')}>
+        Редагування
+      </button>
+    </div>
+  );
+}
+
+function PeopleFieldsTab({
+  payload,
+  levels,
+  onSet,
+}: {
+  payload: FieldAccessPayload | null;
+  levels: Map<string, string>;
+  onSet: (code: string, level: string) => void;
+}) {
+  const [activeTab, setActiveTab] = useState('');
+  const [open, setOpen] = useState<Set<number>>(new Set());
+
+  const tabs = payload?.tabs ?? [];
+  const current = tabs.find((t) => t.key === activeTab) ?? tabs[0] ?? null;
+
+  if (!payload) return <p className="roles-empty">Завантаження…</p>;
+  if (!tabs.length) return <p className="roles-empty">Немає налаштованих полів профілю.</p>;
+
+  const toggleGroup = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <>
+      <p className="role-editor-hint">
+        Налаштуйте, до яких даних і чиїх даних люди в цій ролі мають доступ.
+      </p>
+      <div className="role-editor-layout">
+        <nav className="role-cat-nav">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              className={t.key === (current?.key ?? '') ? 'is-on' : ''}
+              onClick={() => setActiveTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="role-perm-panel">
+          {current && current.groups.length ? (
+            current.groups.map((g) => {
+              const expanded = open.has(g.id);
+              return (
+                <section key={g.id} className="role-acc">
+                  <button type="button" className="role-acc-head" onClick={() => toggleGroup(g.id)}>
+                    <span>{g.name}</span>
+                    <ChevronDown size={18} className={expanded ? 'role-acc-chevron is-open' : 'role-acc-chevron'} />
+                  </button>
+                  {expanded ? (
+                    <div className="role-acc-body">
+                      {g.fields.length ? (
+                        <>
+                          <h4 className="role-acc-subtitle">Поля</h4>
+                          <div className="roles-perm-rows">
+                            {g.fields.map((row) => (
+                              <div key={row.code} className="roles-perm-row">
+                                <div className="roles-perm-info">
+                                  <span className="roles-perm-label">{row.label}</span>
+                                </div>
+                                <FieldSeg
+                                  label={row.label}
+                                  level={levels.get(row.code) ?? ''}
+                                  onSet={(lvl) => onSet(row.code, lvl)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                      {g.tables.length ? (
+                        <>
+                          <h4 className="role-acc-subtitle">Таблиці</h4>
+                          <div className="roles-perm-rows">
+                            {g.tables.map((row) => (
+                              <div key={row.code} className="roles-perm-row">
+                                <div className="roles-perm-info">
+                                  <span className="roles-perm-label">{row.label}</span>
+                                </div>
+                                <FieldSeg
+                                  label={row.label}
+                                  level={levels.get(row.code) ?? ''}
+                                  onSet={(lvl) => onSet(row.code, lvl)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })
+          ) : (
+            <p className="roles-empty">У цій вкладці немає полів.</p>
+          )}
+        </div>
+      </div>
+    </>
   );
 }

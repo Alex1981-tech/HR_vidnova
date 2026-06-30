@@ -21446,3 +21446,17 @@ textarea:focus-visible {
   .role-editor-layout { grid-template-columns: 1fr; }
   .role-cat-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border-subtle); padding: 0 0 var(--space-2); }
 }
+
+/* Вкладка «Люди» — акордеони груп полів */
+.role-acc { border: 1px solid var(--line); border-radius: var(--radius-md); overflow: hidden; }
+.role-acc + .role-acc { margin-top: var(--space-2); }
+.role-acc-head {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3); background: transparent; border: 0; cursor: pointer;
+  font-size: var(--font-body); font-weight: 500; color: var(--text); text-align: left;
+}
+.role-acc-head:hover { background: var(--panel-soft); }
+.role-acc-chevron { color: var(--text-muted); transition: transform .15s ease; }
+.role-acc-chevron.is-open { transform: rotate(180deg); }
+.role-acc-body { padding: 0 var(--space-3) var(--space-3); border-top: 1px solid var(--border-subtle); }
+.role-acc-subtitle { font-size: var(--font-sm); font-weight: 600; color: var(--text-muted); margin: var(--space-3) 0 var(--space-1); }

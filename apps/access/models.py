@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from apps.access.permissions_registry import get_permission
+from apps.access.permissions_registry import get_permission, parse_field_permission_code
 from apps.access.role_seeds import ADMIN_ROLE_SLUG
 from apps.employees.models import Employee, TimestampedModel
 
@@ -204,6 +204,14 @@ class AccessRolePermission(TimestampedModel):
     def clean(self):
         permission = get_permission(self.permission_code)
         if permission is None:
+            # Динамічне field-level право на конкретне поле/таблицю профілю
+            # (people.field.<tab>.<slug>) — у реєстрі немає, валідуємо за формою.
+            if parse_field_permission_code(self.permission_code) is not None:
+                if self.level not in {"view", "edit"}:
+                    raise ValidationError(
+                        {"level": f"Для {self.permission_code} рівень має бути view або edit."}
+                    )
+                return
             raise ValidationError({"permission_code": f"Невідомий permission code: {self.permission_code}"})
         if permission.levels:
             allowed = {level.value for level in permission.levels}

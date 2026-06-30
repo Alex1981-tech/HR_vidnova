@@ -16,7 +16,11 @@ from apps.access.models import (
     AccessRoleAuditEvent,
     AccessRolePermission,
 )
-from apps.access.permissions_registry import company_catalog
+from apps.access.permissions_registry import (
+    company_catalog,
+    field_permission_code,
+    parse_field_permission_code,
+)
 from apps.access.rbac_invariants import would_remove_last_admin
 from apps.access.role_seeds import ADMIN_ROLE_SLUG
 from apps.access.rbac_serializers import (
@@ -186,6 +190,81 @@ class AccessRoleViewSet(viewsets.ModelViewSet):
                 assignment.save(update_fields=['is_active', 'updated_at'])
             _audit(request.user, role, Action.ASSIGNMENT_UPDATED, f'Активовано в ролі {role.slug}: emp {emp_id}')
         return Response(self._members_payload(role))
+
+    # ── Вкладка «Люди» (field-level доступ) ───────────────────────────────────
+    def _field_access_payload(self, role):
+        """Структура полів профілю (вкладки→групи→поля/таблиці) з рівнями ролі."""
+        from apps.employees.models import EmployeeFieldGroup
+
+        grants = {
+            p.permission_code: p.level
+            for p in AccessRolePermission.objects.filter(role=role)
+        }
+
+        def lvl(tab, slug):
+            return grants.get(field_permission_code(tab, slug), "")
+
+        tabs = []
+        for tab_value, tab_label in EmployeeFieldGroup.Tab.choices:
+            groups_out = []
+            groups = (
+                EmployeeFieldGroup.objects.filter(tab=tab_value)
+                .prefetch_related("fields", "tables")
+                .order_by("order", "id")
+            )
+            for group in groups:
+                fields_out = [
+                    {
+                        "code": field_permission_code(tab_value, f"field_{f.id}"),
+                        "label": f.name,
+                        "level": lvl(tab_value, f"field_{f.id}"),
+                    }
+                    for f in group.fields.all().order_by("order", "id")
+                    if f.is_enabled
+                ]
+                tables_out = [
+                    {
+                        "code": field_permission_code(tab_value, f"table_{t.id}"),
+                        "label": t.name,
+                        "level": lvl(tab_value, f"table_{t.id}"),
+                    }
+                    for t in group.tables.all().order_by("order", "id")
+                    if t.is_enabled
+                ]
+                if fields_out or tables_out:
+                    groups_out.append(
+                        {"id": group.id, "name": group.name, "fields": fields_out, "tables": tables_out}
+                    )
+            tabs.append({"key": tab_value, "label": tab_label, "groups": groups_out})
+        return {"tabs": tabs}
+
+    @action(detail=True, methods=["get", "post"], url_path="field-access")
+    def field_access(self, request, pk=None):
+        """GET — структура полів з рівнями; POST {items:[{code,level}]} — зберегти."""
+        role = self.get_object()
+        if request.method.lower() == "get":
+            return Response(self._field_access_payload(role))
+
+        items = request.data.get("items", [])
+        if not isinstance(items, list):
+            raise DRFValidationError("items має бути списком.")
+        changed = 0
+        for item in items:
+            code = (item or {}).get("code", "")
+            level = (item or {}).get("level", "") or ""
+            if parse_field_permission_code(code) is None:
+                raise DRFValidationError(f"Невідоме field-право: {code}")
+            if level not in {"", "view", "edit"}:
+                raise DRFValidationError("level має бути '', view або edit.")
+            if level:
+                AccessRolePermission.objects.update_or_create(
+                    role=role, permission_code=code, defaults={"level": level}
+                )
+            else:
+                AccessRolePermission.objects.filter(role=role, permission_code=code).delete()
+            changed += 1
+        _audit(request.user, role, Action.ROLE_UPDATED, f"Поля ролі {role.slug}: {changed} змін")
+        return Response(self._field_access_payload(role))
 
 
 class AccessRoleAssignmentViewSet(viewsets.ModelViewSet):

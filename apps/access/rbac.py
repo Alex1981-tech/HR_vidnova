@@ -351,13 +351,20 @@ def field_access(user, employee, field) -> str:
     if is_admin(user):
         return "edit"
 
+    from apps.access.permissions_registry import field_permission_code
+
     tab = field.group.tab
-    code = f"people.field.{tab}"
+    tab_code = f"people.field.{tab}"
+    # Per-field grant (people.field.<tab>.field_<id>) має пріоритет над tab-level.
+    field_id = getattr(field, "id", None)
+    field_code = field_permission_code(tab, f"field_{field_id}") if field_id else None
     subject = _subject_employee(user)
     levels: set[str] = set()
     for grant in _cached_grants(user):
         role_perms = _role_permissions(grant.role_slug)
-        level = role_perms.get(code)
+        level = role_perms.get(field_code) if field_code else None
+        if level is None:
+            level = role_perms.get(tab_code)
         if level is None:
             continue
         scope = _grant_scope(grant, subject)

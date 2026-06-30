@@ -6,7 +6,12 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from rest_framework.test import APITestCase
 
-from apps.access.models import AccessRole, AccessRoleAssignment, AccessRoleAuditEvent
+from apps.access.models import (
+    AccessRole,
+    AccessRoleAssignment,
+    AccessRoleAuditEvent,
+    AccessRolePermission,
+)
 from apps.access.role_seeds import ADMIN_ROLE_SLUG, SYSTEM_ROLE_SEEDS
 
 
@@ -204,6 +209,42 @@ class RbacApiTests(APITestCase):
             {"employee_id": e2.id, "action": "remove"}, format="json",
         )
         self.assertEqual(self._active_ids(resp3.data), {e1.id})
+
+    # ── field-access (вкладка «Люди») ─────────────────────────────────────────
+    def test_field_access_get_and_save(self):
+        self._as_admin()
+        from apps.employees.models import EmployeeField, EmployeeFieldGroup
+
+        group = EmployeeFieldGroup.objects.create(tab="personal", name="ТестГрупа", order=99)
+        fld = EmployeeField.objects.create(group=group, name="ТестПоле", is_enabled=True)
+        role = AccessRole.objects.get(slug="all_people")
+
+        resp = self.client.get(f"/api/access/roles/{role.id}/field-access/")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        personal = next(t for t in resp.data["tabs"] if t["key"] == "personal")
+        field_row = next(f for g in personal["groups"] for f in g["fields"] if f["label"] == "ТестПоле")
+        self.assertEqual(field_row["level"], "")
+        code = field_row["code"]
+        self.assertEqual(code, f"people.field.personal.field_{fld.id}")
+
+        save = self.client.post(
+            f"/api/access/roles/{role.id}/field-access/",
+            {"items": [{"code": code, "level": "edit"}]}, format="json",
+        )
+        self.assertEqual(save.status_code, 200, save.data)
+        saved_row = next(f for g in next(t for t in save.data["tabs"] if t["key"] == "personal")["groups"]
+                         for f in g["fields"] if f["code"] == code)
+        self.assertEqual(saved_row["level"], "edit")
+
+        # clear
+        clear = self.client.post(
+            f"/api/access/roles/{role.id}/field-access/",
+            {"items": [{"code": code, "level": ""}]}, format="json",
+        )
+        self.assertFalse(
+            AccessRolePermission.objects.filter(role=role, permission_code=code).exists(),
+        )
+        self.assertEqual(clear.status_code, 200)
 
     def test_cannot_remove_last_active_admin(self):
         self._as_admin()

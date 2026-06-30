@@ -40,6 +40,11 @@ export type PickEmployee = {
   avatar_local_url?: string;
 };
 
+export type FieldAccessRow = { code: string; label: string; level: string };
+export type FieldGroupAccess = { id: number; name: string; fields: FieldAccessRow[]; tables: FieldAccessRow[] };
+export type FieldTabAccess = { key: string; label: string; groups: FieldGroupAccess[] };
+export type FieldAccessPayload = { tabs: FieldTabAccess[] };
+
 export type RoleMember = { employee_id: number; is_active: boolean };
 export type MembersPayload = { members: RoleMember[]; people_count: number };
 export type MemberAction = 'remove' | 'deactivate' | 'activate';
@@ -94,6 +99,13 @@ export const accessApi = {
     apiFetch<Role>(`/api/access/roles/${id}/set-permissions/`, {
       method: 'POST',
       body: JSON.stringify(items),
+    }),
+  getFieldAccess: (id: number) =>
+    apiFetch<FieldAccessPayload>(`/api/access/roles/${id}/field-access/`),
+  saveFieldAccess: (id: number, items: { code: string; level: string }[]) =>
+    apiFetch<FieldAccessPayload>(`/api/access/roles/${id}/field-access/`, {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     }),
   getMembers: (id: number) =>
     apiFetch<MembersPayload>(`/api/access/roles/${id}/members/`),
