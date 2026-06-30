@@ -43,6 +43,17 @@ employees 167 · departments 26 · clinics 7 · positions 80 · leave_req 218 ·
 
 ## Сесії
 
+### 2026-06-30 — Security hardening + RBAC backend
+- Hardening: P0 safety gate, P2 приватна media (X-Accel), P11 CI-гейти, P4 nh3-санітайзер, P1 negative authz-тести.
+- **Весь backend RBAC (Этапи 0–6)**: permission registry, моделі ролей/прав/призначень/audit (`access/0002`), scope engine (`rbac.py`), DRF enforcement flag-gated (`RBAC_ENFORCE` default OFF=shadow), management API `/api/access/`, AuthStatus.access. Матриця прав узгоджена Alex (5 рішень), засіяна (71 grant). **Alex (user 2) — admin у dev.**
+- Усе локально, **не запушено**. Повний suite зелений (падають лише leave-тести — WIP Alex).
+- Далі: фронт `/settings/roles` (Этап 7). Детальний запис: [docs/сессии/2026-06-30-rbac-and-hardening.md](сессии/2026-06-30-rbac-and-hardening.md).
+
+### 2026-06-30 — Реальні політики відпусток
+- Замінили заглушку `/settings/leave-types` на основу реальної моделі політик: `LeavePolicy`, `LeavePolicyAccrualRule`, `EmployeeLeavePolicyAssignment`, `LeaveLedgerEntry`.
+- Додали API політик/призначень/ledger, backfill з PeopleForce балансів, baseline-захист від подвійного нарахування, UI-крок `Нарахування та перенесення`.
+- Детальний запис рішень, перевірок і наступних кроків: [docs/сессии/2026-06-30-leave-policies.md](сессии/2026-06-30-leave-policies.md).
+
 ### 2026-06-26 (пізно) — Звіти + «Дані про людей»
 - **Звіти** (на проді 1.0.08): головна `/reports` (групи Основні/CoreHR, компактні картки) + 3 аналітичні сторінки `headcount`/`turnover`/`tenure` на **recharts**. Backend `/api/reports/*` рахує з Employee. Переви­користовувані чарти у `frontend/src/views/reports/shared.tsx`. Цифри на барах/лінії (`LabelList`).
 - **«Дані про людей»** `/settings/people-data` (закомічено, **НЕ запушено/деплоєно**): backend моделі `EmployeeFieldGroup`/`EmployeeField`/`EmployeeFieldTable` + `Employee.custom_fields` (міграції 0019/0020 seed). API `field-groups`/`fields`/`field-tables`. Сторінка `views/settings/PeopleDataSettingsView.tsx` (вкладки, перемикачі видимості, add/delete кастомних полів, drag-reorder груп, summary-chips). **Профіль** `EmployeeAdminProfileView` тепер рендерить панелі з конфігу (увімкнені поля, порядок груп) + custom_fields у серіалізаторі.
