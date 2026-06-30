@@ -134,4 +134,14 @@ export const accessApi = {
     apiFetch<{ results?: PickEmployee[] } | PickEmployee[]>(
       '/api/employees/employees/?compact=1&page_size=500',
     ).then(unwrap),
+  rolePeople: (id: number, params: { page: number; search: string; pageSize: number }) => {
+    const q = new URLSearchParams({
+      page: String(params.page),
+      page_size: String(params.pageSize),
+    });
+    if (params.search.trim()) q.set('search', params.search.trim());
+    return apiFetch<{ count: number; results: PickEmployee[] }>(
+      `/api/access/roles/${id}/people/?${q.toString()}`,
+    );
+  },
 };

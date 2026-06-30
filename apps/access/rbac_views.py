@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
@@ -30,6 +31,7 @@ from apps.access.rbac_serializers import (
     SetPermissionsItemSerializer,
 )
 from apps.employees.models import Employee
+from config.pagination import StandardResultsSetPagination
 
 Action = AccessRoleAuditEvent.Action
 
@@ -190,6 +192,25 @@ class AccessRoleViewSet(viewsets.ModelViewSet):
                 assignment.save(update_fields=['is_active', 'updated_at'])
             _audit(request.user, role, Action.ASSIGNMENT_UPDATED, f'Активовано в ролі {role.slug}: emp {emp_id}')
         return Response(self._members_payload(role))
+
+    @action(detail=True, methods=["get"], url_path="people")
+    def people(self, request, pk=None):
+        """Пагінований список людей ролі (для дровера). ?search=&page=&page_size="""
+        from apps.employees.serializers import EmployeeCompactSerializer
+
+        role = self.get_object()
+        qs = rbac.role_people_queryset(role).select_related("position").order_by("last_name", "first_name")
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(middle_name__icontains=search)
+            )
+        paginator = StandardResultsSetPagination()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        data = EmployeeCompactSerializer(page, many=True, context={"request": request}).data
+        return paginator.get_paginated_response(data)
 
     # ── Вкладка «Люди» (field-level доступ) ───────────────────────────────────
     def _field_access_payload(self, role):

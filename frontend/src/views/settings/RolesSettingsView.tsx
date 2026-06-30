@@ -34,6 +34,7 @@ export function RolesSettingsView({ onBack }: Props) {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
+  const [peopleFor, setPeopleFor] = useState<Role | null>(null);
   const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
@@ -74,6 +75,7 @@ export function RolesSettingsView({ onBack }: Props) {
         catalog={catalog}
         onBack={() => setSelected(null)}
         onSaved={refreshRole}
+        peopleOnly={selected.slug === 'self'}
       />
     );
   }
@@ -137,8 +139,21 @@ export function RolesSettingsView({ onBack }: Props) {
                       {role.type === 'system' ? 'Система' : 'Кастомний'}
                     </span>
                   </td>
-                  <td className="roles-col-count">{role.people_count}</td>
-                  <td className="roles-col-desc">{role.description}</td>
+                  <td className="roles-col-count">
+                    <button
+                      type="button"
+                      className="roles-count-link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPeopleFor(role);
+                      }}
+                    >
+                      {role.people_count}
+                    </button>
+                  </td>
+                  <td className="roles-col-desc" title={role.description}>
+                    {role.description}
+                  </td>
                   <td className="roles-actions-cell">
                     {role.type === 'custom' ? (
                       <button
@@ -177,7 +192,95 @@ export function RolesSettingsView({ onBack }: Props) {
           }}
         />
       ) : null}
+
+      {peopleFor ? <RolePeopleDrawer role={peopleFor} onClose={() => setPeopleFor(null)} /> : null}
     </main>
+  );
+}
+
+function RolePeopleDrawer({ role, onClose }: { role: Role; onClose: () => void }) {
+  const [people, setPeople] = useState<PickEmployee[]>([]);
+  const [count, setCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const pageSize = 25;
+  const numPages = Math.max(1, Math.ceil(count / pageSize));
+
+  useEffect(() => setPage(1), [search]);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    accessApi
+      .rolePeople(role.id, { page, search, pageSize })
+      .then((r) => {
+        if (!alive) return;
+        setPeople(r.results);
+        setCount(r.count);
+      })
+      .catch(() => alive && setPeople([]))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [role.id, page, search]);
+
+  return (
+    <div className="roles-drawer-wrap">
+      <button type="button" className="roles-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <aside className="roles-drawer" role="dialog" aria-modal="true">
+        <div className="roles-drawer-head">
+          <div>
+            <h2>{role.name}</h2>
+            <span className="roles-drawer-count">{pluralPeople(count)}</span>
+          </div>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="roles-picker-search roles-drawer-search">
+          <Search size={16} />
+          <input value={search} placeholder="Пошук" onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="roles-drawer-list">
+          {loading ? (
+            <p className="roles-picker-empty">Завантаження…</p>
+          ) : people.length ? (
+            people.map((emp) => (
+              <div key={emp.id} className="roles-picker-row">
+                {emp.avatar_local_url ? (
+                  <img className="roles-picker-avatar" src={emp.avatar_local_url} alt="" />
+                ) : (
+                  <span className="roles-picker-avatar roles-picker-avatar-fallback">
+                    {initials(emp.full_name)}
+                  </span>
+                )}
+                <span className="roles-picker-person">
+                  <span className="roles-picker-name">{emp.full_name}</span>
+                  {emp.position_name ? <span className="roles-picker-pos">{emp.position_name}</span> : null}
+                </span>
+              </div>
+            ))
+          ) : (
+            <p className="roles-picker-empty">Нікого не знайдено</p>
+          )}
+        </div>
+        {numPages > 1 ? (
+          <div className="roles-drawer-pager">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeft size={16} />
+            </button>
+            <span>
+              {page} / {numPages}
+            </span>
+            <button type="button" disabled={page >= numPages} onClick={() => setPage((p) => p + 1)}>
+              <ChevronLeft size={16} style={{ transform: 'rotate(180deg)' }} />
+            </button>
+          </div>
+        ) : null}
+      </aside>
+    </div>
   );
 }
 
@@ -537,11 +640,13 @@ function RoleEditor({
   catalog,
   onBack,
   onSaved,
+  peopleOnly = false,
 }: {
   role: Role;
   catalog: PermissionCatalog;
   onBack: () => void;
   onSaved: (r: Role) => void;
+  peopleOnly?: boolean;
 }) {
   const [grants, setGrants] = useState<Map<string, string>>(
     () => new Map(role.permissions.map((p) => [p.permission_code, p.level])),
@@ -549,7 +654,7 @@ function RoleEditor({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [savedAt, setSavedAt] = useState(false);
-  const [tab, setTab] = useState<'company' | 'people'>('company');
+  const [tab, setTab] = useState<'company' | 'people'>(peopleOnly ? 'people' : 'company');
   const [activeCat, setActiveCat] = useState(() => catalog.categories[0]?.key ?? '');
   const [fieldPayload, setFieldPayload] = useState<FieldAccessPayload | null>(null);
   const [fieldLevels, setFieldLevels] = useState<Map<string, string>>(new Map());
@@ -651,14 +756,16 @@ function RoleEditor({
 
       <div className="role-editor-body">
         <div className="role-editor-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            className={tab === 'company' ? 'is-on' : ''}
-            onClick={() => setTab('company')}
-          >
-            Компанія
-          </button>
+          {!peopleOnly ? (
+            <button
+              type="button"
+              role="tab"
+              className={tab === 'company' ? 'is-on' : ''}
+              onClick={() => setTab('company')}
+            >
+              Компанія
+            </button>
+          ) : null}
           <button
             type="button"
             role="tab"

@@ -314,6 +314,40 @@ def preview_employee_ids(scope_type, scope_payload=None, anchor_employee=None):
     return None if result is ALL_COMPANY else result
 
 
+def role_people_queryset(role):
+    """Employee-queryset людей ролі (для дровера зі списком). Computed-ролі — по графу."""
+    from django.db.models import Q
+
+    from apps.access.models import AccessRoleAssignment
+    from apps.employees.models import Employee, ManagerAssignment, Team
+
+    slug = role.slug
+    active = Employee.objects.filter(status=Employee.Status.ACTIVE)
+    if slug in ("all_people", "self"):
+        return active
+    if slug == "manager":
+        today = _today()
+        manager_ids = (
+            ManagerAssignment.objects.filter(is_primary=True, valid_from__lte=today)
+            .filter(Q(valid_to__isnull=True) | Q(valid_to__gte=today))
+            .values_list("manager_id", flat=True)
+        )
+        return Employee.objects.filter(id__in=set(manager_ids))
+    if slug == "team_lead":
+        lead_ids = (
+            Team.objects.filter(is_active=True, lead__isnull=False, memberships__is_active=True)
+            .values_list("lead_id", flat=True)
+        )
+        return Employee.objects.filter(id__in=set(lead_ids))
+    # admin / custom: явні призначення (employee або user→employee).
+    base = AccessRoleAssignment.objects.filter(role=role, is_active=True)
+    emp_ids = set(base.exclude(employee__isnull=True).values_list("employee_id", flat=True))
+    user_ids = set(base.exclude(user__isnull=True).values_list("user_id", flat=True))
+    if user_ids:
+        emp_ids |= set(Employee.objects.filter(user_id__in=user_ids).values_list("id", flat=True))
+    return Employee.objects.filter(id__in=emp_ids)
+
+
 def role_people_count(role) -> int:
     """Кол-во людей в роли (для списка ролей). Computed-роли считаются по графу."""
     from django.db.models import Q
@@ -323,7 +357,8 @@ def role_people_count(role) -> int:
 
     slug = role.slug
     if slug in ("all_people", "self"):
-        return Employee.objects.filter(status=Employee.Status.ACTIVE, user__isnull=False).count()
+        # Системні computed-ролі автоматичні: усі активні співробітники.
+        return Employee.objects.filter(status=Employee.Status.ACTIVE).count()
     if slug == "manager":
         today = _today()
         return (

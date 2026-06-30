@@ -210,6 +210,21 @@ class RbacApiTests(APITestCase):
         )
         self.assertEqual(self._active_ids(resp3.data), {e1.id})
 
+    # ── people drawer ─────────────────────────────────────────────────────────
+    def test_role_people_all_people(self):
+        self._as_admin()
+        from apps.employees.models import Employee
+
+        Employee.objects.create(first_name="Зоя", last_name="Активна", status=Employee.Status.ACTIVE)
+        all_people = AccessRole.objects.get(slug="all_people")
+        resp = self.client.get(f"/api/access/roles/{all_people.id}/people/?page_size=5")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertGreaterEqual(resp.data["count"], 1)
+        self.assertLessEqual(len(resp.data["results"]), 5)
+        # пошук
+        s = self.client.get(f"/api/access/roles/{all_people.id}/people/?search=Активна")
+        self.assertTrue(any("Активна" in r["full_name"] for r in s.data["results"]))
+
     # ── field-access (вкладка «Люди») ─────────────────────────────────────────
     def test_field_access_get_and_save(self):
         self._as_admin()
