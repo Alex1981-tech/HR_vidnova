@@ -137,8 +137,6 @@ PERMISSIONS: tuple[Permission, ...] = (
        "Вмк./вимк. доступ співробітників до системи", "Дозволяти або обмежувати доступ співробітників до системи.", RiskLevel.CRITICAL),
     _p("people.invite", "people", Group.GENERAL, "people", "invite",
        "Надіслати запрошення в систему", "Надсилати співробітникам запрошення в систему.", RiskLevel.MEDIUM),
-    _p("people.reset_passwords", "people", Group.GENERAL, "people", "reset_passwords",
-       "Скинути паролі", "Скидати паролі співробітників.", RiskLevel.HIGH),
     _p("people.view_offboarded", "people", Group.GENERAL, "people", "view_offboarded",
        "Переглядати звільнених співробітників", "Бачити всіх звільнених співробітників у компанії.", RiskLevel.MEDIUM, _V),
     _p("people.terminate", "people", Group.GENERAL, "people", "terminate",
