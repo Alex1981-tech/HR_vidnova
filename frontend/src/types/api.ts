@@ -631,6 +631,95 @@ export type LeaveTypePayload = {
   is_active?: boolean;
 };
 
+export type LeavePolicyAccrualRule = {
+  id: number;
+  enabled: boolean;
+  start_delay_amount: number;
+  start_delay_unit: string;
+  start_balance: string;
+  annual_allowance: string;
+  period_amount: string;
+  frequency: string;
+  accrual_timing: string;
+  first_accrual: string;
+  max_balance: string | null;
+  carryover_mode: string;
+  carryover_limit: string | null;
+  carryover_expire_months: number;
+  carryover_day: number;
+  carryover_month: number;
+  seniority_bonus_enabled: boolean;
+};
+
+export type LeavePolicy = {
+  id: number;
+  leave_type: number;
+  leave_type_name: string;
+  name: string;
+  legacy_peopleforce_id?: string;
+  policy_type: string;
+  type?: string;
+  activity_type: string;
+  counted_as: string;
+  visibility: string;
+  instructions_html: string;
+  prevent_overlapping_requests: boolean;
+  forbid_probation_requests: boolean;
+  forbid_breakdown_edit: boolean;
+  restrict_adjustments_for_employees: boolean;
+  direct_reports_only: boolean;
+  min_daily_amount: string | null;
+  min_total_amount: string | null;
+  max_total_amount: string | null;
+  min_notice_days: number | null;
+  max_notice_days: number | null;
+  approval_enabled: boolean;
+  skip_unassigned_approvers: boolean;
+  allow_substitute_approvers: boolean;
+  approver_steps: unknown[];
+  rounding_method: string;
+  rounding_precision: string;
+  allow_withdraw: boolean;
+  mandatory_comment: boolean;
+  allow_attachments: boolean;
+  notify_approver: boolean;
+  is_active: boolean;
+  employee_count: number;
+  accrual_rule?: LeavePolicyAccrualRule | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type LeavePolicyPayload = Partial<Omit<LeavePolicy, 'id' | 'leave_type_name' | 'employee_count' | 'created_at' | 'updated_at' | 'type'>> & {
+  leave_type: number;
+  name: string;
+};
+
+export type LeaveTypeWithPolicies = LeaveType & {
+  policies: LeavePolicy[];
+};
+
+export type EmployeeLeavePolicyAssignment = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  employee_avatar_url: string;
+  employee_avatar_local_url: string;
+  employee_position_name: string;
+  leave_type: number;
+  leave_type_name: string;
+  policy: number;
+  policy_name: string;
+  policy_type: string;
+  effective_on: string;
+  ends_on: string | null;
+  initial_balance: string;
+  balance: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type LeaveRequest = {
   id: number;
   employee?: number;

@@ -6256,7 +6256,7 @@ textarea.profile-field-input {
 }
 .leave-policy-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 22px;
   border: 1px solid #d8e6f2;
   border-radius: 5px;
@@ -6487,6 +6487,23 @@ textarea.profile-field-input {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.leave-policy-accrual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.leave-policy-accrual-grid:disabled,
+.leave-policy-two-cols:disabled {
+  opacity: 0.58;
 }
 .leave-policy-radio {
   align-items: center;
@@ -6515,6 +6532,12 @@ textarea.profile-field-input {
   min-height: 36px;
   border-radius: 5px;
   padding: 0 13px;
+}
+.leave-policy-footer-error {
+  flex: 1 1 auto;
+  color: var(--danger);
+  font-size: 13px;
+  text-align: right;
 }
 .leave-policy-footer .next-icon {
   transform: rotate(-90deg);
@@ -6955,6 +6978,25 @@ textarea.profile-field-input {
   padding: 0 10px;
   font-size: 14px;
 }
+.leave-assignment-type-field input {
+  height: 38px;
+  border: 1px solid #d8e6f2;
+  border-radius: 5px;
+  background: #f8fbfe;
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 14px;
+}
+.leave-assignment-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 198px));
+  gap: 12px;
+}
+.leave-assignment-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
 .leave-assignment-footer {
   position: fixed;
   right: 0;
@@ -7065,6 +7107,7 @@ textarea.profile-field-input {
     border-bottom: 3px solid var(--primary);
   }
   .leave-policy-two-cols,
+  .leave-policy-accrual-grid,
   .leave-policy-limits {
     grid-template-columns: 1fr;
   }
@@ -7087,6 +7130,9 @@ textarea.profile-field-input {
   .leave-assignment-toolbar .secondary-action {
     border-top: 1px solid #d8e6f2;
     border-left: 0;
+  }
+  .leave-assignment-form-row {
+    grid-template-columns: 1fr;
   }
 }
 

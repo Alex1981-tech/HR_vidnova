@@ -22,7 +22,15 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../../api/client';
-import type { EmployeeListItem, LeaveBalance, LeaveType, LeaveTypePayload } from '../../types/api';
+import type {
+  EmployeeLeavePolicyAssignment,
+  EmployeeListItem,
+  LeavePolicy,
+  LeavePolicyPayload,
+  LeaveType,
+  LeaveTypePayload,
+  LeaveTypeWithPolicies,
+} from '../../types/api';
 import { LEAVE_ICON_OPTIONS, LeaveTypeIcon } from '../../lib/leaveIcons';
 
 const UNIT_OPTIONS: Array<{ value: string; label: string }> = [
@@ -34,14 +42,50 @@ const DEFAULT_ICON = 'plane';
 const DEFAULT_COLOR = '#000000';
 
 const POLICY_ACTIVITY_OPTIONS = [
-  { value: 'non_working_paid', label: 'Неробочі, оплачувані' },
-  { value: 'non_working_unpaid', label: 'Неробочі, неоплачувані' },
+  { value: 'not_working_paid', label: 'Неробочі, оплачувані' },
+  { value: 'not_working_unpaid', label: 'Неробочі, неоплачувані' },
   { value: 'working_paid', label: 'Робочі, оплачувані' },
 ];
 
-const POLICY_COUNTED_OPTIONS = [
+const POLICY_TYPE_OPTIONS = [
   { value: 'accrual', label: 'З нарахуванням' },
-  { value: 'no_accrual', label: 'Без нарахування' },
+  { value: 'manual', label: 'Без нарахування' },
+  { value: 'external', label: 'Зовнішній баланс' },
+];
+
+const POLICY_COUNTED_OPTIONS = [
+  { value: 'working_days', label: 'Робочі дні' },
+  { value: 'calendar_days', label: 'Календарні дні' },
+];
+
+const ACCRUAL_FREQUENCY_OPTIONS = [
+  { value: 'monthly', label: 'Щомісяця' },
+  { value: 'yearly', label: 'Щороку' },
+  { value: 'weekly', label: 'Щотижня' },
+  { value: 'none', label: 'Немає' },
+];
+
+const ACCRUAL_TIMING_OPTIONS = [
+  { value: 'period_start', label: 'Початок періоду' },
+  { value: 'period_end', label: 'Кінець періоду' },
+];
+
+const FIRST_ACCRUAL_OPTIONS = [
+  { value: 'proportional', label: 'Пропорційна' },
+  { value: 'full', label: 'Повна' },
+  { value: 'none', label: 'Не нараховувати' },
+];
+
+const CARRYOVER_MODE_OPTIONS = [
+  { value: 'none', label: 'Немає' },
+  { value: 'all', label: 'Усе' },
+  { value: 'limited', label: 'Обмежено' },
+];
+
+const DELAY_UNIT_OPTIONS = [
+  { value: 'days', label: 'Дні' },
+  { value: 'months', label: 'Місяці' },
+  { value: 'years', label: 'Роки' },
 ];
 
 function unitSubtitle(unit: string): string {
@@ -50,7 +94,7 @@ function unitSubtitle(unit: string): string {
 
 function activityLabel(value: string): string {
   const raw = (value || '').toLowerCase();
-  if (raw.includes('non_working') || raw.includes('неробоч')) {
+  if (raw.includes('not_working') || raw.includes('non_working') || raw.includes('неробоч')) {
     return raw.includes('unpaid') || raw.includes('неоплач') ? 'Неробочі, неоплачувані' : 'Неробочі, оплачувані';
   }
   if (raw.includes('unpaid') || raw.includes('неоплач')) return 'Неробочі, неоплачувані';
@@ -60,8 +104,13 @@ function activityLabel(value: string): string {
 
 function countedAsLabel(value: string): string {
   const raw = (value || '').toLowerCase();
-  if (raw.includes('no') || raw.includes('none') || raw.includes('без')) return 'Без нарахування';
-  return 'З нарахуванням';
+  if (raw.includes('calendar') || raw.includes('календар')) return 'Календарні дні';
+  return 'Робочі дні';
+}
+
+function policyTypeLabel(value: string): string {
+  const option = POLICY_TYPE_OPTIONS.find((item) => item.value === value);
+  return option?.label ?? 'Без нарахування';
 }
 
 function employeesCountLabel(count: number): string {
@@ -74,24 +123,14 @@ function employeesCountLabel(count: number): string {
 
 type ModalState = { mode: 'create' } | { mode: 'edit'; type: LeaveType } | null;
 
-type LeavePolicySummary = {
-  id: string;
-  leaveTypeId: number;
-  name: string;
-  activityType: string;
-  countedAs: string;
-  employeeCount: number;
-  local?: boolean;
-};
-
 type PolicyWizardRequest = {
   leaveType: LeaveType;
-  countedAs: string;
-  initialName?: string;
+  policyType?: string;
+  policy?: LeavePolicy;
 };
 
 type PolicyPeoplePanelState = {
-  policy: LeavePolicySummary;
+  policy: LeavePolicy;
   type: LeaveType;
 } | null;
 
@@ -127,93 +166,32 @@ function employeeAvatar(employee: EmployeeListItem | undefined): string {
   return '';
 }
 
-function policyMatchesBalance(policy: LeavePolicySummary, balance: LeaveBalance): boolean {
-  return (
-    policy.leaveTypeId === balance.leave_type &&
-    policy.name === (balance.policy_name || '').trim() &&
-    policy.activityType === activityLabel(balance.policy_activity_type) &&
-    policy.countedAs === countedAsLabel(balance.policy_counted_as)
-  );
-}
-
 function peopleForPolicy(
-  policy: LeavePolicySummary,
-  balances: LeaveBalance[],
+  policy: LeavePolicy,
+  assignments: EmployeeLeavePolicyAssignment[],
   employeesById: Map<number, EmployeeListItem>,
 ): PolicyPersonRow[] {
-  return balances
-    .filter((balance) => policyMatchesBalance(policy, balance))
-    .map((balance) => {
-      const employee = employeesById.get(balance.employee);
+  return assignments
+    .filter((assignment) => assignment.policy === policy.id)
+    .map((assignment) => {
+      const employee = employeesById.get(assignment.employee);
       return {
-        employeeId: balance.employee,
-        fullName: employee?.full_name || balance.employee_name || `ID ${balance.employee}`,
-        position: employee?.position_name || employee?.department_name || '',
+        employeeId: assignment.employee,
+        fullName: employee?.full_name || assignment.employee_name || `ID ${assignment.employee}`,
+        position: employee?.position_name || assignment.employee_position_name || employee?.department_name || '',
         avatarUrl: employeeAvatar(employee),
-        effectiveOn: balance.effective_on,
+        effectiveOn: assignment.effective_on,
       };
     })
     .sort((first, second) => first.fullName.localeCompare(second.fullName, 'uk'));
 }
 
-function buildPoliciesByType(
-  types: LeaveType[],
-  balances: LeaveBalance[],
-  localPolicies: LeavePolicySummary[],
-): Map<number, LeavePolicySummary[]> {
-  const grouped = new Map<string, LeavePolicySummary & { employees: Set<number> }>();
-
-  balances.forEach((balance) => {
-    const name = (balance.policy_name || '').trim();
-    if (!name) return;
-    const activityType = activityLabel(balance.policy_activity_type);
-    const countedAs = countedAsLabel(balance.policy_counted_as);
-    const key = `${balance.leave_type}:${name}:${activityType}:${countedAs}`;
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.employees.add(balance.employee);
-      existing.employeeCount = existing.employees.size;
-      return;
-    }
-    grouped.set(key, {
-      id: key,
-      leaveTypeId: balance.leave_type,
-      name,
-      activityType,
-      countedAs,
-      employeeCount: 1,
-      employees: new Set([balance.employee]),
-    });
-  });
-
-  const result = new Map<number, LeavePolicySummary[]>();
+function buildPoliciesByType(types: LeaveTypeWithPolicies[]): Map<number, LeavePolicy[]> {
+  const result = new Map<number, LeavePolicy[]>();
   types.forEach((type) => {
-    result.set(type.id, []);
-  });
-  grouped.forEach(({ employees: _employees, ...policy }) => {
-    result.set(policy.leaveTypeId, [...(result.get(policy.leaveTypeId) ?? []), policy]);
-  });
-  localPolicies.forEach((policy) => {
-    result.set(policy.leaveTypeId, [...(result.get(policy.leaveTypeId) ?? []), policy]);
-  });
-  types.forEach((type) => {
-    const policies = result.get(type.id) ?? [];
-    if (!policies.length) {
-      result.set(type.id, [
-        {
-          id: `fallback-${type.id}`,
-          leaveTypeId: type.id,
-          name: type.name,
-          activityType: 'Неробочі, оплачувані',
-          countedAs: 'Без нарахування',
-          employeeCount: 0,
-        },
-      ]);
-      return;
-    }
     result.set(
       type.id,
-      [...policies].sort((first, second) => first.name.localeCompare(second.name, 'uk')),
+      [...(type.policies ?? [])].sort((first, second) => first.name.localeCompare(second.name, 'uk')),
     );
   });
   return result;
@@ -349,6 +327,22 @@ function ToolbarStub() {
   );
 }
 
+function valueOrNull(value: string): string | null {
+  const normalized = value.trim().replace(',', '.');
+  return normalized ? normalized : null;
+}
+
+function valueOrZero(value: string): string {
+  return valueOrNull(value) ?? '0';
+}
+
+function numberOrNull(value: string): number | null {
+  const normalized = value.trim();
+  if (!normalized) return null;
+  const parsed = Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function LeavePolicyWizard({
   initial,
   onBack,
@@ -356,44 +350,136 @@ function LeavePolicyWizard({
 }: {
   initial: PolicyWizardRequest;
   onBack: () => void;
-  onFinish: (policy: LeavePolicySummary) => void;
+  onFinish: (payload: LeavePolicyPayload) => Promise<void>;
 }) {
-  const [step, setStep] = useState<'details' | 'approval' | 'settings'>('details');
-  const [name, setName] = useState(initial.initialName ?? initial.leaveType.name);
-  const [activityType, setActivityType] = useState(POLICY_ACTIVITY_OPTIONS[0].value);
-  const [countedAs, setCountedAs] = useState(initial.countedAs);
-  const [workdaysOnly, setWorkdaysOnly] = useState(true);
-  const [approvalEnabled, setApprovalEnabled] = useState(true);
-  const [allowSubstitute, setAllowSubstitute] = useState(false);
-  const [allowWithdraw, setAllowWithdraw] = useState(true);
-  const [mandatoryComment, setMandatoryComment] = useState(false);
-  const [notifyApprover, setNotifyApprover] = useState(true);
+  type PolicyStep = 'details' | 'accruals' | 'approval' | 'settings';
+  const policy = initial.policy;
+  const rule = policy?.accrual_rule;
+  const [step, setStep] = useState<PolicyStep>('details');
+  const [name, setName] = useState(policy?.name ?? initial.leaveType.name);
+  const [policyType, setPolicyType] = useState(policy?.policy_type ?? initial.policyType ?? 'manual');
+  const [activityType, setActivityType] = useState(policy?.activity_type ?? POLICY_ACTIVITY_OPTIONS[0].value);
+  const [countedAs, setCountedAs] = useState(policy?.counted_as ?? 'working_days');
+  const [visibility, setVisibility] = useState(policy?.visibility ?? 'everyone');
+  const [instructionsHtml, setInstructionsHtml] = useState(policy?.instructions_html ?? '');
+  const [preventOverlapping, setPreventOverlapping] = useState(policy?.prevent_overlapping_requests ?? true);
+  const [forbidProbation, setForbidProbation] = useState(policy?.forbid_probation_requests ?? false);
+  const [forbidBreakdown, setForbidBreakdown] = useState(policy?.forbid_breakdown_edit ?? false);
+  const [restrictAdjustments, setRestrictAdjustments] = useState(policy?.restrict_adjustments_for_employees ?? false);
+  const [directReportsOnly, setDirectReportsOnly] = useState(policy?.direct_reports_only ?? false);
+  const [minDailyAmount, setMinDailyAmount] = useState(policy?.min_daily_amount ?? '');
+  const [minTotalAmount, setMinTotalAmount] = useState(policy?.min_total_amount ?? '');
+  const [maxTotalAmount, setMaxTotalAmount] = useState(policy?.max_total_amount ?? '');
+  const [minNoticeDays, setMinNoticeDays] = useState(policy?.min_notice_days == null ? '' : String(policy.min_notice_days));
+  const [maxNoticeDays, setMaxNoticeDays] = useState(policy?.max_notice_days == null ? '' : String(policy.max_notice_days));
+  const [approvalEnabled, setApprovalEnabled] = useState(policy?.approval_enabled ?? true);
+  const [skipUnassigned, setSkipUnassigned] = useState(policy?.skip_unassigned_approvers ?? false);
+  const [allowSubstitute, setAllowSubstitute] = useState(policy?.allow_substitute_approvers ?? false);
+  const [roundingMethod, setRoundingMethod] = useState(policy?.rounding_method ?? 'nearest');
+  const [roundingPrecision, setRoundingPrecision] = useState(policy?.rounding_precision ?? 'two_decimals');
+  const [allowWithdraw, setAllowWithdraw] = useState(policy?.allow_withdraw ?? true);
+  const [mandatoryComment, setMandatoryComment] = useState(policy?.mandatory_comment ?? false);
+  const [allowAttachments, setAllowAttachments] = useState(policy?.allow_attachments ?? false);
+  const [notifyApprover, setNotifyApprover] = useState(policy?.notify_approver ?? true);
+  const [startDelayAmount, setStartDelayAmount] = useState(String(rule?.start_delay_amount ?? 0));
+  const [startDelayUnit, setStartDelayUnit] = useState(rule?.start_delay_unit ?? 'months');
+  const [startBalance, setStartBalance] = useState(rule?.start_balance ?? '0.00');
+  const [annualAllowance, setAnnualAllowance] = useState(rule?.annual_allowance ?? '24.00');
+  const [periodAmount, setPeriodAmount] = useState(rule?.period_amount ?? '2.00');
+  const [frequency, setFrequency] = useState(rule?.frequency ?? 'monthly');
+  const [accrualTiming, setAccrualTiming] = useState(rule?.accrual_timing ?? 'period_start');
+  const [firstAccrual, setFirstAccrual] = useState(rule?.first_accrual ?? 'proportional');
+  const [maxBalance, setMaxBalance] = useState(rule?.max_balance ?? '24.00');
+  const [carryoverMode, setCarryoverMode] = useState(rule?.carryover_mode ?? 'none');
+  const [carryoverLimit, setCarryoverLimit] = useState(rule?.carryover_limit ?? '');
+  const [carryoverExpireMonths, setCarryoverExpireMonths] = useState(String(rule?.carryover_expire_months ?? 0));
+  const [carryoverDay, setCarryoverDay] = useState(String(rule?.carryover_day ?? 1));
+  const [carryoverMonth, setCarryoverMonth] = useState(String(rule?.carryover_month ?? 1));
+  const [seniorityBonusEnabled, setSeniorityBonusEnabled] = useState(rule?.seniority_bonus_enabled ?? false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const steps = [
     { key: 'details', label: 'Деталі' },
+    { key: 'accruals', label: 'Нарахування та перенесення' },
     { key: 'approval', label: 'Схвалення' },
     { key: 'settings', label: 'Налаштування' },
   ] as const;
   const activeIndex = steps.findIndex((item) => item.key === step);
 
-  function goNext() {
-    if (step === 'details') {
-      setStep('approval');
-      return;
-    }
-    if (step === 'approval') {
-      setStep('settings');
-      return;
-    }
-    onFinish({
-      id: `local-${initial.leaveType.id}-${Date.now()}`,
-      leaveTypeId: initial.leaveType.id,
+  function buildPayload(): LeavePolicyPayload {
+    return {
+      leave_type: initial.leaveType.id,
       name: name.trim() || initial.leaveType.name,
-      activityType: activityLabel(activityType),
-      countedAs: countedAsLabel(countedAs),
-      employeeCount: 0,
-      local: true,
-    });
+      policy_type: policyType,
+      activity_type: activityType,
+      counted_as: countedAs,
+      visibility,
+      instructions_html: instructionsHtml,
+      prevent_overlapping_requests: preventOverlapping,
+      forbid_probation_requests: forbidProbation,
+      forbid_breakdown_edit: forbidBreakdown,
+      restrict_adjustments_for_employees: restrictAdjustments,
+      direct_reports_only: directReportsOnly,
+      min_daily_amount: valueOrNull(minDailyAmount),
+      min_total_amount: valueOrNull(minTotalAmount),
+      max_total_amount: valueOrNull(maxTotalAmount),
+      min_notice_days: numberOrNull(minNoticeDays),
+      max_notice_days: numberOrNull(maxNoticeDays),
+      approval_enabled: approvalEnabled,
+      skip_unassigned_approvers: skipUnassigned,
+      allow_substitute_approvers: allowSubstitute,
+      approver_steps: approvalEnabled ? [{ type: 'manager', order: 1 }] : [],
+      rounding_method: roundingMethod,
+      rounding_precision: roundingPrecision,
+      allow_withdraw: allowWithdraw,
+      mandatory_comment: mandatoryComment,
+      allow_attachments: allowAttachments,
+      notify_approver: notifyApprover,
+      is_active: true,
+      accrual_rule: {
+        id: rule?.id ?? 0,
+        enabled: policyType === 'accrual',
+        start_delay_amount: Math.max(0, numberOrNull(startDelayAmount) ?? 0),
+        start_delay_unit: startDelayUnit,
+        start_balance: valueOrZero(startBalance),
+        annual_allowance: valueOrZero(annualAllowance),
+        period_amount: valueOrZero(periodAmount),
+        frequency,
+        accrual_timing: accrualTiming,
+        first_accrual: firstAccrual,
+        max_balance: valueOrNull(maxBalance),
+        carryover_mode: carryoverMode,
+        carryover_limit: valueOrNull(carryoverLimit),
+        carryover_expire_months: Math.max(0, numberOrNull(carryoverExpireMonths) ?? 0),
+        carryover_day: Math.min(31, Math.max(1, numberOrNull(carryoverDay) ?? 1)),
+        carryover_month: Math.min(12, Math.max(1, numberOrNull(carryoverMonth) ?? 1)),
+        seniority_bonus_enabled: seniorityBonusEnabled,
+      },
+    };
+  }
+
+  async function submit() {
+    if (!name.trim()) {
+      setError('Введіть ім’я політики.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await onFinish(buildPayload());
+    } catch {
+      setError('Не вдалося зберегти політику. Перевірте поля та спробуйте ще раз.');
+      setSaving(false);
+    }
+  }
+
+  function goNext() {
+    if (activeIndex < steps.length - 1) {
+      setStep(steps[activeIndex + 1].key);
+      return;
+    }
+    void submit();
   }
 
   function goPrevious() {
@@ -401,7 +487,7 @@ function LeavePolicyWizard({
       onBack();
       return;
     }
-    setStep(step === 'settings' ? 'approval' : 'details');
+    setStep(steps[Math.max(0, activeIndex - 1)].key);
   }
 
   return (
@@ -410,7 +496,7 @@ function LeavePolicyWizard({
         <ChevronLeft size={16} />
         <span>Назад</span>
       </button>
-      <h1>Нова політика відсутності</h1>
+      <h1>{policy ? 'Редагувати політику відсутності' : 'Нова політика відсутності'}</h1>
 
       <div className="leave-policy-tabs" role="tablist" aria-label="Кроки політики">
         {steps.map((item, index) => {
@@ -448,7 +534,18 @@ function LeavePolicyWizard({
                   </option>
                 ))}
               </select>
-              <small>Яким враховувати запит співробітника на відсутність: як робочий чи оплачуваний.</small>
+              <small>Визначає, чи відсутність є робочою, оплачуваною або неоплачуваною.</small>
+            </label>
+            <label className="leave-policy-field">
+              <span>Тип політики</span>
+              <select value={policyType} onChange={(event) => setPolicyType(event.target.value)}>
+                {POLICY_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <small>Нарахування створює баланс автоматично, ручна політика змінюється заявками або коригуваннями.</small>
             </label>
             <label className="leave-policy-field">
               <span>Враховується як</span>
@@ -459,41 +556,70 @@ function LeavePolicyWizard({
                   </option>
                 ))}
               </select>
-              <small>Визначає, чи політика впливає на баланс відсутності.</small>
+              <small>Визначає, рахувати тривалість за робочими чи календарними днями.</small>
             </label>
             <label className="leave-policy-field">
               <span>Інструкції</span>
               <div className="leave-policy-editor">
                 <ToolbarStub />
-                <textarea />
+                <textarea value={instructionsHtml} onChange={(event) => setInstructionsHtml(event.target.value)} />
               </div>
             </label>
           </div>
           <div className="leave-policy-section">
             <h2>Обмеження</h2>
             <label className="leave-policy-check">
-              <input type="checkbox" checked={workdaysOnly} onChange={(event) => setWorkdaysOnly(event.target.checked)} />
+              <input type="checkbox" checked={preventOverlapping} onChange={(event) => setPreventOverlapping(event.target.checked)} />
               <span>
                 <strong>Обмежити запити, які збігаються</strong>
                 <em>Якщо ввімкнено, співробітники не зможуть подавати запити, які збігаються з іншими відсутностями.</em>
               </span>
             </label>
-            {['Заборонити запити під час випр. терміну', 'Заборонити редагування розбивки', 'Коригування обмежені', 'Обмежити надсилання запитів безпосередньо людьми'].map((label) => (
-              <label className="leave-policy-check" key={label}>
-                <input type="checkbox" />
-                <span>
-                  <strong>{label}</strong>
-                  <em>Якщо увімкнено, правило буде застосовано для співробітників.</em>
-                </span>
-              </label>
-            ))}
+            <label className="leave-policy-check">
+              <input type="checkbox" checked={forbidProbation} onChange={(event) => setForbidProbation(event.target.checked)} />
+              <span>
+                <strong>Заборонити запити під час випр. терміну</strong>
+                <em>Працівники на випробувальному терміні не зможуть подати запит за цією політикою.</em>
+              </span>
+            </label>
+            <label className="leave-policy-check">
+              <input type="checkbox" checked={forbidBreakdown} onChange={(event) => setForbidBreakdown(event.target.checked)} />
+              <span>
+                <strong>Заборонити редагування розбивки</strong>
+                <em>Сума днів у заявці буде рахуватися політикою без ручного редагування співробітником.</em>
+              </span>
+            </label>
+            <label className="leave-policy-check">
+              <input type="checkbox" checked={restrictAdjustments} onChange={(event) => setRestrictAdjustments(event.target.checked)} />
+              <span>
+                <strong>Коригування обмежені</strong>
+                <em>Зміни балансу вручну доступні тільки адміністраторам політик.</em>
+              </span>
+            </label>
+            <label className="leave-policy-check">
+              <input type="checkbox" checked={directReportsOnly} onChange={(event) => setDirectReportsOnly(event.target.checked)} />
+              <span>
+                <strong>Обмежити надсилання запитів безпосередньо людьми</strong>
+                <em>Менеджери працюють тільки із запитами своїх прямих підлеглих.</em>
+              </span>
+            </label>
             <p className="leave-policy-note">Нижче ви можете налаштувати мінімальні та максимальні обмеження для запитів на відсутність.</p>
             <div className="leave-policy-limits">
-              {['Мінімальна щоденна сума', 'Мінімальна загальна сума', 'Максимальна загальна сума', 'Мінімальний термін повідомлення', 'Максимальний термін повідомлення'].map((label, index) => (
-                <label className={index === 0 ? 'wide' : ''} key={label}>
-                  <span>{label}</span>
+              {[
+                ['Мінімальна щоденна сума', minDailyAmount, setMinDailyAmount, 'wide'],
+                ['Мінімальна загальна сума', minTotalAmount, setMinTotalAmount, ''],
+                ['Максимальна загальна сума', maxTotalAmount, setMaxTotalAmount, ''],
+                ['Мінімальний термін повідомлення', minNoticeDays, setMinNoticeDays, ''],
+                ['Максимальний термін повідомлення', maxNoticeDays, setMaxNoticeDays, ''],
+              ].map(([label, value, setter, className]) => (
+                <label className={className as string} key={label as string}>
+                  <span>{label as string}</span>
                   <div>
-                    <input placeholder={label.includes('Максим') ? 'Макс' : 'Мін'} />
+                    <input
+                      value={value as string}
+                      onChange={(event) => (setter as (next: string) => void)(event.target.value)}
+                      placeholder={(label as string).includes('Максим') ? 'Макс' : 'Мін'}
+                    />
                     <button type="button" aria-label="Зменшити">
                       <Minus size={15} />
                     </button>
@@ -505,6 +631,142 @@ function LeavePolicyWizard({
                 </label>
               ))}
             </div>
+          </div>
+        </section>
+      ) : null}
+
+      {step === 'accruals' ? (
+        <section className="leave-policy-card">
+          <div className="leave-policy-section">
+            <h2>Нарахування</h2>
+            <label className="leave-policy-check inline">
+              <input
+                type="checkbox"
+                checked={policyType === 'accrual'}
+                onChange={(event) => setPolicyType(event.target.checked ? 'accrual' : 'manual')}
+              />
+              <strong>Автоматично нараховувати баланс</strong>
+            </label>
+            <fieldset className="leave-policy-accrual-grid" disabled={policyType !== 'accrual'}>
+              <label className="leave-policy-field">
+                <span>Починається через</span>
+                <input value={startDelayAmount} onChange={(event) => setStartDelayAmount(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Період очікування</span>
+                <select value={startDelayUnit} onChange={(event) => setStartDelayUnit(event.target.value)}>
+                  {DELAY_UNIT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="leave-policy-field">
+                <span>Початковий залишок</span>
+                <input value={startBalance} onChange={(event) => setStartBalance(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Річний ліміт</span>
+                <input value={annualAllowance} onChange={(event) => setAnnualAllowance(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Нарахування</span>
+                <input value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Частота</span>
+                <select value={frequency} onChange={(event) => setFrequency(event.target.value)}>
+                  {ACCRUAL_FREQUENCY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="leave-policy-field">
+                <span>Коли нараховувати</span>
+                <select value={accrualTiming} onChange={(event) => setAccrualTiming(event.target.value)}>
+                  {ACCRUAL_TIMING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="leave-policy-field">
+                <span>Максимальний баланс</span>
+                <input value={maxBalance} onChange={(event) => setMaxBalance(event.target.value)} />
+              </label>
+            </fieldset>
+          </div>
+          <div className="leave-policy-section">
+            <h2>Перенесення</h2>
+            <fieldset className="leave-policy-accrual-grid" disabled={policyType !== 'accrual'}>
+              <label className="leave-policy-field">
+                <span>Сума перенесення</span>
+                <select value={carryoverMode} onChange={(event) => setCarryoverMode(event.target.value)}>
+                  {CARRYOVER_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="leave-policy-field">
+                <span>Ліміт перенесення</span>
+                <input value={carryoverLimit} onChange={(event) => setCarryoverLimit(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Використати або втратити через</span>
+                <input value={carryoverExpireMonths} onChange={(event) => setCarryoverExpireMonths(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>Місяці</span>
+                <input value={carryoverMonth} onChange={(event) => setCarryoverMonth(event.target.value)} />
+              </label>
+              <label className="leave-policy-field">
+                <span>День перенесення</span>
+                <input value={carryoverDay} onChange={(event) => setCarryoverDay(event.target.value)} />
+              </label>
+            </fieldset>
+            <label className="leave-policy-check">
+              <input
+                type="checkbox"
+                checked={seniorityBonusEnabled}
+                onChange={(event) => setSeniorityBonusEnabled(event.target.checked)}
+                disabled={policyType !== 'accrual'}
+              />
+              <span>
+                <strong>Надати додаткову відпустку з урахуванням загального досвіду роботи</strong>
+                <em>Поле зберігається в політиці; детальні рівні стажу можна додати наступним етапом.</em>
+              </span>
+            </label>
+          </div>
+          <div className="leave-policy-section">
+            <h2>Налаштування нарахувань</h2>
+            <fieldset className="leave-policy-two-cols" disabled={policyType !== 'accrual'}>
+              <label className="leave-policy-field">
+                <span>Перше нарахування</span>
+                <select value={firstAccrual} onChange={(event) => setFirstAccrual(event.target.value)}>
+                  {FIRST_ACCRUAL_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="leave-policy-field">
+                <span>Нарахування трапляються</span>
+                <select value={accrualTiming} onChange={(event) => setAccrualTiming(event.target.value)}>
+                  {ACCRUAL_TIMING_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </fieldset>
           </div>
         </section>
       ) : null}
@@ -531,7 +793,7 @@ function LeavePolicyWizard({
               Додати схвалювача
             </button>
             <label className="leave-policy-check">
-              <input type="checkbox" />
+              <input type="checkbox" checked={skipUnassigned} onChange={(event) => setSkipUnassigned(event.target.checked)} />
               <span>
                 <strong>Пропустити непризначені схвалення</strong>
                 <em>Запити, в яких відсутні відповідальні особи, будуть автоматично схвалені.</em>
@@ -556,18 +818,18 @@ function LeavePolicyWizard({
             <div className="leave-policy-two-cols">
               <label className="leave-policy-field">
                 <span>Метод округлення</span>
-                <select>
-                  <option>До найближчого</option>
-                  <option>Вниз</option>
-                  <option>Вгору</option>
+                <select value={roundingMethod} onChange={(event) => setRoundingMethod(event.target.value)}>
+                  <option value="nearest">До найближчого</option>
+                  <option value="down">Вниз</option>
+                  <option value="up">Вгору</option>
                 </select>
               </label>
               <label className="leave-policy-field">
                 <span>Точність округлення</span>
-                <select>
-                  <option>Два знаки після коми</option>
-                  <option>Один знак після коми</option>
-                  <option>Ціле число</option>
+                <select value={roundingPrecision} onChange={(event) => setRoundingPrecision(event.target.value)}>
+                  <option value="two_decimals">Два знаки після коми</option>
+                  <option value="one_decimal">Один знак після коми</option>
+                  <option value="integer">Ціле число</option>
                 </select>
               </label>
             </div>
@@ -576,11 +838,21 @@ function LeavePolicyWizard({
             <h2>Видимість</h2>
             <p>Показувати ім’я типу відсутності в календарях і на домашній сторінці.</p>
             <label className="leave-policy-radio">
-              <input type="radio" name="visibility" defaultChecked />
+              <input
+                type="radio"
+                name="visibility"
+                checked={visibility === 'everyone'}
+                onChange={() => setVisibility('everyone')}
+              />
               <span>Для всіх</span>
             </label>
             <label className="leave-policy-radio">
-              <input type="radio" name="visibility" />
+              <input
+                type="radio"
+                name="visibility"
+                checked={visibility === 'self_only'}
+                onChange={() => setVisibility('self_only')}
+              />
               <span>Для мене</span>
             </label>
           </div>
@@ -601,7 +873,7 @@ function LeavePolicyWizard({
               </span>
             </label>
             <label className="leave-policy-check">
-              <input type="checkbox" />
+              <input type="checkbox" checked={allowAttachments} onChange={(event) => setAllowAttachments(event.target.checked)} />
               <span>
                 <strong>Дозволити вкладення</strong>
                 <em>Співробітник зможе завантажити файл до своїх запитів.</em>
@@ -616,7 +888,7 @@ function LeavePolicyWizard({
             </label>
             <div className="leave-policy-editor">
               <ToolbarStub />
-              <textarea />
+              <textarea value={instructionsHtml} onChange={(event) => setInstructionsHtml(event.target.value)} />
             </div>
           </div>
         </section>
@@ -625,10 +897,11 @@ function LeavePolicyWizard({
       <footer className="leave-policy-footer">
         <button type="button" className="secondary-action" onClick={goPrevious}>
           <ChevronLeft size={16} />
-          {step === 'details' ? 'Скасувати' : 'Назад'}
+                {step === 'details' ? 'Скасувати' : 'Назад'}
         </button>
-        <button type="button" className="primary-action" onClick={goNext}>
-          {step === 'settings' ? 'Завершити' : 'Далі'}
+        {error ? <span className="leave-policy-footer-error">{error}</span> : null}
+        <button type="button" className="primary-action" onClick={goNext} disabled={saving}>
+          {step === 'settings' ? (saving ? 'Збереження…' : 'Завершити') : 'Далі'}
           {step === 'settings' ? <CheckCircle2 size={16} /> : <ChevronDown className="next-icon" size={16} />}
         </button>
       </footer>
@@ -642,7 +915,7 @@ function LeavePolicyPeopleDrawer({
   rows,
   onClose,
 }: {
-  policy: LeavePolicySummary;
+  policy: LeavePolicy;
   type: LeaveType;
   rows: PolicyPersonRow[];
   onClose: () => void;
@@ -751,17 +1024,27 @@ function LeavePolicyPeopleDrawer({
 function LeaveAssignmentsView({
   employees,
   types,
+  policiesByType,
+  onChanged,
   onBack,
 }: {
   employees: EmployeeListItem[];
-  types: LeaveType[];
+  types: LeaveTypeWithPolicies[];
+  policiesByType: Map<number, LeavePolicy[]>;
+  onChanged: () => Promise<void>;
   onBack: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [action, setAction] = useState<'assign' | 'recalculate' | 'remove'>('assign');
   const [leaveTypeId, setLeaveTypeId] = useState('');
+  const [policyId, setPolicyId] = useState('');
+  const [effectiveOn, setEffectiveOn] = useState(new Date().toISOString().slice(0, 10));
+  const [initialBalance, setInitialBalance] = useState('0.00');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const selectedEmployees = employees.filter((employee) => selectedIds.has(employee.id));
+  const typePolicies = leaveTypeId ? policiesByType.get(Number(leaveTypeId)) ?? [] : [];
   const availableEmployees = employees.filter((employee) => {
     if (selectedIds.has(employee.id)) return false;
     const needle = query.trim().toLowerCase();
@@ -772,6 +1055,15 @@ function LeaveAssignmentsView({
       .toLowerCase()
       .includes(needle);
   });
+
+  useEffect(() => {
+    if (!leaveTypeId) {
+      setPolicyId('');
+      return;
+    }
+    const firstPolicy = policiesByType.get(Number(leaveTypeId))?.[0];
+    setPolicyId(firstPolicy ? String(firstPolicy.id) : '');
+  }, [leaveTypeId, policiesByType]);
 
   function toggleEmployee(id: number) {
     setSelectedIds((current) => {
@@ -788,6 +1080,41 @@ function LeaveAssignmentsView({
       availableEmployees.forEach((employee) => next.add(employee.id));
       return next;
     });
+  }
+
+  async function submitAction() {
+    const selectedPolicy = Number(policyId);
+    if (!selectedPolicy) {
+      setError('Виберіть політику відсутності.');
+      return;
+    }
+    if (action === 'assign' && !selectedEmployees.length) {
+      setError('Виберіть хоча б одного співробітника.');
+      return;
+    }
+    if (action === 'remove') {
+      setError('Зняття політики буде додано окремим endpoint, щоб не втрачати ledger без аудиту.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      if (action === 'recalculate') {
+        await api.recalculateLeavePolicy(selectedPolicy);
+      } else {
+        await api.bulkAssignLeavePolicy({
+          policy: selectedPolicy,
+          employee_ids: selectedEmployees.map((employee) => employee.id),
+          effective_on: effectiveOn,
+          initial_balance: valueOrZero(initialBalance),
+        });
+      }
+      await onChanged();
+      onBack();
+    } catch {
+      setError('Не вдалося виконати дію. Перевірте політику та спробуйте ще раз.');
+      setSaving(false);
+    }
   }
 
   return (
@@ -907,10 +1234,37 @@ function LeaveAssignmentsView({
             ))}
           </select>
         </label>
+        <label className="leave-assignment-type-field">
+          <span>Політика відсутності</span>
+          <select value={policyId} onChange={(event) => setPolicyId(event.target.value)} disabled={!typePolicies.length}>
+            <option value="" />
+            {typePolicies.map((policy) => (
+              <option key={policy.id} value={policy.id}>
+                {policy.name} · {policyTypeLabel(policy.policy_type)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="leave-assignment-form-row">
+          <label className="leave-assignment-type-field">
+            <span>Діє з</span>
+            <input value={effectiveOn} onChange={(event) => setEffectiveOn(event.target.value)} type="date" />
+          </label>
+          <label className="leave-assignment-type-field">
+            <span>Початковий баланс</span>
+            <input value={initialBalance} onChange={(event) => setInitialBalance(event.target.value)} />
+          </label>
+        </div>
+        {error ? <p className="leave-assignment-error">{error}</p> : null}
       </section>
       <div className="leave-assignment-footer">
-        <button type="button" className="primary-action" disabled={!selectedEmployees.length || !leaveTypeId}>
-          Далі
+        <button
+          type="button"
+          className="primary-action"
+          disabled={saving || !policyId || (action === 'assign' && !selectedEmployees.length)}
+          onClick={() => void submitAction()}
+        >
+          {saving ? 'Застосування…' : 'Далі'}
         </button>
       </div>
     </main>
@@ -918,37 +1272,36 @@ function LeaveAssignmentsView({
 }
 
 export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
-  const [types, setTypes] = useState<LeaveType[]>([]);
-  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [types, setTypes] = useState<LeaveTypeWithPolicies[]>([]);
+  const [assignments, setAssignments] = useState<EmployeeLeavePolicyAssignment[]>([]);
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [modal, setModal] = useState<ModalState>(null);
   const [menuFor, setMenuFor] = useState<number | null>(null);
   const [addPolicyMenuFor, setAddPolicyMenuFor] = useState<number | null>(null);
-  const [policyMenuFor, setPolicyMenuFor] = useState<string | null>(null);
+  const [policyMenuFor, setPolicyMenuFor] = useState<number | null>(null);
   const [peoplePanel, setPeoplePanel] = useState<PolicyPeoplePanelState>(null);
   const [assignmentsOpen, setAssignmentsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<LeaveType | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [localPolicies, setLocalPolicies] = useState<LeavePolicySummary[]>([]);
   const [policyWizard, setPolicyWizard] = useState<PolicyWizardRequest | null>(null);
-  const policiesByType = useMemo(() => buildPoliciesByType(types, balances, localPolicies), [balances, localPolicies, types]);
+  const policiesByType = useMemo(() => buildPoliciesByType(types), [types]);
   const employeesById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
 
   async function load() {
     setState('loading');
     try {
-      const [res, balancesRes, employeesRes] = await Promise.all([
-        api.leaveTypes({ page_size: 100 }),
-        api.leaveBalances({ page_size: 1000 }).catch(() => ({ items: [], total: 0, next: null, previous: null })),
+      const [res, assignmentsRes, employeesRes] = await Promise.all([
+        api.leaveTypesWithPolicies(),
+        api.leavePolicyAssignments({ is_active: true, page_size: 1000 }).catch(() => ({ items: [], total: 0, next: null, previous: null })),
         api.employees({ status: 'active', compact: true, page_size: 1000 }).catch(() => ({ items: [], total: 0, next: null, previous: null })),
       ]);
-      setTypes(res.items);
-      setBalances(balancesRes.items);
+      setTypes(res);
+      setAssignments(assignmentsRes.items);
       setEmployees(employeesRes.items);
       setExpandedIds((current) => {
-        const validIds = new Set(res.items.map((type) => type.id));
+        const validIds = new Set(res.map((type) => type.id));
         return new Set([...current].filter((id) => validIds.has(id)));
       });
       setState('ok');
@@ -1008,45 +1361,32 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
     });
   }
 
-  function openPolicyWizard(type: LeaveType, countedAs: string) {
+  function openPolicyWizard(type: LeaveType, policyType: string) {
     setAddPolicyMenuFor(null);
     setMenuFor(null);
     setPolicyMenuFor(null);
-    setPolicyWizard({ leaveType: type, countedAs });
+    setPolicyWizard({ leaveType: type, policyType });
   }
 
-  function editPolicy(type: LeaveType, policy: LeavePolicySummary) {
+  function editPolicy(type: LeaveType, policy: LeavePolicy) {
     setPolicyMenuFor(null);
-    setPolicyWizard({
-      leaveType: type,
-      countedAs: policy.countedAs === 'З нарахуванням' ? 'accrual' : 'no_accrual',
-      initialName: policy.name,
-    });
+    setPolicyWizard({ leaveType: type, policy });
   }
 
-  function copyPolicy(policy: LeavePolicySummary) {
-    setLocalPolicies((current) => [
-      ...current,
-      {
-        ...policy,
-        id: `local-copy-${policy.leaveTypeId}-${Date.now()}`,
-        name: `${policy.name} копія`,
-        employeeCount: 0,
-        local: true,
-      },
-    ]);
-    setExpandedIds((current) => new Set(current).add(policy.leaveTypeId));
+  async function copyPolicy(policy: LeavePolicy) {
+    const created = await api.copyLeavePolicy(policy.id);
+    setExpandedIds((current) => new Set(current).add(created.leave_type));
     setPolicyMenuFor(null);
+    await load();
   }
 
-  function deletePolicy(policy: LeavePolicySummary) {
-    if (policy.local) {
-      setLocalPolicies((current) => current.filter((item) => item.id !== policy.id));
-    }
+  async function deletePolicy(policy: LeavePolicy) {
+    await api.deleteLeavePolicy(policy.id);
     setPolicyMenuFor(null);
+    await load();
   }
 
-  function openPeoplePanel(type: LeaveType, policy: LeavePolicySummary) {
+  function openPeoplePanel(type: LeaveType, policy: LeavePolicy) {
     setMenuFor(null);
     setAddPolicyMenuFor(null);
     setPolicyMenuFor(null);
@@ -1054,7 +1394,15 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
   }
 
   if (assignmentsOpen) {
-    return <LeaveAssignmentsView employees={employees} types={types} onBack={() => setAssignmentsOpen(false)} />;
+    return (
+      <LeaveAssignmentsView
+        employees={employees}
+        types={types}
+        policiesByType={policiesByType}
+        onChanged={load}
+        onBack={() => setAssignmentsOpen(false)}
+      />
+    );
   }
 
   if (policyWizard) {
@@ -1062,10 +1410,13 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
       <LeavePolicyWizard
         initial={policyWizard}
         onBack={() => setPolicyWizard(null)}
-        onFinish={(policy) => {
-          setLocalPolicies((current) => [...current, policy]);
-          setExpandedIds((current) => new Set(current).add(policy.leaveTypeId));
+        onFinish={async (payload) => {
+          const saved = policyWizard.policy
+            ? await api.updateLeavePolicy(policyWizard.policy.id, payload)
+            : await api.createLeavePolicy(payload);
+          setExpandedIds((current) => new Set(current).add(saved.leave_type));
           setPolicyWizard(null);
+          await load();
         }}
       />
     );
@@ -1166,7 +1517,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
                         onClick={() => setAddPolicyMenuFor(null)}
                       />
                       <div className="leave-policy-add-menu" role="menu">
-                        {POLICY_COUNTED_OPTIONS.map((option) => (
+                        {POLICY_TYPE_OPTIONS.map((option) => (
                           <button key={option.value} type="button" onClick={() => openPolicyWizard(type, option.value)}>
                             {option.label}
                           </button>
@@ -1217,7 +1568,8 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
                       <div>
                         <strong>{policy.name}</strong>
                         <span>
-                          {policy.activityType} · {policy.countedAs} · {employeesCountLabel(policy.employeeCount)}
+                          {activityLabel(policy.activity_type)} · {policyTypeLabel(policy.policy_type)} · {countedAsLabel(policy.counted_as)} ·{' '}
+                          {employeesCountLabel(policy.employee_count)}
                         </span>
                       </div>
                       <div className="leave-policy-row-actions">
@@ -1247,7 +1599,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
                                 <Pencil size={14} />
                                 Редагувати
                               </button>
-                              <button type="button" onClick={() => copyPolicy(policy)}>
+                              <button type="button" onClick={() => void copyPolicy(policy)}>
                                 <Copy size={14} />
                                 Зробити копію
                               </button>
@@ -1255,7 +1607,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
                                 <Users size={14} />
                                 Переглянути людей
                               </button>
-                              <button type="button" className="danger" onClick={() => deletePolicy(policy)}>
+                              <button type="button" className="danger" onClick={() => void deletePolicy(policy)}>
                                 <Trash2 size={14} />
                                 Видалити
                               </button>
@@ -1280,7 +1632,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
         <LeavePolicyPeopleDrawer
           type={peoplePanel.type}
           policy={peoplePanel.policy}
-          rows={peopleForPolicy(peoplePanel.policy, balances, employeesById)}
+          rows={peopleForPolicy(peoplePanel.policy, assignments, employeesById)}
           onClose={() => setPeoplePanel(null)}
         />
       ) : null}

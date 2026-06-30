@@ -43,9 +43,13 @@ import type {
   KnowledgeCategory,
   KnowledgeDocument,
   LeaveBalance,
+  EmployeeLeavePolicyAssignment,
+  LeavePolicy,
+  LeavePolicyPayload,
   LeaveRequest,
   LeaveType,
   LeaveTypePayload,
+  LeaveTypeWithPolicies,
   PositionOption,
   ProbationPolicyOption,
   Project,
@@ -856,6 +860,7 @@ export const api = {
     request<ApiList<WorkDaySummary> | WorkDaySummary[]>(`/api/skud/workdays/${buildQuery(params)}`).then(normalizeList),
   leaveTypes: (params: { page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveType> | LeaveType[]>(`/api/leave/types/${buildQuery(params)}`).then(normalizeList),
+  leaveTypesWithPolicies: () => request<LeaveTypeWithPolicies[]>('/api/leave/types/with-policies/'),
   createLeaveType: (payload: LeaveTypePayload) =>
     request<LeaveType>('/api/leave/types/', { method: 'POST', body: JSON.stringify(payload) }),
   updateLeaveType: (id: number, payload: Partial<LeaveTypePayload>) =>
@@ -863,6 +868,19 @@ export const api = {
   deleteLeaveType: (id: number) => request<void>(`/api/leave/types/${id}/`, { method: 'DELETE' }),
   reorderLeaveTypes: (ids: number[]) =>
     request<LeaveType[]>('/api/leave/types/reorder/', { method: 'POST', body: JSON.stringify({ ids }) }),
+  leavePolicies: (params: { leave_type?: number; is_active?: boolean; page?: number; page_size?: number } = {}) =>
+    request<ApiList<LeavePolicy> | LeavePolicy[]>(`/api/leave/policies/${buildQuery(params)}`).then(normalizeList),
+  createLeavePolicy: (payload: LeavePolicyPayload) =>
+    request<LeavePolicy>('/api/leave/policies/', { method: 'POST', body: JSON.stringify(payload) }),
+  updateLeavePolicy: (id: number, payload: Partial<LeavePolicyPayload>) =>
+    request<LeavePolicy>(`/api/leave/policies/${id}/`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  copyLeavePolicy: (id: number) => request<LeavePolicy>(`/api/leave/policies/${id}/copy/`, { method: 'POST' }),
+  deleteLeavePolicy: (id: number) => request<void>(`/api/leave/policies/${id}/`, { method: 'DELETE' }),
+  recalculateLeavePolicy: (id: number, through_date?: string) =>
+    request<{ updated_assignments: number; policy: LeavePolicy }>(`/api/leave/policies/${id}/recalculate/`, {
+      method: 'POST',
+      body: JSON.stringify({ through_date }),
+    }),
   projects: (params: { archived?: boolean; q?: string; page?: number; page_size?: number } = {}) =>
     request<ApiList<Project> | Project[]>(`/api/projects/${buildQuery(params)}`).then(normalizeList),
   project: (id: number) => request<Project>(`/api/projects/${id}/`),
@@ -1012,8 +1030,25 @@ export const api = {
   deleteEmployeeNote: (id: number) => request<void>(`/api/employees/employee-notes/${id}/`, { method: 'DELETE' }),
   leaveRequests: (params: { status?: string; employee?: number; date_from?: string; date_to?: string; page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveRequest> | LeaveRequest[]>(`/api/leave/requests/${buildQuery(params)}`).then(normalizeList),
+  approveLeaveRequest: (id: number, comment = '') =>
+    request<LeaveRequest>(`/api/leave/requests/${id}/approve/`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  rejectLeaveRequest: (id: number, comment = '') =>
+    request<LeaveRequest>(`/api/leave/requests/${id}/reject/`, { method: 'POST', body: JSON.stringify({ comment }) }),
+  cancelLeaveRequest: (id: number, comment = '') =>
+    request<LeaveRequest>(`/api/leave/requests/${id}/cancel/`, { method: 'POST', body: JSON.stringify({ comment }) }),
   leaveBalances: (params: { employee?: number; leave_type?: number; page?: number; page_size?: number } = {}) =>
     request<ApiList<LeaveBalance> | LeaveBalance[]>(`/api/leave/balances/${buildQuery(params)}`).then(normalizeList),
+  leavePolicyAssignments: (
+    params: { policy?: number; leave_type?: number; employee?: number; is_active?: boolean; page?: number; page_size?: number } = {},
+  ) =>
+    request<ApiList<EmployeeLeavePolicyAssignment> | EmployeeLeavePolicyAssignment[]>(
+      `/api/leave/policy-assignments/${buildQuery(params)}`,
+    ).then(normalizeList),
+  bulkAssignLeavePolicy: (payload: { policy: number; employee_ids: number[]; effective_on?: string; initial_balance?: string }) =>
+    request<{ assignments: EmployeeLeavePolicyAssignment[]; errors: Array<{ employee: number | string; detail: string }> }>(
+      '/api/leave/policy-assignments/bulk-assign/',
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
   knowledgeCategories: (params: { page?: number; page_size?: number } = {}) =>
     request<ApiList<KnowledgeCategory> | KnowledgeCategory[]>(`/api/knowledge/categories/${buildQuery(params)}`).then(
       normalizeList,

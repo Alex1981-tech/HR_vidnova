@@ -51,7 +51,7 @@ employees 167 · departments 26 · clinics 7 · positions 80 · leave_req 218 ·
 
 ### 2026-06-30 — Реальні політики відпусток
 - Замінили заглушку `/settings/leave-types` на основу реальної моделі політик: `LeavePolicy`, `LeavePolicyAccrualRule`, `EmployeeLeavePolicyAssignment`, `LeaveLedgerEntry`.
-- Додали API політик/призначень/ledger, backfill з PeopleForce балансів, baseline-захист від подвійного нарахування, UI-крок `Нарахування та перенесення`.
+- Додали API політик/призначень/ledger, backfill з PeopleForce балансів, baseline-захист від подвійного нарахування, UI-крок `Нарахування та перенесення`, а також lifecycle заявок: approve списує баланс, cancel/reject повертає через ledger-корекцію.
 - Детальний запис рішень, перевірок і наступних кроків: [docs/сессии/2026-06-30-leave-policies.md](сессии/2026-06-30-leave-policies.md).
 
 ### 2026-06-26 (пізно) — Звіти + «Дані про людей»
