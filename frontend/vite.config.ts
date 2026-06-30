@@ -7,6 +7,13 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5178,
+    // Docker bind-mount не пропускає inotify-події → vite не бачив змін і віддавав
+    // застарілий кеш модулів (HMR мовчав, правки з'являлися лише після рестарту
+    // контейнера). Polling змушує vite опитувати файли й коректно тригерити HMR.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
     proxy: {
       '/api': {
         target: apiProxyTarget,
