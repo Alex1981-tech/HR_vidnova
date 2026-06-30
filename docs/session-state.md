@@ -86,8 +86,13 @@
 
 ## Открытые решения / блокеры (нужен Alex)
 
-5 бизнес-вопросов из `peopleforce-roles-research.md` (Этап 0), гейтят Этап 2 (seed)
-и Этап 4 (enforcement), но **не** Этап 1:
+**Draft матрицы готов:** `docs/роли/role-matrix-approved-draft.md` — рекомендованные
+права по ролям + 5 спорных пунктов вынесены на решение Alex. Также там **registry-gap**:
+нужно добавить коды для self-fill ресурсов (образование/сертификаты/навыки/иждивенцы/
+экстренные контакты) до Этапа 4.
+
+5 бизнес-вопросов из `peopleforce-roles-research.md` (Этап 0), гейтят Этап 4
+(enforcement) — подробно в draft матрицы:
 1. Менеджер видит attendance только подчинённых или всю компанию? (рекоменд.: только scope)
 2. Кто утверждает системных admin/HR admin?
 3. Кастомные роли на старте или только seed + редактирование permissions?
@@ -127,5 +132,11 @@
   4 модели + migration 0002, last-admin инвариант, idempotent seed (11 ролей),
   admin, 12 тестов.
 - 2026-06-30: RBAC **Этап 3 (permission service + scope engine) готов** —
-  apps/access/rbac.py + 14 тестов. Полный suite 185 OK, 12 xfail. Дальше Этап 4
-  (DRF enforcement) — упирается в матрицу (Этап 0, 5 open questions Alex).
+  apps/access/rbac.py + 14 тестов. Полный suite 185 OK, 12 xfail.
+- 2026-06-30: добавлен **admin-bypass** (`rbac.is_admin`, суперроль = полный
+  доступ). **Alex (Employee 76 «Кузьменко Олександр», user id=2) назначен admin
+  в DEV** (AccessRoleAssignment, scope all_company; user также is_superuser).
+  На ПРОДЕ RBAC ещё нет — там назначить отдельно после деплоя (Этап 8).
+- 2026-06-30: оформлен **draft матрицы ролей** `docs/роли/role-matrix-approved-draft.md`
+  (рекоменд. дефолты + 5 спорных на решение Alex + registry-gap по self-fill кодам).
+  Дальше после утверждения матрицы: seed прав ролей + Этап 4 enforcement.
