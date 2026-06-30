@@ -16,7 +16,7 @@ from apps.access.models import (
     AccessRoleAuditEvent,
     AccessRolePermission,
 )
-from apps.access.permissions_registry import PERMISSIONS
+from apps.access.permissions_registry import company_catalog
 from apps.access.rbac_invariants import would_remove_last_admin
 from apps.access.role_seeds import ADMIN_ROLE_SLUG
 from apps.access.rbac_serializers import (
@@ -54,20 +54,7 @@ class PermissionCatalogView(APIView):
     permission_classes = [RolesAPIPermission]
 
     def get(self, request):
-        groups: dict[str, list] = {}
-        for perm in PERMISSIONS:
-            groups.setdefault(perm.group.value, []).append(
-                {
-                    "code": perm.code,
-                    "module": perm.module,
-                    "action": perm.action,
-                    "label": perm.label,
-                    "description": perm.description,
-                    "risk": perm.risk.value,
-                    "levels": [lvl.value for lvl in perm.levels],
-                }
-            )
-        return Response({"groups": groups})
+        return Response({"categories": company_catalog()})
 
 
 class AccessRoleViewSet(viewsets.ModelViewSet):

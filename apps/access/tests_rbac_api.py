@@ -39,8 +39,18 @@ class RbacApiTests(APITestCase):
         self._as_admin()
         resp = self.client.get("/api/access/permissions/")
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("groups", resp.data)
-        self.assertTrue(resp.data["groups"])
+        self.assertIn("categories", resp.data)
+        cats = resp.data["categories"]
+        self.assertTrue(cats)
+        keys = {c["key"] for c in cats}
+        self.assertEqual(keys, {"general", "hr", "pulse", "time", "reports", "settings"})
+        general = next(c for c in cats if c["key"] == "general")
+        sec_keys = [s["key"] for s in general["sections"]]
+        self.assertEqual(sec_keys, ["home", "calendar", "people", "tasks", "knowledge", "other"])
+        # graded perm exposes kind
+        hr = next(c for c in cats if c["key"] == "hr")
+        teams = next(p for s in hr["sections"] for p in s["permissions"] if p["code"] == "teams.manage")
+        self.assertEqual(teams["kind"], "graded")
 
     # ── роли ─────────────────────────────────────────────────────────────────
     def test_create_custom_role(self):

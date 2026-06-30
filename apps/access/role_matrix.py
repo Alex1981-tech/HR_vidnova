@@ -17,13 +17,16 @@ from __future__ import annotations
 
 # slug -> [(permission_code, level)]; level "" для atomic, "view"/"edit" для graded.
 ROLE_PERMISSIONS: dict[str, list[tuple[str, str]]] = {
+    # «Усі люди» — базовая роль; дефолты по PF-референсу (вкладка «Компанія»).
     "all_people": [
         ("people.directory", "view"),
         ("people.org_chart", "view"),
         ("calendar.view", "view"),
-        ("announcements.read", "view"),
+        ("calendar.view_leave", "view"),
+        ("calendar.view_birthdays", "view"),
+        ("calendar.view_anniversaries", "view"),
+        ("tasks.create", ""),
         ("knowledge.read", "view"),
-        ("leave.schedule", "view"),
     ],
     "self": [
         ("people.field.personal", "view"),

@@ -24,7 +24,9 @@ class RoleMatrixValidityTests(TestCase):
                 self.assertIsNotNone(perm, f"{slug}: unknown code {code}")
                 self.assertNotIn(code, seen, f"{slug}: duplicate code {code}")
                 seen.add(code)
-                if perm.is_graded:
+                if perm.levels:
+                    allowed = {lvl.value for lvl in perm.levels}
+                    self.assertIn(level, allowed, f"{slug}/{code}: bad level {level!r}, allowed {allowed}")
                     self.assertIn(level, valid_levels, f"{slug}/{code}: bad level {level!r}")
                 else:
                     self.assertEqual(level, "", f"{slug}/{code}: atomic must have empty level")

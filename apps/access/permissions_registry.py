@@ -1,17 +1,20 @@
-"""Permission registry (RBAC, Этап 1).
+"""Permission registry (RBAC, Этап 1 + расширение до PeopleForce 1:1).
 
 Стабильный каталог permission-кодов HR Vidnova с метаданными. Это ТОЛЬКО
-словарь прав — здесь НЕТ enforcement (он появится на Этапе 4 в DRF permission
-classes/scopes). Источник vocabulary: docs/роли/peopleforce-roles-research.md.
+словарь прав — здесь НЕТ enforcement (он во flag-gated DRF, Этап 4).
 
-Принципы:
-- code — стабильный machine-id, не зависит от UI-локализации (label — dev-facing
-  английский дескриптор; локализованные подписи живут на фронте по code).
-- Два вида прав:
-  * graded — поле/раздел с уровнями (`view`, `edit`); хранится `levels=(VIEW[, EDIT])`.
-  * atomic — действие-флаг (approve, delete, manage); `levels=()`.
-- Динамические права на поля профиля (`people.field.<tab>.<field>`) строятся
-  хелпером `field_permission_code()` поверх системных и кастомных `EmployeeField`.
+Структура (как в PF, вкладка «Компанія»):
+  group (категория: general/hr/pulse/time/reports/settings) → section → permission.
+Группа `self` — права, относящиеся к данным самого человека / field-level; они НЕ
+показываются на вкладке «Компанія» (пойдут на вкладку «Люди», фаза 2).
+
+Виды прав (kind для UI):
+- graded  → levels=(VIEW, EDIT): сегмент Немає·Перегляд·Редагування.
+- bool    → levels=(VIEW,) или (): чекбокс. `on_level` — что писать при включении
+            ('view' для view-only, '' для atomic-действия).
+
+Подписи (`label`/`description`) — украинские (единственный потребитель каталога —
+наш фронт). Источник формулировок: docs/роли/peopleforce-company-permissions-reference.md.
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ class AccessLevel(str, Enum):
     # «none» = отсутствие права; отдельным значением не хранится.
 
 
-# UI-группы (вкладки company-матрицы PeopleForce). Стабильные ключи, не локализация.
+# Категории (левая навигация вкладки «Компанія») + служебная self.
 class Group(str, Enum):
     GENERAL = "general"
     HR = "hr"
@@ -59,6 +62,7 @@ class Permission:
     code: str
     module: str
     group: Group
+    section: str
     action: str
     label: str
     description: str
@@ -67,12 +71,23 @@ class Permission:
 
     @property
     def is_graded(self) -> bool:
-        return bool(self.levels)
+        return AccessLevel.EDIT in self.levels
+
+    @property
+    def kind(self) -> str:
+        return "graded" if self.is_graded else "bool"
+
+    @property
+    def on_level(self) -> str:
+        """Уровень, который пишем при включении bool-права."""
+        if self.is_graded:
+            return ""  # для graded уровень выбирается сегментом
+        return AccessLevel.VIEW.value if AccessLevel.VIEW in self.levels else ""
 
 
-def _p(code, module, group, action, label, description, risk, levels=()):  # noqa: PLR0913
+def _p(code, module, group, section, action, label, description, risk, levels=()):  # noqa: PLR0913
     return Permission(
-        code=code, module=module, group=group, action=action,
+        code=code, module=module, group=group, section=section, action=action,
         label=label, description=description, risk=risk, levels=tuple(levels),
     )
 
@@ -81,105 +96,163 @@ _V = (AccessLevel.VIEW,)
 _VE = (AccessLevel.VIEW, AccessLevel.EDIT)
 
 PERMISSIONS: tuple[Permission, ...] = (
-    # ── people / directory / profile ────────────────────────────────────────
-    _p("people.directory", "people", Group.GENERAL, "directory",
-       "View people directory", "See the company people directory.", RiskLevel.LOW, _V),
-    _p("people.profile", "people", Group.GENERAL, "profile",
-       "View/edit employee profile (PII)", "Access employee profile cards and PII.", RiskLevel.HIGH, _VE),
-    _p("people.org_chart", "people", Group.GENERAL, "org_chart",
-       "View organization charts", "See org charts.", RiskLevel.LOW, _V),
-    _p("people.photo_manage", "people", Group.GENERAL, "photo_manage",
-       "Change employee photos", "Upload/replace employee photos.", RiskLevel.MEDIUM),
-    _p("people.delete", "people", Group.GENERAL, "delete",
-       "Delete people", "Permanently delete employee records.", RiskLevel.CRITICAL),
+    # ═══════════════ КАТЕГОРИЯ «Загальні» (general) ═══════════════
+    # ── Домашня сторінка ──────────────────────────────────────────────────────
+    _p("announcements.publish", "announcements", Group.GENERAL, "home", "publish",
+       "Публікувати оголошення та опитування", "Створювати оголошення й опитування компанії.", RiskLevel.MEDIUM),
+    _p("company_links.manage", "company_links", Group.GENERAL, "home", "manage",
+       "Керувати посиланнями компанії", "Додавати й редагувати швидкі посилання компанії.", RiskLevel.LOW),
+    _p("announcements.read", "announcements", Group.GENERAL, "home", "read",
+       "Переглядати оголошення", "Бачити оголошення та опитування.", RiskLevel.LOW, _V),
 
-    # ── people field areas (system tabs); per-field via field_permission_code ─
-    _p("people.field.personal", "people", Group.SELF, "field_personal",
-       "Profile area: personal fields", "View/edit personal profile fields.", RiskLevel.HIGH, _VE),
-    _p("people.field.work", "people", Group.SELF, "field_work",
-       "Profile area: work fields", "View/edit work profile fields.", RiskLevel.MEDIUM, _VE),
-    _p("people.field.compensation", "people", Group.SELF, "field_compensation",
-       "Profile area: compensation fields", "View/edit compensation fields.", RiskLevel.CRITICAL, _VE),
+    # ── Календар ──────────────────────────────────────────────────────────────
+    _p("calendar.view", "calendar", Group.GENERAL, "calendar", "view",
+       "Дозволити доступ до календаря компанії", "Бачити календар компанії.", RiskLevel.LOW, _V),
+    _p("calendar.manage_events", "calendar", Group.GENERAL, "calendar", "manage_events",
+       "Управляти подіями в календарі компанії", "Створювати й редагувати події календаря.", RiskLevel.MEDIUM),
+    _p("calendar.view_leave", "calendar", Group.GENERAL, "calendar", "view_leave",
+       "Переглядати запити на відсутність", "Бачити відсутності в календарі.", RiskLevel.LOW, _V),
+    _p("calendar.view_birthdays", "calendar", Group.GENERAL, "calendar", "view_birthdays",
+       "Переглядати дні народження співробітників", "Бачити дні народження в календарі.", RiskLevel.LOW, _V),
+    _p("calendar.view_first_day", "calendar", Group.GENERAL, "calendar", "view_first_day",
+       "Переглядати перший день співробітників", "Бачити перші робочі дні в календарі.", RiskLevel.LOW, _V),
+    _p("calendar.view_anniversaries", "calendar", Group.GENERAL, "calendar", "view_anniversaries",
+       "Переглядати річниці співробітників", "Бачити робочі річниці в календарі.", RiskLevel.LOW, _V),
+    _p("calendar.view_probation_end", "calendar", Group.GENERAL, "calendar", "view_probation_end",
+       "Переглядати завершення випробувального терміну", "Бачити завершення випроб. терміну в календарі.", RiskLevel.LOW, _V),
+    _p("calendar.view_last_day", "calendar", Group.GENERAL, "calendar", "view_last_day",
+       "Переглядати останній день співробітників", "Бачити останні робочі дні в календарі.", RiskLevel.LOW, _V),
 
-    # ── self-fill ресурсы профиля ────────────────────────────────────────────
-    _p("people.education", "people", Group.SELF, "education",
-       "Education records", "View/edit employee education records.", RiskLevel.MEDIUM, _VE),
-    _p("people.certificates", "people", Group.SELF, "certificates",
-       "Certificates / licenses", "View/edit certificates and licenses.", RiskLevel.MEDIUM, _VE),
-    _p("people.skills", "people", Group.SELF, "skills",
-       "Skills", "View/edit employee skills.", RiskLevel.LOW, _VE),
-    _p("people.dependents", "people", Group.SELF, "dependents",
-       "Dependents", "View/edit dependents (family PII).", RiskLevel.HIGH, _VE),
-    _p("people.emergency_contacts", "people", Group.SELF, "emergency_contacts",
-       "Emergency contacts", "View/edit emergency contacts (PII).", RiskLevel.HIGH, _VE),
-    _p("people.notes", "people", Group.HR, "notes",
-       "Employee notes (HR)", "View/edit HR notes about an employee.", RiskLevel.HIGH, _VE),
+    # ── Люди ──────────────────────────────────────────────────────────────────
+    _p("people.directory", "people", Group.GENERAL, "people", "directory",
+       "Дозволити доступ до каталогу людей", "Бачити каталог співробітників компанії.", RiskLevel.LOW, _V),
+    _p("people.advanced_search", "people", Group.GENERAL, "people", "advanced_search",
+       "Дозволити розширений пошук по співробітниках",
+       "Фільтрувати за будь-яким полем, якщо є дозвіл на перегляд/редагування цього поля.", RiskLevel.MEDIUM),
+    _p("people.org_chart", "people", Group.GENERAL, "people", "org_chart",
+       "Дозволити доступ до організаційних діаграм", "Бачити організаційні діаграми.", RiskLevel.LOW, _V),
+    _p("hiring.manage", "hiring", Group.GENERAL, "people", "manage",
+       "Найняти нових людей у компанію", "Наймати нових людей і бачити всіх активних та найнятих.", RiskLevel.HIGH),
+    _p("system_access.manage", "system_access", Group.GENERAL, "people", "manage",
+       "Вмк./вимк. доступ співробітників до системи", "Дозволяти або обмежувати доступ співробітників до системи.", RiskLevel.CRITICAL),
+    _p("people.invite", "people", Group.GENERAL, "people", "invite",
+       "Надіслати запрошення в систему", "Надсилати співробітникам запрошення в систему.", RiskLevel.MEDIUM),
+    _p("people.reset_passwords", "people", Group.GENERAL, "people", "reset_passwords",
+       "Скинути паролі", "Скидати паролі співробітників.", RiskLevel.HIGH),
+    _p("people.view_offboarded", "people", Group.GENERAL, "people", "view_offboarded",
+       "Переглядати звільнених співробітників", "Бачити всіх звільнених співробітників у компанії.", RiskLevel.MEDIUM, _V),
+    _p("people.terminate", "people", Group.GENERAL, "people", "terminate",
+       "Звільняти людей по всій компанії", "Звільняти співробітників у компанії.", RiskLevel.HIGH),
+    _p("people.onboarding", "people", Group.GENERAL, "people", "onboarding",
+       "Управління онбордингом", "Бачити деталі співробітників, які проходять онбординг.", RiskLevel.MEDIUM),
+    _p("people.offboarding", "people", Group.GENERAL, "people", "offboarding",
+       "Управління офбордингом", "Бачити деталі співробітників, які проходять офбординг.", RiskLevel.MEDIUM),
+    _p("people.probation", "people", Group.GENERAL, "people", "probation",
+       "Управління випробувальним терміном", "Бачити всіх працівників на випробувальному терміні.", RiskLevel.MEDIUM),
+    _p("people.ats_inbound", "people", Group.GENERAL, "people", "ats_inbound",
+       "Керування вхідними з ATS", "Переглядати й керувати імпортованими кандидатами з ATS.", RiskLevel.MEDIUM),
+    _p("people.photo_manage", "people", Group.GENERAL, "people", "photo_manage",
+       "Змінювати фотографії людей", "Завантажувати/замінювати фото співробітників.", RiskLevel.MEDIUM),
+    _p("people.delete", "people", Group.GENERAL, "people", "delete",
+       "Видаляти людей з компанії", "Остаточно видаляти записи співробітників.", RiskLevel.CRITICAL),
 
-    # ── hiring / system access ───────────────────────────────────────────────
-    _p("hiring.manage", "hiring", Group.GENERAL, "manage",
-       "Hiring / termination", "Hire and terminate employees.", RiskLevel.HIGH),
-    _p("system_access.manage", "system_access", Group.GENERAL, "manage",
-       "Manage employee system access", "Enable/disable access, invitations, password resets.", RiskLevel.CRITICAL),
+    # ── Завдання ──────────────────────────────────────────────────────────────
+    _p("tasks.create", "tasks", Group.GENERAL, "tasks", "create",
+       "Створити завдання", "Створювати завдання.", RiskLevel.LOW),
+    _p("tasks.manage", "tasks", Group.GENERAL, "tasks", "manage",
+       "Керувати завданнями", "Перегляд і керування всіма завданнями компанії.", RiskLevel.MEDIUM),
 
-    # ── announcements / calendar / knowledge ─────────────────────────────────
-    _p("announcements.read", "announcements", Group.GENERAL, "read",
-       "Read announcements", "View announcements and polls.", RiskLevel.LOW, _V),
-    _p("announcements.publish", "announcements", Group.GENERAL, "publish",
-       "Publish announcements", "Publish announcements and polls.", RiskLevel.MEDIUM),
-    _p("calendar.view", "calendar", Group.GENERAL, "view",
-       "View company calendar", "See the company calendar.", RiskLevel.LOW, _V),
-    _p("knowledge.read", "knowledge", Group.GENERAL, "read",
-       "Read knowledge base", "Read knowledge documents.", RiskLevel.LOW, _V),
-    _p("knowledge.manage", "knowledge", Group.GENERAL, "manage",
-       "Manage knowledge base", "Create/edit/delete knowledge documents.", RiskLevel.MEDIUM),
+    # ── База знань ────────────────────────────────────────────────────────────
+    _p("knowledge.read", "knowledge", Group.GENERAL, "knowledge", "read",
+       "Доступ до бази знань", "Читати контент бази знань, доступний або яким поділилися.", RiskLevel.LOW, _V),
+    _p("knowledge.manage_shared", "knowledge", Group.GENERAL, "knowledge", "manage_shared",
+       "Створювати та керувати статтями, якими поділилися",
+       "Створювати/редагувати контент у межах доступних категорій і статей.", RiskLevel.MEDIUM),
+    _p("knowledge.manage", "knowledge", Group.GENERAL, "knowledge", "manage",
+       "Створювати всі статті й категорії та керувати ними",
+       "Повний контроль над статтями й категоріями без обмежень доступу.", RiskLevel.HIGH),
 
-    # ── HR: documents / leave / teams / assets ───────────────────────────────
-    _p("documents.view", "documents", Group.HR, "view",
-       "View employee documents", "View employee document files.", RiskLevel.HIGH, _V),
-    _p("documents.manage", "documents", Group.HR, "manage",
-       "Manage employee documents", "Upload/replace/delete employee documents.", RiskLevel.CRITICAL),
-    _p("leave.schedule", "leave", Group.HR, "schedule",
-       "View absence schedule", "See company absence schedule.", RiskLevel.LOW, _V),
-    _p("leave.requests", "leave", Group.HR, "requests",
-       "Leave requests", "View/create leave requests.", RiskLevel.MEDIUM, _VE),
-    _p("leave.balances", "leave", Group.HR, "balances",
-       "View leave balances", "See leave balances.", RiskLevel.MEDIUM, _V),
-    _p("leave.approve", "leave", Group.HR, "approve",
-       "Approve/reject leave", "Decide on leave requests.", RiskLevel.HIGH),
-    _p("leave.policies", "leave", Group.HR, "policies",
-       "Manage leave policies", "Manage leave types/policies.", RiskLevel.HIGH),
-    _p("teams.manage", "teams", Group.HR, "manage",
-       "Manage teams", "View/edit teams and memberships.", RiskLevel.MEDIUM, _VE),
-    _p("assets.manage", "assets", Group.HR, "manage",
-       "Manage assets", "View/edit assets.", RiskLevel.MEDIUM, _VE),
+    # ── Інші ──────────────────────────────────────────────────────────────────
+    _p("requests.manage", "requests", Group.GENERAL, "other", "manage",
+       "Перегляд і керування запитами компанії", "Переглядати й керувати запитами компанії.", RiskLevel.MEDIUM),
+    _p("offers.manage", "offers", Group.GENERAL, "other", "manage",
+       "Керування пропозиціями", "Переглядати й керувати пропозиціями.", RiskLevel.MEDIUM),
 
-    # ── Time / attendance ────────────────────────────────────────────────────
-    _p("time.attendance", "time", Group.TIME, "attendance",
-       "View attendance data", "See attendance/SKUD data.", RiskLevel.HIGH, _V),
-    _p("time.approve", "time", Group.TIME, "approve",
-       "Approve/reject time records", "Decide on time correction requests.", RiskLevel.HIGH),
-    _p("time.edit", "time", Group.TIME, "edit",
-       "Edit time tracking", "Edit time records company-wide.", RiskLevel.HIGH),
+    # ═══════════════ КАТЕГОРИЯ «HR» (hr) ═══════════════
+    _p("leave.schedule", "leave", Group.HR, "hr", "schedule",
+       "Дозволити доступ до графіка відсутностей", "Бачити всі відсутності компанії в графіку.", RiskLevel.LOW, _V),
+    _p("leave.approve", "leave", Group.HR, "hr", "approve",
+       "Затвердити та відхилити відсутності", "Перегляд і керування всіма відсутностями співробітників.", RiskLevel.HIGH),
+    _p("leave.policies", "leave", Group.HR, "hr", "policies",
+       "Керувати політиками відсутностей", "Додавати/вилучати політики відсутностей співробітників.", RiskLevel.HIGH),
+    _p("documents.manage", "documents", Group.HR, "hr", "manage",
+       "Керувати документами співробітників", "Перегляд, керування та запит ел. підпису документів.", RiskLevel.CRITICAL),
+    _p("workflow.manage", "workflow", Group.HR, "hr", "manage",
+       "Управління воркфлоу", "Керувати воркфлоу всередині компанії.", RiskLevel.MEDIUM),
+    _p("teams.manage", "teams", Group.HR, "hr", "manage",
+       "Управління командами", "Перегляд/редагування команд і складу.", RiskLevel.MEDIUM, _VE),
+    _p("assets.manage", "assets", Group.HR, "hr", "manage",
+       "Керувати активами", "Перегляд/редагування активів.", RiskLevel.MEDIUM, _VE),
 
-    # ── Reports ──────────────────────────────────────────────────────────────
-    _p("reports.custom", "reports", Group.REPORTS, "custom",
-       "Create custom reports", "Build custom reports.", RiskLevel.MEDIUM),
-    _p("reports.company", "reports", Group.REPORTS, "company",
-       "View company reports", "View company-level reports.", RiskLevel.HIGH, _V),
+    # ═══════════════ КАТЕГОРИЯ «Pulse» (pulse) ═══════════════
+    _p("surveys.manage", "surveys", Group.PULSE, "pulse", "manage",
+       "Управління опитуваннями", "Створювати й керувати опитуваннями (Pulse).", RiskLevel.MEDIUM),
 
-    # ── Settings / roles / integrations / audit ──────────────────────────────
-    _p("settings.general", "settings", Group.SETTINGS, "general",
-       "General settings", "View/edit general settings.", RiskLevel.MEDIUM, _VE),
-    _p("settings.notifications", "settings", Group.SETTINGS, "notifications",
-       "Notification settings", "View/edit notification settings.", RiskLevel.LOW, _VE),
-    _p("roles.view", "roles", Group.SETTINGS, "view",
-       "View roles", "View roles and permissions.", RiskLevel.HIGH, _V),
-    _p("roles.manage", "roles", Group.SETTINGS, "manage",
-       "Manage roles", "Create/edit roles, permissions and assignments.", RiskLevel.CRITICAL),
-    _p("integrations.manage", "integrations", Group.SETTINGS, "manage",
-       "Manage integrations", "Manage API keys, webhooks and imports.", RiskLevel.CRITICAL),
-    _p("audit.view", "audit", Group.SETTINGS, "view",
-       "View audit log", "Read audit/security logs.", RiskLevel.HIGH, _V),
+    # ═══════════════ КАТЕГОРИЯ «Time» (time) ═══════════════
+    _p("time.attendance", "time", Group.TIME, "time", "attendance",
+       "Доступ до даних про відвідуваність по компанії", "Бачити дані відвідуваності/СКУД.", RiskLevel.HIGH, _V),
+    _p("time.approve", "time", Group.TIME, "time", "approve",
+       "Затверджувати записи часу", "Рішення щодо запитів корекції часу.", RiskLevel.HIGH),
+    _p("time.edit", "time", Group.TIME, "time", "edit",
+       "Редагувати облік часу", "Редагувати записи часу по компанії.", RiskLevel.HIGH),
+
+    # ═══════════════ КАТЕГОРИЯ «Звіти» (reports) ═══════════════
+    _p("reports.custom", "reports", Group.REPORTS, "reports", "custom",
+       "Створювати настроювані звіти", "Будувати настроювані звіти.", RiskLevel.MEDIUM),
+    _p("reports.company", "reports", Group.REPORTS, "reports", "company",
+       "Звіти компанії", "Доступ до звітів компанії.", RiskLevel.HIGH, _V),
+
+    # ═══════════════ КАТЕГОРИЯ «Налаштування» (settings) ═══════════════
+    _p("settings.general", "settings", Group.SETTINGS, "settings", "general",
+       "Загальні налаштування", "Перегляд/редагування загальних налаштувань.", RiskLevel.MEDIUM, _VE),
+    _p("settings.notifications", "settings", Group.SETTINGS, "settings", "notifications",
+       "Налаштування сповіщень", "Перегляд/редагування налаштувань сповіщень.", RiskLevel.LOW, _VE),
+    _p("roles.view", "roles", Group.SETTINGS, "settings", "view",
+       "Перегляд ролей", "Бачити ролі та права.", RiskLevel.HIGH, _V),
+    _p("roles.manage", "roles", Group.SETTINGS, "settings", "manage",
+       "Керування ролями", "Створювати/редагувати ролі, права й призначення.", RiskLevel.CRITICAL),
+    _p("integrations.manage", "integrations", Group.SETTINGS, "settings", "manage",
+       "Керування інтеграціями", "Керувати API-ключами, вебхуками та імпортами.", RiskLevel.CRITICAL),
+    _p("audit.view", "audit", Group.SETTINGS, "settings", "view",
+       "Перегляд журналу аудиту", "Читати журнали аудиту/безпеки.", RiskLevel.HIGH, _V),
+
+    # ═══════════════ ГРУППА «self» (вкладка «Люди» / self-service, фаза 2) ═══════
+    _p("people.profile", "people", Group.SELF, "personal", "profile",
+       "Профіль співробітника (PII)", "Доступ до карток профілю та PII.", RiskLevel.HIGH, _VE),
+    _p("people.field.personal", "people", Group.SELF, "personal", "field_personal",
+       "Поля профілю: особисте", "Перегляд/редагування особистих полів профілю.", RiskLevel.HIGH, _VE),
+    _p("people.field.work", "people", Group.SELF, "work", "field_work",
+       "Поля профілю: робота", "Перегляд/редагування робочих полів профілю.", RiskLevel.MEDIUM, _VE),
+    _p("people.field.compensation", "people", Group.SELF, "compensation", "field_compensation",
+       "Поля профілю: компенсація", "Перегляд/редагування полів компенсації.", RiskLevel.CRITICAL, _VE),
+    _p("people.education", "people", Group.SELF, "personal", "education",
+       "Освіта", "Перегляд/редагування записів про освіту.", RiskLevel.MEDIUM, _VE),
+    _p("people.certificates", "people", Group.SELF, "personal", "certificates",
+       "Сертифікати / ліцензії", "Перегляд/редагування сертифікатів і ліцензій.", RiskLevel.MEDIUM, _VE),
+    _p("people.skills", "people", Group.SELF, "personal", "skills",
+       "Навички", "Перегляд/редагування навичок співробітника.", RiskLevel.LOW, _VE),
+    _p("people.dependents", "people", Group.SELF, "personal", "dependents",
+       "Утриманці", "Перегляд/редагування утриманців (родинні PII).", RiskLevel.HIGH, _VE),
+    _p("people.emergency_contacts", "people", Group.SELF, "personal", "emergency_contacts",
+       "Екстрені контакти", "Перегляд/редагування екстрених контактів (PII).", RiskLevel.HIGH, _VE),
+    _p("people.notes", "people", Group.SELF, "personal", "notes",
+       "Примітки HR", "Перегляд/редагування HR-приміток про співробітника.", RiskLevel.HIGH, _VE),
+    _p("documents.view", "documents", Group.SELF, "documents", "view",
+       "Перегляд документів співробітника", "Бачити файли документів співробітника.", RiskLevel.HIGH, _V),
+    _p("leave.requests", "leave", Group.SELF, "leave", "requests",
+       "Заявки на відсутність", "Перегляд/створення заявок на відсутність.", RiskLevel.MEDIUM, _VE),
+    _p("leave.balances", "leave", Group.SELF, "leave", "balances",
+       "Баланси відсутностей", "Бачити баланси відсутностей.", RiskLevel.MEDIUM, _V),
 )
 
 PERMISSIONS_BY_CODE: dict[str, Permission] = {p.code: p for p in PERMISSIONS}
@@ -188,6 +261,43 @@ PERMISSIONS_BY_CODE: dict[str, Permission] = {p.code: p for p in PERMISSIONS}
 REQUIRED_MODULES = frozenset(
     {"people", "leave", "time", "knowledge", "reports", "settings", "roles", "integrations"}
 )
+
+# ── Каталог вкладки «Компанія»: порядок категорий и секций + украинские заголовки.
+COMPANY_CATEGORY_ORDER: tuple[str, ...] = ("general", "hr", "pulse", "time", "reports", "settings")
+
+CATEGORY_LABELS: dict[str, str] = {
+    "general": "Загальні",
+    "hr": "HR",
+    "pulse": "Pulse",
+    "time": "Time",
+    "reports": "Звіти",
+    "settings": "Налаштування",
+}
+
+# Порядок секций внутри категории.
+SECTION_ORDER: dict[str, tuple[str, ...]] = {
+    "general": ("home", "calendar", "people", "tasks", "knowledge", "other"),
+    "hr": ("hr",),
+    "pulse": ("pulse",),
+    "time": ("time",),
+    "reports": ("reports",),
+    "settings": ("settings",),
+}
+
+# Заголовки секций (пустая строка → секция без заголовка, плоский список).
+SECTION_LABELS: dict[str, str] = {
+    "home": "Домашня сторінка",
+    "calendar": "Календар",
+    "people": "Люди",
+    "tasks": "Завдання",
+    "knowledge": "База знань",
+    "other": "Інші",
+    "hr": "",
+    "pulse": "",
+    "time": "",
+    "reports": "",
+    "settings": "",
+}
 
 
 def get_permission(code: str) -> Permission | None:
@@ -210,12 +320,52 @@ def permissions_for_module(module: str) -> list[Permission]:
     return [p for p in PERMISSIONS if p.module == module]
 
 
-def field_permission_code(tab: str, field_slug: str) -> str:
-    """Код field-level права на поле профиля: people.field.<tab>.<field_slug>.
+def company_catalog() -> list[dict]:
+    """Каталог прав вкладки «Компанія»: categories → sections → permissions.
 
-    Покрывает и системные поля (tab из PROFILE_FIELD_TABS), и кастомные
-    EmployeeField (любой валидный slug). Сегменты — [a-z0-9_].
+    Группа `self` исключена (она на вкладке «Люди», фаза 2). Порядок —
+    COMPANY_CATEGORY_ORDER / SECTION_ORDER; внутри секции — порядок в PERMISSIONS.
     """
+    by_group_section: dict[str, dict[str, list[Permission]]] = {}
+    for perm in PERMISSIONS:
+        if perm.group == Group.SELF:
+            continue
+        by_group_section.setdefault(perm.group.value, {}).setdefault(perm.section, []).append(perm)
+
+    categories: list[dict] = []
+    for cat in COMPANY_CATEGORY_ORDER:
+        sections_map = by_group_section.get(cat, {})
+        sections: list[dict] = []
+        for sec in SECTION_ORDER.get(cat, tuple(sections_map.keys())):
+            perms = sections_map.get(sec, [])
+            if not perms:
+                continue
+            sections.append(
+                {
+                    "key": sec,
+                    "label": SECTION_LABELS.get(sec, ""),
+                    "permissions": [_perm_dict(p) for p in perms],
+                }
+            )
+        if sections:
+            categories.append({"key": cat, "label": CATEGORY_LABELS.get(cat, cat), "sections": sections})
+    return categories
+
+
+def _perm_dict(perm: Permission) -> dict:
+    return {
+        "code": perm.code,
+        "label": perm.label,
+        "description": perm.description,
+        "kind": perm.kind,
+        "on_level": perm.on_level,
+        "levels": [lvl.value for lvl in perm.levels],
+        "risk": perm.risk.value,
+    }
+
+
+def field_permission_code(tab: str, field_slug: str) -> str:
+    """Код field-level права на поле профиля: people.field.<tab>.<field_slug>."""
     tab = (tab or "").strip().lower()
     field_slug = (field_slug or "").strip().lower()
     if not _SEGMENT_RE.match(tab) or not _SEGMENT_RE.match(field_slug):

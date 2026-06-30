@@ -33,6 +33,24 @@ class PermissionRegistryTests(SimpleTestCase):
             self.assertTrue(perm.description.strip(), f"description required for {perm.code}")
             self.assertIsInstance(perm.risk, RiskLevel, f"risk required for {perm.code}")
 
+    def test_section_present(self):
+        for perm in PERMISSIONS:
+            self.assertTrue(perm.section.strip(), f"section required for {perm.code}")
+
+    def test_company_catalog_shape(self):
+        from apps.access.permissions_registry import company_catalog
+
+        cats = company_catalog()
+        self.assertTrue(cats)
+        for cat in cats:
+            self.assertIn("key", cat)
+            self.assertIn("sections", cat)
+            self.assertNotEqual(cat["key"], "self")  # self-группа не на вкладке «Компанія»
+            for sec in cat["sections"]:
+                self.assertTrue(sec["permissions"])
+                for p in sec["permissions"]:
+                    self.assertIn(p["kind"], {"bool", "graded"})
+
     def test_code_format(self):
         for perm in PERMISSIONS:
             self.assertRegex(perm.code, CODE_RE, f"bad code format: {perm.code}")

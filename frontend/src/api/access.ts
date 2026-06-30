@@ -19,15 +19,17 @@ export type Role = {
 
 export type PermissionItem = {
   code: string;
-  module: string;
-  action: string;
   label: string;
   description: string;
-  risk: 'low' | 'medium' | 'high' | 'critical';
+  kind: 'bool' | 'graded';
+  on_level: string;
   levels: AccessLevel[];
+  risk: 'low' | 'medium' | 'high' | 'critical';
 };
 
-export type PermissionCatalog = { groups: Record<string, PermissionItem[]> };
+export type PermissionSection = { key: string; label: string; permissions: PermissionItem[] };
+export type PermissionCategory = { key: string; label: string; sections: PermissionSection[] };
+export type PermissionCatalog = { categories: PermissionCategory[] };
 
 export type PickEmployee = {
   id: number;

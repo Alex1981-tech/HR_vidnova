@@ -21401,3 +21401,48 @@ textarea:focus-visible {
 .roles-modal-wide { width: min(520px, 94vw); max-height: calc(100vh - 14vh); }
 .roles-modal-search { border-bottom: 1px solid var(--border-subtle); border-radius: 0; }
 .roles-modal-list { max-height: min(52vh, 420px); overflow-y: auto; }
+
+/* ── Редактор ролі у стилі PeopleForce (вкладки + категорії) ────────────────── */
+.role-editor-page { padding-bottom: 76px; }
+.role-editor-body {
+  width: min(1090px, calc(100% - 48px));
+  margin: 20px auto 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.role-editor-tabs { display: inline-flex; gap: var(--space-4); border-bottom: 1px solid var(--line); margin-bottom: var(--space-4); }
+.role-editor-tabs button {
+  border: 0; background: transparent; cursor: pointer; padding: var(--space-2) 0;
+  margin-bottom: -1px; font-size: var(--font-body); font-weight: 500; color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+}
+.role-editor-tabs button.is-on { color: var(--text); border-bottom-color: var(--primary); }
+.role-editor-hint { font-size: var(--font-sm); line-height: var(--lh-sm); color: var(--text-muted); margin: 0 0 var(--space-4); }
+.role-editor-layout { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.role-cat-nav { display: flex; flex-direction: column; gap: 2px; border-right: 1px solid var(--border-subtle); padding-right: var(--space-3); }
+.role-cat-nav button {
+  text-align: left; border: 0; background: transparent; cursor: pointer;
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);
+  font-size: var(--font-body); color: var(--text-muted);
+}
+.role-cat-nav button:hover { background: var(--primary-soft); color: var(--text); }
+.role-cat-nav button.is-on { background: var(--primary-soft); color: var(--primary-strong); font-weight: 600; }
+.role-perm-panel { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+.role-perm-section { display: flex; flex-direction: column; }
+.role-perm-section-title { font-size: var(--font-h3); line-height: var(--lh-h3); font-weight: 600; color: var(--text); margin: 0 0 var(--space-2); }
+.role-people-placeholder { padding: var(--space-6) 0; }
+.role-editor-footer {
+  position: sticky; bottom: 0; z-index: 5;
+  width: min(1090px, calc(100% - 48px));
+  margin: var(--space-4) auto 0;
+  display: flex; justify-content: space-between; gap: var(--space-2);
+  padding: var(--space-3) 0;
+  background: var(--panel); border-top: 1px solid var(--line);
+}
+@media (max-width: 720px) {
+  .role-editor-layout { grid-template-columns: 1fr; }
+  .role-cat-nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border-subtle); padding: 0 0 var(--space-2); }
+}

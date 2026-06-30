@@ -205,7 +205,7 @@ class AccessRolePermission(TimestampedModel):
         permission = get_permission(self.permission_code)
         if permission is None:
             raise ValidationError({"permission_code": f"Невідомий permission code: {self.permission_code}"})
-        if permission.is_graded:
+        if permission.levels:
             allowed = {level.value for level in permission.levels}
             if self.level not in allowed:
                 raise ValidationError(

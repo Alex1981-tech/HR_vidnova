@@ -68,7 +68,7 @@ class SetPermissionsItemSerializer(serializers.Serializer):
         if perm is None:
             raise serializers.ValidationError({"permission_code": "Невідомий код права."})
         level = attrs.get("level") or ""
-        if perm.is_graded:
+        if perm.levels:
             allowed = {lvl.value for lvl in perm.levels}
             if level not in allowed:
                 raise serializers.ValidationError({"level": f"Має бути одне з {sorted(allowed)}."})

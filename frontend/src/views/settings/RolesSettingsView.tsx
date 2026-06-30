@@ -5,22 +5,12 @@ import {
   accessApi,
   type MemberAction,
   type PermissionCatalog,
+  type PermissionItem,
   type PickEmployee,
   type Role,
   type RoleMember,
   type RolePermission,
 } from '../../api/access';
-
-const GROUP_LABELS: Record<string, string> = {
-  general: 'Загальні',
-  hr: 'HR',
-  pulse: 'Pulse',
-  time: 'Час',
-  reports: 'Звіти',
-  settings: 'Налаштування',
-  self: 'Власні дані',
-};
-const GROUP_ORDER = ['general', 'hr', 'time', 'reports', 'settings', 'self', 'pulse'];
 
 type Props = { onBack: () => void };
 
@@ -546,15 +536,8 @@ function RoleEditor({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [savedAt, setSavedAt] = useState(false);
-
-  const groups = useMemo(() => {
-    const keys = Object.keys(catalog.groups);
-    return [...keys].sort((a, b) => {
-      const ia = GROUP_ORDER.indexOf(a);
-      const ib = GROUP_ORDER.indexOf(b);
-      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-    });
-  }, [catalog]);
+  const [tab, setTab] = useState<'company' | 'people'>('company');
+  const [activeCat, setActiveCat] = useState(() => catalog.categories[0]?.key ?? '');
 
   const setLevel = (code: string, level: string | null) => {
     setSavedAt(false);
@@ -583,8 +566,11 @@ function RoleEditor({
     }
   };
 
+  const category =
+    catalog.categories.find((c) => c.key === activeCat) ?? catalog.categories[0] ?? null;
+
   return (
-    <main className="settings-page settings-option-page">
+    <main className="settings-page settings-option-page role-editor-page">
       <header className="settings-option-header">
         <div>
           <button type="button" className="settings-back-link" onClick={onBack}>
@@ -593,81 +579,135 @@ function RoleEditor({
           <h1>{role.name}</h1>
           {role.description ? <p className="roles-editor-desc">{role.description}</p> : null}
         </div>
-        <div className="settings-option-actions">
-          <button type="button" className="primary-action" onClick={save} disabled={busy}>
-            {busy ? 'Збереження…' : savedAt ? 'Збережено ✓' : 'Зберегти'}
-          </button>
-        </div>
       </header>
 
-      <div className="roles-editor-body">
-        {role.slug === 'admin' ? (
-          <div className="roles-note">Адміністратор має повний доступ і не налаштовується через матрицю.</div>
-        ) : null}
+      <div className="role-editor-body">
+        <div className="role-editor-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            className={tab === 'company' ? 'is-on' : ''}
+            onClick={() => setTab('company')}
+          >
+            Компанія
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className={tab === 'people' ? 'is-on' : ''}
+            onClick={() => setTab('people')}
+          >
+            Люди
+          </button>
+        </div>
+
         {err ? <div className="roles-error">{err}</div> : null}
 
-        <div className="roles-perm-groups">
-        {groups.map((groupKey) => (
-          <section key={groupKey} className="roles-perm-group">
-            <h2 className="roles-perm-group-title">{GROUP_LABELS[groupKey] ?? groupKey}</h2>
-            <div className="roles-perm-rows">
-              {catalog.groups[groupKey].map((perm) => {
-                const graded = perm.levels.length > 0;
-                const current = grants.has(perm.code) ? grants.get(perm.code)! : null;
-                return (
-                  <div key={perm.code} className="roles-perm-row">
-                    <div className="roles-perm-info">
-                      <span className="roles-perm-label">
-                        {perm.label}
-                        {perm.risk === 'critical' || perm.risk === 'high' ? (
-                          <span className={`roles-risk roles-risk-${perm.risk}`}>{perm.risk}</span>
-                        ) : null}
-                      </span>
-                      <span className="roles-perm-desc">{perm.description}</span>
-                    </div>
-                    {graded ? (
-                      <div className="roles-seg" role="group" aria-label={perm.label}>
-                        <button
-                          type="button"
-                          className={current === null ? 'is-on' : ''}
-                          onClick={() => setLevel(perm.code, null)}
-                        >
-                          Немає
-                        </button>
-                        <button
-                          type="button"
-                          className={current === 'view' ? 'is-on' : ''}
-                          onClick={() => setLevel(perm.code, 'view')}
-                        >
-                          Перегляд
-                        </button>
-                        {perm.levels.includes('edit') ? (
-                          <button
-                            type="button"
-                            className={current === 'edit' ? 'is-on' : ''}
-                            onClick={() => setLevel(perm.code, 'edit')}
-                          >
-                            Редагування
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <label className="roles-check">
-                        <input
-                          type="checkbox"
-                          checked={current !== null}
-                          onChange={(e) => setLevel(perm.code, e.target.checked ? '' : null)}
+        {tab === 'company' ? (
+          <>
+            <p className="role-editor-hint">
+              Права доступу, які застосовуються до дій, що ця роль може виконувати у компанії.
+            </p>
+            <div className="role-editor-layout">
+              <nav className="role-cat-nav">
+                {catalog.categories.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    className={c.key === (category?.key ?? '') ? 'is-on' : ''}
+                    onClick={() => setActiveCat(c.key)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </nav>
+              <div className="role-perm-panel">
+                {category?.sections.map((sec) => (
+                  <section key={sec.key} className="role-perm-section">
+                    {sec.label ? <h3 className="role-perm-section-title">{sec.label}</h3> : null}
+                    <div className="roles-perm-rows">
+                      {sec.permissions.map((perm) => (
+                        <PermRow
+                          key={perm.code}
+                          perm={perm}
+                          current={grants.has(perm.code) ? grants.get(perm.code)! : null}
+                          present={grants.has(perm.code)}
+                          onSet={setLevel}
                         />
-                      </label>
-                    )}
-                  </div>
-                );
-              })}
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
-          </section>
-        ))}
-        </div>
+          </>
+        ) : (
+          <div className="role-people-placeholder">
+            <p className="roles-empty">
+              Доступ на рівні полів (Особисте, Робота, Компенсація…) — у розробці.
+            </p>
+          </div>
+        )}
       </div>
+
+      <footer className="role-editor-footer">
+        <button type="button" className="secondary-action" onClick={onBack}>
+          Скасувати
+        </button>
+        <button type="button" className="primary-action" onClick={save} disabled={busy}>
+          {busy ? 'Збереження…' : savedAt ? 'Збережено ✓' : 'Зберегти'}
+        </button>
+      </footer>
     </main>
+  );
+}
+
+function PermRow({
+  perm,
+  current,
+  present,
+  onSet,
+}: {
+  perm: PermissionItem;
+  current: string | null;
+  present: boolean;
+  onSet: (code: string, level: string | null) => void;
+}) {
+  return (
+    <div className="roles-perm-row">
+      <div className="roles-perm-info">
+        <span className="roles-perm-label">{perm.label}</span>
+        {perm.description ? <span className="roles-perm-desc">{perm.description}</span> : null}
+      </div>
+      {perm.kind === 'graded' ? (
+        <div className="roles-seg" role="group" aria-label={perm.label}>
+          <button type="button" className={current === null ? 'is-on' : ''} onClick={() => onSet(perm.code, null)}>
+            Немає
+          </button>
+          <button
+            type="button"
+            className={current === 'view' ? 'is-on' : ''}
+            onClick={() => onSet(perm.code, 'view')}
+          >
+            Перегляд
+          </button>
+          <button
+            type="button"
+            className={current === 'edit' ? 'is-on' : ''}
+            onClick={() => onSet(perm.code, 'edit')}
+          >
+            Редагування
+          </button>
+        </div>
+      ) : (
+        <label className="roles-check">
+          <input
+            type="checkbox"
+            checked={present}
+            onChange={(e) => onSet(perm.code, e.target.checked ? perm.on_level : null)}
+          />
+        </label>
+      )}
+    </div>
   );
 }
