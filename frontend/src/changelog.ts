@@ -10,6 +10,13 @@ export type ChangelogEntry = {
 
 export const changelog: ChangelogEntry[] = [
   {
+    version: '1.0.20',
+    date: '30.06.2026',
+    changes: [
+      'Профіль співробітника: панель «Головна» доповнено полями «Номер робочого телефону» та «Рівень», порядок полів вирівняно під референс.',
+    ],
+  },
+  {
     version: '1.0.19',
     date: '30.06.2026',
     changes: [

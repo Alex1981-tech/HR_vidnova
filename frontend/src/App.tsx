@@ -6032,6 +6032,11 @@ function EmployeeAdminProfileView({
   const homeFields: Array<{ label: string; value: string; href?: string; structureLink?: boolean }> = [
     { label: copy.people.email || 'Ел. пошта', value: employee?.email || '-', href: employee?.email ? `mailto:${employee.email}` : undefined },
     {
+      label: copy.people.workPhone || 'Номер робочого телефону',
+      value: workPhone,
+      href: workPhone && workPhone !== '-' ? `tel:${workPhone.replace(/\s/g, '')}` : undefined,
+    },
+    {
       label: copy.people.mobilePhone || 'Мобільний телефон',
       value: mobilePhone,
       href: mobilePhone && mobilePhone !== '-' ? `tel:${mobilePhone.replace(/\s/g, '')}` : undefined,
@@ -6039,6 +6044,7 @@ function EmployeeAdminProfileView({
     { label: copy.people.startDate || 'Дата початку', value: employee?.hired_on ? formatDate(employee.hired_on) : '-' },
     { label: copy.people.workType || 'Тип роботи', value: employee?.employment_type_name || '-' },
     { label: copy.people.position || 'Посада', value: employee?.position_name || '-' },
+    { label: copy.people.level || 'Рівень', value: employee?.job_level_name || '-' },
     { label: copy.people.department || 'Департамент', value: employee?.department_name || '-', structureLink: Boolean(employee?.department_name) },
     { label: copy.people.division || 'Підрозділ', value: employee?.division_name || '-' },
     { label: copy.people.location || 'Локація', value: employee?.clinic_name || '-' },
