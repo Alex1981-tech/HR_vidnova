@@ -154,6 +154,33 @@ export type EmployeeCertificate = {
   order: number;
 };
 
+export type SkillCategory = {
+  id: number;
+  name: string;
+  order: number;
+  is_active: boolean;
+};
+
+export type SkillCatalogItem = {
+  id: number;
+  category: number;
+  category_name: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type EmployeeSkill = {
+  id: number;
+  employee: number;
+  skill: number;
+  skill_name: string;
+  category: number;
+  category_name: string;
+  level: string;
+  level_display: string;
+  order: number;
+};
+
 export type EmployeeNote = {
   id: number;
   employee: number;

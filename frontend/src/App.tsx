@@ -135,6 +135,9 @@ import type {
   Dependent,
   EmployeeEducation,
   EmployeeCertificate,
+  SkillCategory,
+  SkillCatalogItem,
+  EmployeeSkill,
   EmployeeNote,
   GenderOption,
   HolidayOption,
@@ -6276,6 +6279,7 @@ function EmployeeAdminProfileView({
               {!tabGroups.length ? <ProfileTabPlaceholder tab={activeTab} /> : null}
               {activeTab === 'personal' && employee ? (
                 <>
+                  <EmployeeSkillsTab employeeId={employee.id} />
                   <EmployeeEducationTab employeeId={employee.id} />
                   <EmployeeCertificatesTab employeeId={employee.id} />
                 </>
@@ -7634,6 +7638,287 @@ function MoreCardMenu({
         ) : null}
       </div>
     </div>
+  );
+}
+
+const SKILL_LEVELS: Array<{ value: string; label: string }> = [
+  { value: 'interested', label: 'Зацікавлений' },
+  { value: 'beginner', label: 'Початківець' },
+  { value: 'experienced', label: 'Досвідчений' },
+  { value: 'expert', label: 'Експерт' },
+];
+
+// Випадаючий список із можливістю створити новий пункт у системному довіднику.
+function ComboboxWithAdd({
+  options,
+  value,
+  onChange,
+  onCreate,
+  placeholder,
+  disabled,
+}: {
+  options: Array<{ id: number; name: string }>;
+  value: number | null;
+  onChange: (id: number) => void;
+  onCreate: (name: string) => Promise<{ id: number; name: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const selected = options.find((o) => o.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = options.filter((o) => o.name.toLowerCase().includes(q));
+  const exact = options.some((o) => o.name.trim().toLowerCase() === q);
+  const display = open ? query : selected?.name ?? '';
+
+  async function handleCreate() {
+    const name = query.trim();
+    if (!name || creating) return;
+    setCreating(true);
+    try {
+      const created = await onCreate(name);
+      onChange(created.id);
+      setQuery('');
+      setOpen(false);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="combobox" ref={wrapRef}>
+      <input
+        className="people-data-input"
+        value={display}
+        placeholder={placeholder}
+        disabled={disabled}
+        onFocus={() => { setOpen(true); setQuery(''); }}
+        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+      />
+      {open && !disabled ? (
+        <div className="combobox-pop">
+          {filtered.map((o) => (
+            <button
+              type="button"
+              key={o.id}
+              className={`combobox-opt${o.id === value ? ' active' : ''}`}
+              onClick={() => { onChange(o.id); setOpen(false); setQuery(''); }}
+            >
+              {o.name}
+            </button>
+          ))}
+          {q && !exact ? (
+            <button type="button" className="combobox-opt combobox-add" onClick={handleCreate} disabled={creating}>
+              <Plus size={14} /> Додати «{query.trim()}»
+            </button>
+          ) : null}
+          {!filtered.length && !q ? <div className="combobox-empty">Почніть вводити…</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function groupSkillsByCategory(items: EmployeeSkill[]): Array<{ id: number; name: string; skills: EmployeeSkill[] }> {
+  const map = new Map<number, { id: number; name: string; skills: EmployeeSkill[] }>();
+  for (const item of items) {
+    let group = map.get(item.category);
+    if (!group) {
+      group = { id: item.category, name: item.category_name, skills: [] };
+      map.set(item.category, group);
+    }
+    group.skills.push(item);
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+}
+
+function EmployeeSkillsTab({ employeeId }: { employeeId: number }) {
+  const [items, setItems] = useState<EmployeeSkill[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [edit, setEdit] = useState<{ id?: number; category: number | null; skill: number | null; level: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const { menuOpenId, setMenuOpenId } = useRowMenu();
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeSkill | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [categories, setCategories] = useState<SkillCategory[]>([]);
+  const [skills, setSkills] = useState<SkillCatalogItem[]>([]);
+  const [collapsedCats, setCollapsedCats] = useState<Set<number>>(new Set());
+
+  function toggleCat(id: number) {
+    setCollapsedCats((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function load() {
+    setState('loading');
+    try {
+      setItems((await api.employeeSkills(employeeId)).items);
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  }
+  useEffect(() => {
+    void load();
+    void api.skillCategories().then((r) => setCategories(r.items)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId]);
+
+  useEffect(() => {
+    if (!edit?.category) {
+      setSkills([]);
+      return;
+    }
+    void api.skillsCatalog(edit.category).then((r) => setSkills(r.items)).catch(() => setSkills([]));
+  }, [edit?.category]);
+
+  async function save() {
+    if (!edit?.skill) {
+      setError('Оберіть навичку');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveEmployeeSkill({ id: edit.id, employee: employeeId, skill: edit.skill, level: edit.level || 'interested' });
+      setEdit(null);
+      await load();
+    } catch {
+      setError('Не вдалося зберегти. Можливо, така навичка вже додана.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.deleteEmployeeSkill(deleteTarget.id);
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      setError('Не вдалося видалити.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <MoreSubPanel title="Навички" onAdd={() => setEdit({ category: null, skill: null, level: 'interested' })}>
+      {state === 'loading' ? (
+        <p className="people-data-empty">Завантаження…</p>
+      ) : items.length ? (
+        <div className="skill-groups">
+          {groupSkillsByCategory(items).map((group) => {
+            const isCollapsed = collapsedCats.has(group.id);
+            return (
+              <div className="skill-group" key={group.id}>
+                <button type="button" className="skill-group-head" onClick={() => toggleCat(group.id)}>
+                  <ChevronDown size={16} className={`skill-group-chevron${isCollapsed ? ' collapsed' : ''}`} />
+                  <span className="skill-group-name">{group.name}</span>
+                  <span className="skill-group-count">{group.skills.length}</span>
+                </button>
+                {!isCollapsed ? (
+                  <div className="skill-rows">
+                    {group.skills.map((s) => (
+                      <div className="skill-row" key={s.id}>
+                        <strong className="skill-row-name">{s.skill_name}</strong>
+                        <span className="skill-level-badge">{s.level_display}</span>
+                        <MoreCardMenu
+                          open={menuOpenId === s.id}
+                          onToggle={() => setMenuOpenId((cur) => (cur === s.id ? null : s.id))}
+                          onEdit={() => { setMenuOpenId(null); setEdit({ id: s.id, category: s.category, skill: s.skill, level: s.level }); }}
+                          onDelete={() => { setMenuOpenId(null); setDeleteTarget(s); }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="more-empty">Нічого не знайдено</p>
+      )}
+
+      {edit ? (
+        <MoreModalShell
+          title={edit.id ? 'Редагувати навичку' : 'Додати навичку'}
+          saving={saving}
+          error={error}
+          onClose={() => setEdit(null)}
+          onSave={save}
+        >
+          <label className="people-data-modal-field">
+            <span>Категорія навичок</span>
+            <ComboboxWithAdd
+              options={categories}
+              value={edit.category}
+              onChange={(id) => setEdit({ ...edit, category: id, skill: null })}
+              onCreate={async (name) => {
+                const created = await api.createSkillCategory(name);
+                setCategories((cur) => [...cur, created]);
+                return created;
+              }}
+              placeholder="Оберіть або додайте категорію"
+            />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Навичка</span>
+            <ComboboxWithAdd
+              options={skills}
+              value={edit.skill}
+              onChange={(id) => setEdit({ ...edit, skill: id })}
+              onCreate={async (name) => {
+                const created = await api.createCatalogSkill(edit.category as number, name);
+                setSkills((cur) => [...cur, created]);
+                return created;
+              }}
+              placeholder={edit.category ? 'Оберіть або додайте навичку' : 'Спершу оберіть категорію'}
+              disabled={!edit.category}
+            />
+          </label>
+          <label className="people-data-modal-field">
+            <span>Рівень</span>
+            <select className="people-data-input" value={edit.level} onChange={(ev) => setEdit({ ...edit, level: ev.target.value })}>
+              {SKILL_LEVELS.map((lvl) => (
+                <option key={lvl.value} value={lvl.value}>{lvl.label}</option>
+              ))}
+            </select>
+          </label>
+        </MoreModalShell>
+      ) : null}
+
+      {deleteTarget ? (
+        <ProfileListDeleteModal
+          title="Видалити навичку?"
+          message="Навичку буде прибрано з профілю співробітника (сам довідник навичок не зміниться)."
+          busy={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void confirmDelete()}
+        />
+      ) : null}
+    </MoreSubPanel>
   );
 }
 

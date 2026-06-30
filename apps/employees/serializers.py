@@ -18,6 +18,9 @@ from .models import (
     Dependent,
     EmployeeEducation,
     EmployeeCertificate,
+    SkillCategory,
+    Skill,
+    EmployeeSkill,
     EmployeeNote,
     EmployeeDocumentFolder,
     EmployeeEmploymentStatus,
@@ -976,6 +979,31 @@ class EmployeeCertificateSerializer(serializers.ModelSerializer):
     class Meta:
         model = EmployeeCertificate
         fields = ("id", "employee", "name", "issuer", "url", "issued_on", "expires_on", "order")
+
+
+class SkillCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SkillCategory
+        fields = ("id", "name", "order", "is_active")
+
+
+class SkillSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True)
+
+    class Meta:
+        model = Skill
+        fields = ("id", "category", "category_name", "name", "is_active")
+
+
+class EmployeeSkillSerializer(serializers.ModelSerializer):
+    skill_name = serializers.CharField(source="skill.name", read_only=True)
+    category = serializers.IntegerField(source="skill.category_id", read_only=True)
+    category_name = serializers.CharField(source="skill.category.name", read_only=True)
+    level_display = serializers.CharField(source="get_level_display", read_only=True)
+
+    class Meta:
+        model = EmployeeSkill
+        fields = ("id", "employee", "skill", "skill_name", "category", "category_name", "level", "level_display", "order")
 
 
 class EmployeeNoteSerializer(serializers.ModelSerializer):

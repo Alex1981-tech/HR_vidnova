@@ -822,6 +822,61 @@ class EmployeeCertificate(TimestampedModel):
         return f"{self.employee}: {self.name}"
 
 
+class SkillCategory(TimestampedModel):
+    """Категорія навичок (спільний довідник, поповнюється з модалки)."""
+
+    name = models.CharField(max_length=200, unique=True)
+    order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Skill(TimestampedModel):
+    """Навичка в межах категорії (спільний довідник)."""
+
+    category = models.ForeignKey(SkillCategory, on_delete=models.CASCADE, related_name="skills")
+    name = models.CharField(max_length=200)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["category", "name"], name="uniq_skill_per_category"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.category}: {self.name}"
+
+
+class EmployeeSkill(TimestampedModel):
+    """Навичка співробітника з рівнем володіння (вкладка «Особисте»)."""
+
+    class Level(models.TextChoices):
+        INTERESTED = "interested", "Зацікавлений"
+        BEGINNER = "beginner", "Початківець"
+        EXPERIENCED = "experienced", "Досвідчений"
+        EXPERT = "expert", "Експерт"
+
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name="skill_entries")
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name="employee_entries")
+    level = models.CharField(max_length=20, choices=Level.choices, default=Level.INTERESTED)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["employee", "skill"], name="uniq_employee_skill"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.employee}: {self.skill} ({self.level})"
+
+
 class EmployeeNote(TimestampedModel):
     """Примітка про співробітника (вкладка «Більше»)."""
 

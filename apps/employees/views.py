@@ -115,6 +115,9 @@ from .models import (
     Dependent,
     EmployeeEducation,
     EmployeeCertificate,
+    SkillCategory,
+    Skill,
+    EmployeeSkill,
     EmployeeNote,
     EmployeeFormTemplate,
     EmploymentType,
@@ -137,6 +140,9 @@ from .serializers import (
     DependentSerializer,
     EmployeeEducationSerializer,
     EmployeeCertificateSerializer,
+    SkillCategorySerializer,
+    SkillSerializer,
+    EmployeeSkillSerializer,
     EmployeeNoteSerializer,
     EmployeeFieldSerializer,
     EmployeeFieldGroupSerializer,
@@ -908,6 +914,43 @@ class EmployeeEducationViewSet(_EmployeeScopedViewSet):
 class EmployeeCertificateViewSet(_EmployeeScopedViewSet):
     model = EmployeeCertificate
     serializer_class = EmployeeCertificateSerializer
+
+
+class SkillCategoryViewSet(EmployeeApiViewSet):
+    serializer_class = SkillCategorySerializer
+
+    def get_queryset(self):
+        qs = SkillCategory.objects.all().order_by("order", "name")
+        search = self.request.query_params.get("q", "").strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+        if self.request.query_params.get("is_active") in {"true", "1"}:
+            qs = qs.filter(is_active=True)
+        return qs
+
+
+class SkillViewSet(EmployeeApiViewSet):
+    serializer_class = SkillSerializer
+
+    def get_queryset(self):
+        qs = Skill.objects.select_related("category").all().order_by("name")
+        category = self.request.query_params.get("category")
+        if category:
+            qs = qs.filter(category_id=category)
+        search = self.request.query_params.get("q", "").strip()
+        if search:
+            qs = qs.filter(name__icontains=search)
+        if self.request.query_params.get("is_active") in {"true", "1"}:
+            qs = qs.filter(is_active=True)
+        return qs
+
+
+class EmployeeSkillViewSet(_EmployeeScopedViewSet):
+    model = EmployeeSkill
+    serializer_class = EmployeeSkillSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("skill", "skill__category")
 
 
 class EmployeeNoteViewSet(_EmployeeScopedViewSet):

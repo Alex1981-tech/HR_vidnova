@@ -26,6 +26,9 @@ import type {
   Dependent,
   EmployeeEducation,
   EmployeeCertificate,
+  SkillCategory,
+  SkillCatalogItem,
+  EmployeeSkill,
   EmployeeNote,
   EmployeeFormTemplate,
   EmployeeFormTemplateSummary,
@@ -954,6 +957,27 @@ export const api = {
       ? request<EmployeeCertificate>(`/api/employees/certificates/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
       : request<EmployeeCertificate>('/api/employees/certificates/', { method: 'POST', body: JSON.stringify(payload) }),
   deleteCertificate: (id: number) => request<void>(`/api/employees/certificates/${id}/`, { method: 'DELETE' }),
+  skillCategories: () =>
+    request<ApiList<SkillCategory> | SkillCategory[]>(
+      `/api/employees/skill-categories/${buildQuery({ is_active: true, page_size: 500 })}`,
+    ).then(normalizeList),
+  createSkillCategory: (name: string) =>
+    request<SkillCategory>('/api/employees/skill-categories/', { method: 'POST', body: JSON.stringify({ name }) }),
+  skillsCatalog: (category: number) =>
+    request<ApiList<SkillCatalogItem> | SkillCatalogItem[]>(
+      `/api/employees/skills-catalog/${buildQuery({ category, is_active: true, page_size: 500 })}`,
+    ).then(normalizeList),
+  createCatalogSkill: (category: number, name: string) =>
+    request<SkillCatalogItem>('/api/employees/skills-catalog/', { method: 'POST', body: JSON.stringify({ category, name }) }),
+  employeeSkills: (employee: number) =>
+    request<ApiList<EmployeeSkill> | EmployeeSkill[]>(
+      `/api/employees/employee-skills/${buildQuery({ employee, page_size: 200 })}`,
+    ).then(normalizeList),
+  saveEmployeeSkill: (payload: { id?: number; employee: number; skill: number; level: string }) =>
+    payload.id
+      ? request<EmployeeSkill>(`/api/employees/employee-skills/${payload.id}/`, { method: 'PATCH', body: JSON.stringify(payload) })
+      : request<EmployeeSkill>('/api/employees/employee-skills/', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteEmployeeSkill: (id: number) => request<void>(`/api/employees/employee-skills/${id}/`, { method: 'DELETE' }),
   employeeNotes: (employee: number) =>
     request<ApiList<EmployeeNote> | EmployeeNote[]>(
       `/api/employees/employee-notes/${buildQuery({ employee, page_size: 200 })}`,

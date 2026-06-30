@@ -17700,6 +17700,53 @@ textarea:focus-visible {
 .people-data-modal-body { padding: 16px; }
 .people-data-modal-field { display: grid; gap: 6px; }
 .more-empty { margin: 0; padding: 2px 0; font-size: var(--font-sm); color: var(--muted); }
+.combobox { position: relative; }
+.combobox-pop {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 5;
+  max-height: 220px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 7px;
+  box-shadow: var(--shadow); display: flex; flex-direction: column; padding: 4px;
+}
+.combobox-opt {
+  text-align: left; border: 0; background: transparent; padding: 7px 8px; border-radius: 5px;
+  font-size: var(--font-body); color: var(--text); cursor: pointer;
+}
+.combobox-opt:hover { background: var(--panel-soft); }
+.combobox-opt.active { background: var(--panel-soft); font-weight: 600; }
+.combobox-add { display: flex; align-items: center; gap: 6px; color: var(--primary-strong); }
+.combobox-empty { padding: 7px 8px; font-size: var(--font-sm); color: var(--muted); }
+.skill-level-badge {
+  display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 10px;
+  background: var(--panel-soft); color: var(--primary-strong); font-weight: 600; font-size: var(--font-caption);
+}
+.skill-groups { display: grid; gap: 10px; }
+.skill-rows { display: grid; gap: 6px; }
+.skill-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px 6px 12px; border: 1px solid var(--line); border-radius: 7px;
+}
+.skill-row-name { font-size: var(--font-body); font-weight: 600; color: var(--text); }
+.skill-row .more-card-actions { margin-left: auto; }
+.skill-group { display: grid; gap: 6px; }
+.skill-group-head {
+  display: flex; align-items: center; gap: 6px;
+  border: 0; background: transparent; padding: 4px 0; cursor: pointer;
+  font-size: var(--font-sm); font-weight: 600; color: var(--text); text-align: left;
+}
+.skill-group-chevron { transition: transform 0.15s ease; color: var(--muted); }
+.skill-group-chevron.collapsed { transform: rotate(-90deg); }
+.skill-group-count {
+  margin-left: 4px; min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; background: var(--panel-soft); color: var(--muted);
+  font-size: var(--font-caption); font-weight: 600;
+}
+/* «...»-кнопки карток профілю — без квадратної рамки */
+.more-card-actions .settings-option-row-action {
+  border: 0; background: transparent; padding: 4px; border-radius: 6px;
+  color: var(--muted); cursor: pointer; display: inline-flex; align-items: center;
+}
+.more-card-actions .settings-option-row-action:hover { background: var(--panel-soft); color: var(--text); }
 .people-data-modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 520px) { .people-data-modal-row { grid-template-columns: 1fr; } }
 .people-data-modal-field span { color: var(--text); font-size: 12px; font-weight: 600; }
