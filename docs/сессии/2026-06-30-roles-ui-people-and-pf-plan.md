@@ -69,3 +69,18 @@ Alex дал референс PF `/settings/roles/54297/edit` (роль «Усі 
   Компанія+Люди, мультиселекти, dirty-guard).
 - Открытое: enforcement (когда включать `RBAC_ENFORCE`), деплой на прод (seed ролей/
   прав + назначить admins), Этап 4ч2 field-level serializer-скрытие.
+
+## Деплой на прод (2026-06-30, вечір)
+
+- Запушено в origin/main (`a2fda51`, 16 коммитов: PF-редактор Фазы 1-3, счётчики,
+  дровер, описания). GHCR-билд успешен.
+- **Прод обновлён** через `docker-compose.prod.ghcr.yml` (web+frontend pull+up,
+  migrate — нет новых). Код live (company_catalog=6 категорий, MULTISELECTS=2).
+- **RBAC засеян на проде**: seed_access_roles (5) + seed_access_role_permissions (22).
+  Счётчики: Усі люди/Люди стосовно себе=159, Менеджери=28, Лідери=5.
+- **6 админов импортированы**: Кузьменко(76)/Штанько(163)/Гузенко(26)/Турчененко(145)/
+  Нагорний(100)/Бондарець(14). RBAC_ENFORCE=False (shadow, никого не блокирует).
+- ⚠️ **ИНЦИДЕНТ**: сначала ошибочно запустил дефолтный `docker compose up -d`
+  (локальный Vite-вариант) → пересоздал frontend → снёс GHCR-frontend на :8096 →
+  сайт 502 (~15 мин). Восстановлено через `-f docker-compose.prod.ghcr.yml up -d`.
+  Урок зафиксирован в memory `hr-prod-deploy-ghcr-compose`.
