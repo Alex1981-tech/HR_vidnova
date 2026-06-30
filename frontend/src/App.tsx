@@ -7126,7 +7126,7 @@ function MoreModalShell({
   onSave: () => void;
   children: ReactNode;
 }) {
-  return (
+  return createPortal(
     <div className="people-data-modal-layer more-modal-layer" role="dialog" aria-modal="true" aria-label={title}>
       <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
       <section className="people-data-modal more-modal">
@@ -7150,7 +7150,8 @@ function MoreModalShell({
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -7802,7 +7803,7 @@ function EmployeeTableRowModal({
     }
   };
 
-  return (
+  return createPortal(
     <div className="people-data-modal-layer" role="dialog" aria-modal="true" aria-label={table.name}>
       <button type="button" className="people-data-modal-backdrop" aria-label="Закрити" onClick={onClose} />
       <section className="people-data-modal">
@@ -7835,7 +7836,8 @@ function EmployeeTableRowModal({
           </button>
         </footer>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

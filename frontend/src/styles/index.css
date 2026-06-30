@@ -5981,7 +5981,7 @@ textarea.profile-field-input {
 }
 .people-data-modal-layer.leave-type-modal-layer {
   place-items: start center;
-  padding: 72px 20px 20px;
+  padding: 32px 20px 20px;
 }
 .people-data-modal-layer.leave-type-modal-layer .people-data-modal-backdrop {
   background: rgba(48, 68, 84, 0.48);
@@ -9735,7 +9735,7 @@ button.knowledge-document-views {
 .knowledge-modal-layer {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  z-index: var(--z-modal);
   display: grid;
   place-items: center;
   padding: 18px;
@@ -17622,9 +17622,9 @@ textarea:focus-visible {
 
 /* people-data: group modal */
 .people-data-modal-layer {
-  position: fixed; inset: 0; z-index: 90; display: grid; place-items: start center; padding-top: 64px;
+  position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: start center; padding: 32px 16px;
 }
-.people-data-modal-backdrop { position: absolute; inset: 0; border: 0; background: rgba(29, 43, 56, 0.45); }
+.people-data-modal-backdrop { position: fixed; inset: 0; border: 0; background: rgba(29, 43, 56, 0.45); }
 .people-data-modal {
   position: relative; width: min(820px, calc(100vw - 40px)); display: grid;
   border: 1px solid var(--line-strong); border-radius: 7px; background: var(--panel);
@@ -17653,7 +17653,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--line); padding: 12px 16px;
 }
 .people-data-modal-narrow { width: min(560px, calc(100vw - 40px)); }
-.people-data-modal-layer-top { z-index: 95; }
+.people-data-modal-layer-top { z-index: calc(var(--z-modal) + 5); }
 .document-upload-layer {
   z-index: 1300;
   padding: 72px 20px 20px;
@@ -17674,8 +17674,8 @@ textarea:focus-visible {
   flex: 0 0 auto;
 }
 .more-modal-layer {
-  z-index: 110;
-  padding: 72px 20px 20px;
+  z-index: calc(var(--z-modal) + 10);
+  padding: 32px 20px 20px;
 }
 .more-modal {
   width: min(600px, calc(100vw - 40px));
