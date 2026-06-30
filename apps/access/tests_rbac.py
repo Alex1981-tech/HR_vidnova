@@ -89,8 +89,8 @@ class LastAdminInvariantTests(TestCase):
         assert_admin_remains(first)  # не бросает
 
     def test_non_admin_assignment_not_guarded(self):
-        hr_admin = AccessRole.objects.get(slug="hr_admin")
-        assignment = self._assign(hr_admin, self.user_model.objects.create_user("h1"))
+        custom = AccessRole.objects.create(slug="hr", name="HR", type=AccessRole.Type.CUSTOM)
+        assignment = self._assign(custom, self.user_model.objects.create_user("h1"))
         self.assertFalse(would_remove_last_admin(assignment))
 
     def test_inactive_admin_does_not_count(self):

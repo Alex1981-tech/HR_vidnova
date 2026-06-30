@@ -54,12 +54,18 @@ class DrfEnforcementTests(APITestCase):
         resp = self.client.get("/api/skud/workdays/")
         self.assertEqual(resp.status_code, 403)
 
-    def test_hr_admin_sees_all_emergency_contacts(self):
+    def test_custom_hr_role_sees_all_emergency_contacts(self):
+        # Кастомная роль с people.emergency_contacts + all_company видит всё.
+        from apps.access.models import AccessRolePermission
+
+        hr_role = AccessRole.objects.create(slug="hr", name="HR", type=AccessRole.Type.CUSTOM)
+        AccessRolePermission.objects.create(
+            role=hr_role, permission_code="people.emergency_contacts", level="view"
+        )
         hr_user = self.user_model.objects.create_user("hr")
         Employee.objects.create(first_name="H", last_name="R", user=hr_user)
         AccessRoleAssignment.objects.create(
-            role=AccessRole.objects.get(slug="hr_admin"), user=hr_user,
-            scope_type=AccessRoleAssignment.ScopeType.ALL_COMPANY,
+            role=hr_role, user=hr_user, scope_type=AccessRoleAssignment.ScopeType.ALL_COMPANY,
         )
         self.client.force_authenticate(hr_user)
         resp = self.client.get("/api/employees/emergency-contacts/")

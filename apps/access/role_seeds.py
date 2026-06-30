@@ -49,46 +49,8 @@ SYSTEM_ROLE_SEEDS: tuple[dict, ...] = (
         "membership_computed": True,
         "order": 40,
     },
-    {
-        "slug": "hr_admin",
-        "name": "HR-адміністратори",
-        "description": "Операційне керування HR-даними компанії. Призначається вручну.",
-        "membership_computed": False,
-        "order": 50,
-    },
-    {
-        "slug": "hr_specialist",
-        "name": "HR-спеціалісти",
-        "description": "Операційний HR без повних адмін-прав. Призначається вручну.",
-        "membership_computed": False,
-        "order": 60,
-    },
-    {
-        "slug": "knowledge_admin",
-        "name": "Адміністратори бази знань",
-        "description": "Керування базою знань. Призначається вручну.",
-        "membership_computed": False,
-        "order": 70,
-    },
-    {
-        "slug": "timekeeper",
-        "name": "Облік робочого часу",
-        "description": "Відвідуваність і ручні корекції часу. Призначається вручну.",
-        "membership_computed": False,
-        "order": 80,
-    },
-    {
-        "slug": "reports_viewer",
-        "name": "Перегляд звітів",
-        "description": "Доступ до звітів. Призначається вручну.",
-        "membership_computed": False,
-        "order": 90,
-    },
-    {
-        "slug": "integration_admin",
-        "name": "Адміністратори інтеграцій",
-        "description": "API-ключі, вебхуки, імпорти. Призначається вручну.",
-        "membership_computed": False,
-        "order": 100,
-    },
 )
+
+# Функциональные роли (HR/timekeeper/knowledge/reports/integration) НЕ системные —
+# их админ создаёт как кастомные через /settings/roles по необходимости (как в PF).
+# Только 5 системных ролей seed'ятся автоматически.

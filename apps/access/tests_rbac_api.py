@@ -52,10 +52,10 @@ class RbacApiTests(APITestCase):
 
     def test_cannot_delete_system_role(self):
         self._as_admin()
-        role = AccessRole.objects.get(slug="hr_admin")
+        role = AccessRole.objects.get(slug="manager")
         resp = self.client.delete(f"/api/access/roles/{role.id}/")
         self.assertEqual(resp.status_code, 400)
-        self.assertTrue(AccessRole.objects.filter(slug="hr_admin").exists())
+        self.assertTrue(AccessRole.objects.filter(slug="manager").exists())
 
     def test_custom_role_deletable(self):
         self._as_admin()

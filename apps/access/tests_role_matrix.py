@@ -59,10 +59,11 @@ class SeedRolePermissionsTests(TestCase):
 
     def test_decisions_applied(self):
         call_command("seed_access_role_permissions")
-        # #5 компенсация
-        self.assertEqual(self._level("hr_admin", "people.field.compensation"), "edit")
-        self.assertEqual(self._level("hr_specialist", "people.field.compensation"), "view")
+        # #5 компенсация: системные роли (self/manager/all_people) её НЕ видят
+        # (HR-доступ к компенсации даётся кастомным ролям, создаются админом).
         self.assertIsNone(self._level("self", "people.field.compensation"))
+        self.assertIsNone(self._level("manager", "people.field.compensation"))
+        self.assertIsNone(self._level("all_people", "people.field.compensation"))
         # #1 manager attendance присутствует (scope reports — это уже в engine)
         self.assertEqual(self._level("manager", "time.attendance"), "view")
         # #2 roles.manage не выдан ни одной роли матрицы
