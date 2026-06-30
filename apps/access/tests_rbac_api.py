@@ -157,3 +157,33 @@ class RbacApiTests(APITestCase):
         self._as_admin()
         resp = self.client.get("/api/auth/status/")
         self.assertTrue(resp.data["access"]["is_admin"])  # superuser
+
+    # ── members (people-picker) ───────────────────────────────────────────────
+    def test_role_members_get_and_set(self):
+        self._as_admin()
+        from apps.employees.models import Employee
+
+        e1 = Employee.objects.create(first_name="A", last_name="T")
+        e2 = Employee.objects.create(first_name="B", last_name="T")
+        admin_role = AccessRole.objects.get(slug=ADMIN_ROLE_SLUG)
+        resp = self.client.post(
+            f"/api/access/roles/{admin_role.id}/members/",
+            {"employee_ids": [e1.id, e2.id]}, format="json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data["employee_ids"]), {e1.id, e2.id})
+        # снять одного
+        resp2 = self.client.post(
+            f"/api/access/roles/{admin_role.id}/members/", {"employee_ids": [e1.id]}, format="json",
+        )
+        self.assertEqual(set(resp2.data["employee_ids"]), {e1.id})
+        g = self.client.get(f"/api/access/roles/{admin_role.id}/members/")
+        self.assertEqual(set(g.data["employee_ids"]), {e1.id})
+
+    def test_admin_members_cannot_be_empty(self):
+        self._as_admin()
+        admin_role = AccessRole.objects.get(slug=ADMIN_ROLE_SLUG)
+        resp = self.client.post(
+            f"/api/access/roles/{admin_role.id}/members/", {"employee_ids": []}, format="json",
+        )
+        self.assertEqual(resp.status_code, 400)

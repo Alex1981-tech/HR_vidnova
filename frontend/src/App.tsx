@@ -2066,7 +2066,7 @@ function EmptyState({ title, text }: { title: string; text?: string }) {
   );
 }
 
-function PlaceholderPage({ title, blank = false }: { title: string; blank?: boolean }) {
+function PlaceholderPage({ title }: { title: string; blank?: boolean }) {
   return (
     <main className="workspace placeholder-page">
       <header className="page-header compact">
@@ -2074,7 +2074,6 @@ function PlaceholderPage({ title, blank = false }: { title: string; blank?: bool
           <h1>{title}</h1>
         </div>
       </header>
-      {blank ? <section className="panel placeholder-blank" /> : <section className="panel placeholder-panel" />}
     </main>
   );
 }
@@ -21926,7 +21925,7 @@ function SettingsFormsListView({
     <main className="settings-page settings-forms-page">
       <header className="settings-form-header">
         <div>
-          <button type="button" className="toolbar-button" onClick={onBack}>
+          <button type="button" className="settings-back-link" onClick={onBack}>
             <ChevronLeft size={17} />
             Назад
           </button>
@@ -22116,7 +22115,7 @@ function SettingsFormEditorView({
   return (
     <main className="settings-page settings-form-editor-page">
       <header className="settings-form-editor-header">
-        <button type="button" className="toolbar-button" onClick={onCancel}>
+        <button type="button" className="settings-back-link" onClick={onCancel}>
           <ChevronLeft size={17} />
           Назад
         </button>
@@ -22751,31 +22750,18 @@ function SettingsView({
   }
 
   if (activeSlug && activeItem) {
-    const Icon = activeItem.icon;
     const activeLabel = copy.settings.items[activeItem.slug] ?? activeItem.label;
-    const activeGroup = copy.settings.groups[activeItem.groupKey] ?? activeItem.group;
     return (
-      <main className="settings-page">
-        <header className="settings-detail-header">
-          <button type="button" className="toolbar-button" onClick={() => navigate('/settings')}>
-            <ChevronLeft size={17} />
-            {copy.common.settings}
-          </button>
+      <main className="settings-page settings-option-page settings-empty-page">
+        <header className="settings-option-header">
           <div>
-            <span>{activeGroup}</span>
+            <button type="button" className="settings-back-link" onClick={() => navigate('/settings')}>
+              <ChevronLeft size={17} />
+              Назад
+            </button>
             <h1>{activeLabel}</h1>
           </div>
         </header>
-        <section className="settings-detail-panel">
-          <div className="settings-detail-icon">
-            <Icon size={22} />
-          </div>
-          <div>
-            <h2>{activeLabel}</h2>
-            <p>{copy.settings.inProgress}</p>
-          </div>
-          <StatusPill status="manual_review" />
-        </section>
       </main>
     );
   }

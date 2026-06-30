@@ -21355,3 +21355,25 @@ textarea:focus-visible {
   .roles-col-desc { display: none; }
   .roles-perm-row { flex-wrap: wrap; }
 }
+
+/* ── Admin people-picker (роль Адміністратори) ─────────────────────────────── */
+.roles-picker-field { position: relative; max-width: 640px; display: flex; flex-direction: column; gap: var(--space-1); }
+.roles-picker-label { font-size: var(--font-caption); line-height: var(--lh-caption); font-weight: 500; color: var(--text-muted); }
+.roles-picker-control { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--card-hi); cursor: pointer; text-align: left; }
+.roles-picker-summary { flex: 1; font-size: var(--font-body); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roles-picker-summary.is-empty { color: var(--text-muted); }
+.roles-picker-panel { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50; background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: 0 8px 28px rgba(15, 18, 34, .14); overflow: hidden; }
+.roles-picker-search { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); }
+.roles-picker-search input { flex: 1; border: 0; background: transparent; font-size: var(--font-body); outline: none; color: var(--text); }
+.roles-picker-list { max-height: 320px; overflow-y: auto; }
+.roles-picker-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); cursor: pointer; }
+.roles-picker-row:hover { background: var(--primary-soft); }
+.roles-picker-row input { width: 16px; height: 16px; accent-color: var(--primary); flex: 0 0 auto; }
+.roles-picker-avatar { width: 28px; height: 28px; border-radius: var(--radius-full); object-fit: cover; flex: 0 0 auto; }
+.roles-picker-avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--primary-soft); color: var(--primary-strong); font-size: var(--font-caption); font-weight: 600; }
+.roles-picker-person { display: flex; flex-direction: column; min-width: 0; }
+.roles-picker-name { font-size: var(--font-body); color: var(--text); }
+.roles-picker-pos { font-size: var(--font-sm); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roles-picker-empty { padding: var(--space-3); color: var(--text-muted); font-size: var(--font-sm); }
+.roles-picker-hint { margin: var(--space-1) 0 0; font-size: var(--font-sm); color: var(--text-muted); }
+.roles-picker-count { margin: 0; font-size: var(--font-sm); font-weight: 500; color: var(--text); }

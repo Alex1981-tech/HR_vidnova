@@ -29,6 +29,13 @@ export type PermissionItem = {
 
 export type PermissionCatalog = { groups: Record<string, PermissionItem[]> };
 
+export type PickEmployee = {
+  id: number;
+  full_name: string;
+  position_name?: string;
+  avatar_local_url?: string;
+};
+
 function getCookie(name: string): string {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : '';
@@ -80,4 +87,15 @@ export const accessApi = {
       method: 'POST',
       body: JSON.stringify(items),
     }),
+  getMembers: (id: number) =>
+    apiFetch<{ employee_ids: number[] }>(`/api/access/roles/${id}/members/`).then((r) => r.employee_ids),
+  setMembers: (id: number, employee_ids: number[]) =>
+    apiFetch<{ employee_ids: number[] }>(`/api/access/roles/${id}/members/`, {
+      method: 'POST',
+      body: JSON.stringify({ employee_ids }),
+    }).then((r) => r.employee_ids),
+  listEmployees: () =>
+    apiFetch<{ results?: PickEmployee[] } | PickEmployee[]>(
+      '/api/employees/employees/?compact=1&page_size=500',
+    ).then(unwrap),
 };

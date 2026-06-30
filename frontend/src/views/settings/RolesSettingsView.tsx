@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Lock, Monitor, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, Lock, Monitor, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
 
-import { accessApi, type PermissionCatalog, type Role, type RolePermission } from '../../api/access';
+import {
+  accessApi,
+  type PermissionCatalog,
+  type PickEmployee,
+  type Role,
+  type RolePermission,
+} from '../../api/access';
 
 const GROUP_LABELS: Record<string, string> = {
   general: 'Загальні',
@@ -53,6 +59,9 @@ export function RolesSettingsView({ onBack }: Props) {
     return q ? roles.filter((r) => r.name.toLowerCase().includes(q)) : roles;
   }, [roles, search]);
 
+  if (selected && selected.slug === 'admin') {
+    return <AdminRoleEditor role={selected} onBack={() => setSelected(null)} onSaved={refreshRole} />;
+  }
   if (selected && catalog) {
     return (
       <RoleEditor
@@ -226,6 +235,174 @@ function CreateRoleModal({ onClose, onCreated }: { onClose: () => void; onCreate
         </div>
       </div>
     </div>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function AdminRoleEditor({
+  role,
+  onBack,
+  onSaved,
+}: {
+  role: Role;
+  onBack: () => void;
+  onSaved: (r: Role) => void;
+}) {
+  const [employees, setEmployees] = useState<PickEmployee[]>([]);
+  const [members, setMembers] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [savedAt, setSavedAt] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    Promise.all([accessApi.listEmployees(), accessApi.getMembers(role.id)])
+      .then(([emps, ids]) => {
+        if (!alive) return;
+        setEmployees(emps);
+        setMembers(new Set(ids));
+      })
+      .catch((e) => alive && setErr(String(e instanceof Error ? e.message : e)))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [role.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const byId = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const selectedNames = useMemo(
+    () =>
+      [...members]
+        .map((id) => byId.get(id)?.full_name)
+        .filter(Boolean)
+        .join(', '),
+    [members, byId],
+  );
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? employees.filter((e) => e.full_name.toLowerCase().includes(q)) : employees;
+  }, [employees, search]);
+
+  const toggle = (id: number) => {
+    setSavedAt(false);
+    setMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const save = async () => {
+    if (members.size === 0) {
+      setErr('Повинен бути хоча б один адміністратор.');
+      return;
+    }
+    setBusy(true);
+    setErr('');
+    try {
+      const ids = await accessApi.setMembers(role.id, [...members]);
+      setMembers(new Set(ids));
+      setSavedAt(true);
+      onSaved({ ...role, people_count: ids.length });
+    } catch (e) {
+      setErr(String(e instanceof Error ? e.message : e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="settings-page settings-option-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} /> Назад
+          </button>
+          <h1>{role.name}</h1>
+          <p className="roles-editor-desc">
+            Адміністратори — суперкористувачі: повний доступ до всього й керування всіма даними.
+          </p>
+        </div>
+        <div className="settings-option-actions">
+          <button type="button" className="primary-action" onClick={save} disabled={busy || loading}>
+            {busy ? 'Збереження…' : savedAt ? 'Збережено ✓' : 'Зберегти'}
+          </button>
+        </div>
+      </header>
+
+      {err ? <div className="roles-error">{err}</div> : null}
+
+      <div className="roles-picker-field" ref={panelRef}>
+        <span className="roles-picker-label">Адміністратори</span>
+        <button type="button" className="roles-picker-control" onClick={() => setOpen((v) => !v)} disabled={loading}>
+          <span className={`roles-picker-summary ${selectedNames ? '' : 'is-empty'}`}>
+            {loading ? 'Завантаження…' : selectedNames || 'Оберіть людей'}
+          </span>
+          <ChevronDown size={16} />
+        </button>
+
+        {open ? (
+          <div className="roles-picker-panel">
+            <div className="roles-picker-search">
+              <Search size={16} />
+              <input
+                value={search}
+                autoFocus
+                placeholder="Пошук"
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="roles-picker-list">
+              {filtered.map((emp) => (
+                <label key={emp.id} className="roles-picker-row">
+                  <input type="checkbox" checked={members.has(emp.id)} onChange={() => toggle(emp.id)} />
+                  {emp.avatar_local_url ? (
+                    <img className="roles-picker-avatar" src={emp.avatar_local_url} alt="" />
+                  ) : (
+                    <span className="roles-picker-avatar roles-picker-avatar-fallback">
+                      {initials(emp.full_name)}
+                    </span>
+                  )}
+                  <span className="roles-picker-person">
+                    <span className="roles-picker-name">{emp.full_name}</span>
+                    {emp.position_name ? (
+                      <span className="roles-picker-pos">{emp.position_name}</span>
+                    ) : null}
+                  </span>
+                </label>
+              ))}
+              {filtered.length === 0 ? <div className="roles-picker-empty">Нічого не знайдено</div> : null}
+            </div>
+          </div>
+        ) : null}
+
+        <p className="roles-picker-hint">Повинен бути хоча б один адміністратор</p>
+        <p className="roles-picker-count">{members.size} людей відповідають обраним критеріям</p>
+      </div>
+    </main>
   );
 }
 

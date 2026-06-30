@@ -18,6 +18,7 @@ from apps.access.models import (
 )
 from apps.access.permissions_registry import PERMISSIONS
 from apps.access.rbac_invariants import would_remove_last_admin
+from apps.access.role_seeds import ADMIN_ROLE_SLUG
 from apps.access.rbac_serializers import (
     AccessRoleAssignmentSerializer,
     AccessRoleAuditEventSerializer,
@@ -117,6 +118,50 @@ class AccessRoleViewSet(viewsets.ModelViewSet):
         )
         role.refresh_from_db()
         return Response(AccessRoleSerializer(role).data)
+
+    @action(detail=True, methods=["get", "post"], url_path="members")
+    def members(self, request, pk=None):
+        """Состав роли через явные employee-назначения (для people-picker)."""
+        role = self.get_object()
+        if request.method.lower() == 'get':
+            ids = list(
+                AccessRoleAssignment.objects.filter(role=role, is_active=True, employee__isnull=False)
+                .values_list('employee_id', flat=True)
+            )
+            return Response({'employee_ids': sorted(ids)})
+
+        raw = request.data.get('employee_ids', [])
+        if not isinstance(raw, list):
+            raise DRFValidationError('employee_ids має бути списком.')
+        try:
+            wanted = {int(x) for x in raw}
+        except (TypeError, ValueError):
+            raise DRFValidationError('employee_ids містить некоректні значення.')
+
+        if role.slug == ADMIN_ROLE_SLUG and not wanted:
+            raise DRFValidationError('Повинен бути хоча б один адміністратор.')
+
+        current = {
+            a.employee_id: a
+            for a in AccessRoleAssignment.objects.filter(role=role, employee__isnull=False)
+        }
+        for emp_id, assignment in current.items():
+            if emp_id not in wanted:
+                assignment.delete()
+        for emp_id in wanted:
+            if emp_id not in current:
+                AccessRoleAssignment.objects.create(
+                    role=role, employee_id=emp_id,
+                    scope_type=AccessRoleAssignment.ScopeType.ALL_COMPANY, is_active=True,
+                )
+            elif not current[emp_id].is_active:
+                current[emp_id].is_active = True
+                current[emp_id].save(update_fields=['is_active', 'updated_at'])
+        _audit(
+            request.user, role, Action.ASSIGNMENT_UPDATED,
+            f'Склад ролі {role.slug}: {len(wanted)} осіб',
+        )
+        return Response({'employee_ids': sorted(wanted)})
 
 
 class AccessRoleAssignmentViewSet(viewsets.ModelViewSet):

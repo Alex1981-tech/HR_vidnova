@@ -1041,13 +1041,12 @@ export function PeopleDataSettingsView({ onBack }: { onBack: () => void }) {
 
   return (
     <main className="settings-page people-data-page">
-      <button type="button" className="report-back" onClick={onBack}>
-        <ChevronLeft size={16} />
-        <span>Назад</span>
-      </button>
-
       <header className="people-data-head">
         <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} />
+            Назад
+          </button>
           <h1>Дані про людей</h1>
           <p>
             {totals.fields} полів · {totals.tables} таблиці
