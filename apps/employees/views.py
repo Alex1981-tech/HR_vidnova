@@ -12,6 +12,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.access.drf import HasRBACPermission, RBACScopedViewSetMixin
 from apps.announcements.audience import resolve_audience
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
@@ -177,8 +178,10 @@ from .serializers import (
 from . import work_sync
 
 
-class EmployeeApiViewSet(viewsets.ModelViewSet):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+class EmployeeApiViewSet(RBACScopedViewSetMixin, viewsets.ModelViewSet):
+    # RBACScopedViewSetMixin + HasRBACPermission активны только если у конкретного
+    # viewset задан rbac_read_perm/rbac_write_perm и включён settings.RBAC_ENFORCE.
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
 
 
 class CompanyLinkViewSet(EmployeeApiViewSet):
@@ -773,6 +776,9 @@ class EmployeeDocumentFolderViewSet(EmployeeApiViewSet):
 
 
 class EmployeeDocumentViewSet(EmployeeApiViewSet):
+    rbac_read_perm = "documents.view"
+    rbac_write_perm = "documents.manage"
+    rbac_scope_field = "employee_id"
     serializer_class = EmployeeDocumentSerializer
 
     def get_queryset(self):
@@ -898,21 +904,25 @@ class _EmployeeScopedViewSet(EmployeeApiViewSet):
 
 
 class EmergencyContactViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.emergency_contacts"
     model = EmergencyContact
     serializer_class = EmergencyContactSerializer
 
 
 class DependentViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.dependents"
     model = Dependent
     serializer_class = DependentSerializer
 
 
 class EmployeeEducationViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.education"
     model = EmployeeEducation
     serializer_class = EmployeeEducationSerializer
 
 
 class EmployeeCertificateViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.certificates"
     model = EmployeeCertificate
     serializer_class = EmployeeCertificateSerializer
 
@@ -970,6 +980,7 @@ class SkillViewSet(EmployeeApiViewSet):
 
 
 class EmployeeSkillViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.skills"
     model = EmployeeSkill
     serializer_class = EmployeeSkillSerializer
 
@@ -988,6 +999,7 @@ class EmployeeSkillViewSet(_EmployeeScopedViewSet):
 
 
 class EmployeeNoteViewSet(_EmployeeScopedViewSet):
+    rbac_read_perm = "people.notes"
     model = EmployeeNote
     serializer_class = EmployeeNoteSerializer
 
@@ -1000,6 +1012,10 @@ class EmployeeNoteViewSet(_EmployeeScopedViewSet):
 
 
 class EmployeeViewSet(EmployeeApiViewSet):
+    # Каталог доступен всем через people.directory (all_people = all_company);
+    # field-level скрытие чувствительных полей профиля — отдельный шаг (serializer).
+    rbac_read_perm = "people.directory"
+    rbac_scope_field = "pk"
     serializer_class = EmployeeSerializer
 
     def get_serializer_class(self):

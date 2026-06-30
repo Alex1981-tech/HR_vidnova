@@ -164,6 +164,9 @@ HR_PUBLIC_WRITE_API = env_bool("HR_PUBLIC_WRITE_API", False)
 # P2: media раздаётся через защищённый view. В production отдаём байты через
 # nginx X-Accel-Redirect (internal /protected-media/); в dev — FileResponse.
 HR_MEDIA_X_ACCEL = env_bool("HR_MEDIA_X_ACCEL", not DEBUG)
+# RBAC (Этап 4): фактическое enforcement. По умолчанию OFF = shadow-режим
+# (would-deny логируется, доступ НЕ блокируется и queryset НЕ сужается).
+RBAC_ENFORCE = env_bool("RBAC_ENFORCE", False)
 HR_BOT_API_SECRET = os.getenv("HR_BOT_API_SECRET", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 HR_TELEGRAM_SENDER_BACKEND = os.getenv("HR_TELEGRAM_SENDER_BACKEND", "telegram_bot_api")

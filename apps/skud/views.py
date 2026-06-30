@@ -14,6 +14,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
+from apps.access.drf import (
+    HasRBACPermission,
+    RBACScopedViewSetMixin,
+    assert_employee_in_scope,
+)
 from apps.employees.models import Employee
 
 from .models import (
@@ -39,12 +44,16 @@ from .services import planned_working_time_for_employees
 from .services import planned_working_time_by_date_for_employee
 
 
-class SkudModelViewSet(viewsets.ModelViewSet):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+class SkudModelViewSet(RBACScopedViewSetMixin, viewsets.ModelViewSet):
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_read_perm = "time.attendance"
+    rbac_scope_field = "employee_id"
 
 
-class SkudReadOnlyViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+class SkudReadOnlyViewSet(RBACScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_read_perm = "time.attendance"
+    rbac_scope_field = "employee_id"
 
 
 def _merged_minutes(periods) -> int:
@@ -82,7 +91,9 @@ def _merged_minutes(periods) -> int:
 
 
 class CompanyAttendanceSummaryView(APIView):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+    # TODO(rbac): company-wide summary — в deny-режиме сузить до scope не-admin/hr ролей.
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_read_perm = "time.attendance"
 
     def get(self, request):
         today = timezone.localdate()
@@ -198,7 +209,8 @@ class CompanyAttendanceSummaryView(APIView):
 
 
 class EmployeeAttendanceDetailView(APIView):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_read_perm = "time.attendance"
 
     def get(self, request, employee_id: int):
         today = timezone.localdate()
@@ -215,6 +227,7 @@ class EmployeeAttendanceDetailView(APIView):
             Employee.objects.select_related("clinic", "department", "position"),
             pk=employee_id,
         )
+        assert_employee_in_scope(request.user, "time.attendance", employee)
         summaries = {
             summary.date: summary
             for summary in WorkDaySummary.objects.filter(employee=employee, date__gte=date_from, date__lte=date_to)
@@ -304,10 +317,12 @@ class EmployeeAttendanceDetailView(APIView):
 
 
 class EmployeeAttendancePeriodView(APIView):
-    permission_classes = [ConfiguredReadOnlyOrAuthenticated]
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_read_perm = "time.attendance"
 
     def post(self, request, employee_id: int):
         employee = get_object_or_404(Employee, pk=employee_id)
+        assert_employee_in_scope(request.user, "time.attendance", employee)
         payload = self._period_payload(request.data)
         if isinstance(payload, Response):
             return payload
@@ -316,6 +331,7 @@ class EmployeeAttendancePeriodView(APIView):
 
     def patch(self, request, employee_id: int, period_id: int):
         period = get_object_or_404(AttendancePeriod, pk=period_id, employee_id=employee_id)
+        assert_employee_in_scope(request.user, "time.attendance", period.employee)
         payload = self._period_payload(
             {
                 "date": request.data.get("date", period.date.isoformat()),
@@ -334,6 +350,7 @@ class EmployeeAttendancePeriodView(APIView):
 
     def delete(self, request, employee_id: int, period_id: int):
         period = get_object_or_404(AttendancePeriod, pk=period_id, employee_id=employee_id)
+        assert_employee_in_scope(request.user, "time.attendance", period.employee)
         period.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

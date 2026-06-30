@@ -270,16 +270,12 @@ def has_perm(user, code: str, level: str | None = None, employee=None) -> bool:
     return True
 
 
-def employee_scope_queryset(user, code: str, base_qs=None):
-    """Employee queryset, доступный пользователю по праву `code`."""
-    from apps.employees.models import Employee
-
-    base = base_qs if base_qs is not None else Employee.objects.all()
+def _scoped_ids_or_all(user, code: str):
+    """ALL_COMPANY (без ограничения) или set employee id, доступных по праву `code`."""
     if user is None or not getattr(user, "is_authenticated", False):
-        return base.none()
+        return set()
     if is_admin(user):
-        return base
-
+        return ALL_COMPANY
     subject = _subject_employee(user)
     ids: set[int] = set()
     for grant in _cached_grants(user):
@@ -287,11 +283,28 @@ def employee_scope_queryset(user, code: str, base_qs=None):
             continue
         scope = _grant_scope(grant, subject)
         if scope is ALL_COMPANY:
-            return base
+            return ALL_COMPANY
         ids |= scope
-    if not ids:
+    return ids
+
+
+def scoped_employee_ids(user, code: str):
+    """None = без ограничения (вся компания); иначе set допустимых employee id."""
+    result = _scoped_ids_or_all(user, code)
+    return None if result is ALL_COMPANY else result
+
+
+def employee_scope_queryset(user, code: str, base_qs=None):
+    """Employee queryset, доступный пользователю по праву `code`."""
+    from apps.employees.models import Employee
+
+    base = base_qs if base_qs is not None else Employee.objects.all()
+    result = _scoped_ids_or_all(user, code)
+    if result is ALL_COMPANY:
+        return base
+    if not result:
         return base.none()
-    return base.filter(pk__in=ids)
+    return base.filter(pk__in=result)
 
 
 def field_access(user, employee, field) -> str:

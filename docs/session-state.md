@@ -28,10 +28,23 @@
   `apps/access/role_matrix.py`, применяется `seed_access_role_permissions`
   (idempotent, 71 grant; засеяно в dev). Добавлены registry-коды self-fill
   (education/certificates/skills/dependents/emergency_contacts/notes).
-- **Дальше — Этап 4** (DRF enforcement): HasHRPermission / ScopedEmployeeQuerysetMixin /
-  FieldLevelEmployeeSerializerMixin; заменить `ConfiguredReadOnlyOrAuthenticated` на
-  чувствительных API (employees/documents/leave/skud/knowledge). Снять @expectedFailure
-  с `apps/employees/tests_authz.py` по мере закрытия. Матрица готова — блокеров нет.
+- ✅ **Этап 4 (часть 1) — DRF enforcement, flag-gated**: `apps/access/drf.py`
+  (`HasRBACPermission`, `RBACScopedViewSetMixin`, `assert_employee_in_scope`).
+  Флаг `settings.RBAC_ENFORCE` (default **OFF = shadow**, поведение API не меняется;
+  ON = deny + scoping). Подключено: employees child-ресурсы (documents/notes/
+  emergency/dependents/education/certificates/skills — scope по employee_id),
+  EmployeeViewSet (people.directory, каталог не ломается), skud (time.attendance +
+  scope-guard на attendance APIViews). 7 enforcement-тестов (override RBAC_ENFORCE=True).
+  Прод пуст -> shadow-период не нужен, флаг можно включить когда готовы.
+- **Дальше — Этап 4 (часть 2)**: field-level serializer (скрытие компенсации/PII в
+  EmployeeSerializer), enforcement для leave/knowledge (leave сейчас в активной
+  работе Alex — не трогаю). Затем снять @expectedFailure с tests_authz по мере
+  закрытия (или когда RBAC_ENFORCE станет default-on).
+
+> ⚠️ Тесты `apps.leave.tests.LeavePolicyAccrualTests` падают — это **WIP Alex** в
+> `apps/leave/services.py` (`select_for_update()` на nullable outer join, Postgres
+> «FOR UPDATE cannot be applied to the nullable side of an outer join»). НЕ связано
+> с RBAC; apps/leave не трогался.
 
 Перед этим закрыт первый спринт hardening (P0/P2/P11/P4) и сделан P1 step-1
 (negative authz-тесты).
@@ -141,6 +154,11 @@
   доступ). **Alex (Employee 76 «Кузьменко Олександр», user id=2) назначен admin
   в DEV** (AccessRoleAssignment, scope all_company; user также is_superuser).
   На ПРОДЕ RBAC ещё нет — там назначить отдельно после деплоя (Этап 8).
-- 2026-06-30: оформлен **draft матрицы ролей** `docs/роли/role-matrix-approved-draft.md`
-  (рекоменд. дефолты + 5 спорных на решение Alex + registry-gap по self-fill кодам).
-  Дальше после утверждения матрицы: seed прав ролей + Этап 4 enforcement.
+- 2026-06-30: оформлен **draft матрицы ролей**; Alex утвердил все 5 решений.
+- 2026-06-30: **матрица засеяна** (role_matrix.py + seed_access_role_permissions,
+  71 grant) + добавлены self-fill registry-коды.
+- 2026-06-30: **Этап 4 часть 1 (DRF enforcement, flag-gated/shadow) готов** —
+  apps/access/drf.py + подключение employees/skud + 7 enforcement-тестов.
+  RBAC_ENFORCE default OFF. Alex: прод ещё не обслуживает людей -> не усложняем,
+  shadow-машинерия не нужна, флаг включаем когда готовы. Падения leave-тестов —
+  WIP Alex (не RBAC).
