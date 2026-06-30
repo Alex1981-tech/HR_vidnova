@@ -24,10 +24,14 @@
   manager/team_lead/admin) считаются по графу (ManagerAssignment BFS с защитой
   от циклов, Team/TeamMembership). Request-level cache. 14 тестов.
   Полный suite: 185 OK, 12 xfail.
-- **Дальше — Этап 4** (DRF enforcement: HasHRPermission/ScopedEmployeeQuerysetMixin/
-  FieldLevelEmployeeSerializerMixin; заменить ConfiguredReadOnlyOrAuthenticated на
-  чувствительных API). ⚠️ Зависит от матрицы (какие права у каких ролей) — Этап 0,
-  5 open questions Alex (ниже). Без grants движок работает, но никто ничего не видит.
+- ✅ **Этап 0 — матрица УТВЕРЖДЕНА** (Alex, все 5 решений). Закодирована в
+  `apps/access/role_matrix.py`, применяется `seed_access_role_permissions`
+  (idempotent, 71 grant; засеяно в dev). Добавлены registry-коды self-fill
+  (education/certificates/skills/dependents/emergency_contacts/notes).
+- **Дальше — Этап 4** (DRF enforcement): HasHRPermission / ScopedEmployeeQuerysetMixin /
+  FieldLevelEmployeeSerializerMixin; заменить `ConfiguredReadOnlyOrAuthenticated` на
+  чувствительных API (employees/documents/leave/skud/knowledge). Снять @expectedFailure
+  с `apps/employees/tests_authz.py` по мере закрытия. Матрица готова — блокеров нет.
 
 Перед этим закрыт первый спринт hardening (P0/P2/P11/P4) и сделан P1 step-1
 (negative authz-тесты).

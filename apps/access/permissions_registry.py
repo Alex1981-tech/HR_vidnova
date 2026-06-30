@@ -101,6 +101,20 @@ PERMISSIONS: tuple[Permission, ...] = (
     _p("people.field.compensation", "people", Group.SELF, "field_compensation",
        "Profile area: compensation fields", "View/edit compensation fields.", RiskLevel.CRITICAL, _VE),
 
+    # ── self-fill ресурсы профиля ────────────────────────────────────────────
+    _p("people.education", "people", Group.SELF, "education",
+       "Education records", "View/edit employee education records.", RiskLevel.MEDIUM, _VE),
+    _p("people.certificates", "people", Group.SELF, "certificates",
+       "Certificates / licenses", "View/edit certificates and licenses.", RiskLevel.MEDIUM, _VE),
+    _p("people.skills", "people", Group.SELF, "skills",
+       "Skills", "View/edit employee skills.", RiskLevel.LOW, _VE),
+    _p("people.dependents", "people", Group.SELF, "dependents",
+       "Dependents", "View/edit dependents (family PII).", RiskLevel.HIGH, _VE),
+    _p("people.emergency_contacts", "people", Group.SELF, "emergency_contacts",
+       "Emergency contacts", "View/edit emergency contacts (PII).", RiskLevel.HIGH, _VE),
+    _p("people.notes", "people", Group.HR, "notes",
+       "Employee notes (HR)", "View/edit HR notes about an employee.", RiskLevel.HIGH, _VE),
+
     # ── hiring / system access ───────────────────────────────────────────────
     _p("hiring.manage", "hiring", Group.GENERAL, "manage",
        "Hiring / termination", "Hire and terminate employees.", RiskLevel.HIGH),
