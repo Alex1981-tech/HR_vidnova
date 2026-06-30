@@ -7276,6 +7276,30 @@ textarea.profile-field-input {
   gap: 8px;
   color: var(--muted);
 }
+.documents-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.documents-settings-page .people-data-head,
+.documents-settings-page .people-data-tabs,
+.documents-settings-page .doc-search,
+.documents-settings-page .doc-folder-table,
+.documents-settings-page .people-data-empty {
+  width: min(1080px, calc(100% - 48px));
+  margin-left: auto;
+  margin-right: auto;
+}
+.documents-settings-page .people-data-head {
+  align-items: flex-end;
+}
+.people-data-page .people-data-head h1,
+.documents-settings-page .people-data-head h1 {
+  margin-top: 10px;
+}
+.documents-settings-page .doc-search {
+  margin-bottom: 0;
+}
 .doc-folder-table {
   display: grid;
   gap: 6px;
@@ -14833,7 +14857,7 @@ button.org-graph-card-body {
 
 .settings-forms-page .settings-form-header,
 .settings-form-editor-header {
-  width: min(100%, calc(100% - 48px));
+  width: min(1090px, calc(100% - 48px));
   min-height: 92px;
   display: flex;
   align-items: flex-end;
@@ -14909,14 +14933,14 @@ button.org-graph-card-body {
 }
 
 .settings-form-error {
-  width: min(100%, calc(100% - 48px));
+  width: min(1090px, calc(100% - 48px));
   margin: 12px auto 0;
 }
 
 .settings-template-card-grid {
-  width: min(100%, calc(100% - 48px));
+  width: min(1090px, calc(100% - 48px));
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 14px;
   margin: 14px auto 0;
 }
@@ -21283,32 +21307,22 @@ textarea:focus-visible {
 }
 
 /* ── Ролі та права доступу (/settings/roles) ───────────────────────────────── */
-.roles-page { display: flex; flex-direction: column; gap: var(--space-4); }
-.roles-head { display: flex; align-items: center; gap: var(--space-3); }
-.roles-title { font-size: var(--font-h1); line-height: var(--lh-h1); font-weight: 600; margin: 0; }
-.roles-head .primary-action,
-.roles-editor-title { flex: 1; }
-.roles-head .primary-action { flex: 0 0 auto; margin-left: auto; }
-.roles-editor-title { display: flex; flex-direction: column; gap: var(--space-1); }
-.roles-editor-desc { margin: 0; font-size: var(--font-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+/* Список ролей рендерится в нативном settings-option-table; здесь — только cells. */
+.roles-editor-desc { margin: var(--space-1) 0 0; font-size: var(--font-sm); line-height: var(--lh-sm); color: var(--text-muted); }
 .roles-note { font-size: var(--font-sm); line-height: var(--lh-sm); color: var(--primary-strong); background: var(--primary-soft); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); }
-.roles-error { color: var(--danger); font-size: var(--font-sm); line-height: var(--lh-sm); }
+.roles-error { color: var(--danger); font-size: var(--font-sm); line-height: var(--lh-sm); margin: var(--space-2) 0; }
 .roles-empty { color: var(--text-muted); padding: var(--space-4); }
 
-.roles-table { display: flex; flex-direction: column; }
-.roles-trow { display: grid; grid-template-columns: minmax(180px, 1.4fr) 132px 64px minmax(0, 2.6fr) 28px; gap: var(--space-4); align-items: center; padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--border-subtle); }
-.roles-thead { font-size: var(--font-caption); line-height: var(--lh-caption); font-weight: 500; color: var(--text-muted); }
 .roles-trow-item { cursor: pointer; }
-.roles-trow-item:hover { background: var(--card-hi); }
-.roles-name { font-size: var(--font-body); line-height: var(--lh-body); font-weight: 500; color: var(--text); }
-.roles-type { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--font-sm); line-height: var(--lh-sm); color: var(--text-muted); }
+.roles-name-cell { display: inline-flex; align-items: center; gap: var(--space-2); }
+.roles-name { font-weight: 500; color: var(--text); }
+.roles-type { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); }
 .roles-col-count { color: var(--text); }
-.roles-col-desc { color: var(--text-muted); font-size: var(--font-sm); line-height: var(--lh-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.roles-row-actions { display: flex; justify-content: flex-end; }
+.roles-col-desc { color: var(--text-muted); max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.roles-actions-cell { text-align: right; }
 .roles-row-menu { display: inline-flex; padding: 4px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-sm); opacity: 0; }
 .roles-trow-item:hover .roles-row-menu { opacity: 1; }
 .roles-row-menu:hover { color: var(--danger); background: var(--card-hi); }
-.roles-row-dash { color: var(--border-strong); }
 
 .roles-perm-groups { display: flex; flex-direction: column; gap: var(--space-5); }
 .roles-perm-group-title { font-size: var(--font-h2); line-height: var(--lh-h2); font-weight: 600; margin: 0 0 var(--space-2); }
@@ -21338,7 +21352,6 @@ textarea:focus-visible {
 .roles-modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); }
 
 @media (max-width: 640px) {
-  .roles-trow { grid-template-columns: 1fr auto; }
-  .roles-thead, .roles-col-count, .roles-col-desc { display: none; }
+  .roles-col-desc { display: none; }
   .roles-perm-row { flex-wrap: wrap; }
 }

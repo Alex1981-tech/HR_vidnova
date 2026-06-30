@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, Monitor, MoreHorizontal, Plus, Trash2, UserRound, X } from 'lucide-react';
+import { ChevronLeft, Lock, Monitor, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
 
 import { accessApi, type PermissionCatalog, type Role, type RolePermission } from '../../api/access';
 
@@ -23,6 +23,7 @@ export function RolesSettingsView({ onBack }: Props) {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,6 +48,11 @@ export function RolesSettingsView({ onBack }: Props) {
     setSelected((cur) => (cur && cur.id === updated.id ? updated : cur));
   }, []);
 
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? roles.filter((r) => r.name.toLowerCase().includes(q)) : roles;
+  }, [roles, search]);
+
   if (selected && catalog) {
     return (
       <RoleEditor
@@ -59,70 +65,93 @@ export function RolesSettingsView({ onBack }: Props) {
   }
 
   return (
-    <div className="roles-page">
-      <div className="roles-head">
-        <button type="button" className="icon-button" aria-label="Назад" onClick={onBack}>
-          <ChevronLeft size={18} />
-        </button>
-        <h1 className="roles-title">Ролі та права доступу</h1>
-        <button type="button" className="primary-action" onClick={() => setCreating(true)}>
-          <Plus size={16} /> Нова роль
-        </button>
+    <main className="settings-page settings-option-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} /> Назад
+          </button>
+          <h1>Ролі та права доступу</h1>
+        </div>
+        <div className="settings-option-actions">
+          <button type="button" className="primary-action" onClick={() => setCreating(true)}>
+            <Plus size={18} /> Нова роль
+          </button>
+        </div>
+      </header>
+
+      <div className="settings-option-search">
+        <Search size={18} />
+        <input value={search} placeholder="Пошук" onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {error ? <div className="roles-error">{error}</div> : null}
-      {loading ? (
-        <div className="roles-empty">Завантаження…</div>
-      ) : (
-        <div className="roles-table">
-          <div className="roles-trow roles-thead">
-            <span>Імʼя</span>
-            <span>Тип</span>
-            <span className="roles-col-count">Люди</span>
-            <span className="roles-col-desc">Опис</span>
-            <span />
-          </div>
-          {roles.map((role) => (
-            <div
-              key={role.id}
-              className="roles-trow roles-trow-item"
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelected(role)}
-              onKeyDown={(e) => e.key === 'Enter' && setSelected(role)}
-            >
-              <span className="roles-name">{role.name}</span>
-              <span className="roles-type">
-                {role.type === 'system' ? <Monitor size={14} /> : <UserRound size={14} />}
-                {role.type === 'system' ? 'Система' : 'Кастомний'}
-              </span>
-              <span className="roles-col-count">{role.people_count}</span>
-              <span className="roles-col-desc">{role.description}</span>
-              <span className="roles-row-actions">
-                {role.type === 'custom' ? (
-                  <button
-                    type="button"
-                    className="roles-row-menu"
-                    aria-label="Видалити роль"
-                    title="Видалити"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void accessApi
-                        .deleteRole(role.id)
-                        .then(() => setRoles((prev) => prev.filter((r) => r.id !== role.id)))
-                        .catch((err) => setError(String(err)));
-                    }}
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                ) : (
-                  <MoreHorizontal size={15} className="roles-row-dash" aria-hidden />
-                )}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="settings-option-meta">
+        {loading ? 'Завантаження…' : `Відображено ${visible.length} з ${roles.length}`}
+      </div>
+
+      <section className="settings-option-table">
+        {!loading && visible.length ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Імʼя</th>
+                <th>Тип</th>
+                <th>Люди</th>
+                <th>Опис</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((role) => (
+                <tr key={role.id} className="roles-trow-item" onClick={() => setSelected(role)}>
+                  <td>
+                    <div className="roles-name-cell">
+                      {role.type === 'system' ? (
+                        <span className="settings-option-lock" title="Системна роль">
+                          <Lock size={15} />
+                        </span>
+                      ) : (
+                        <span className="settings-option-spacer" />
+                      )}
+                      <span className="roles-name">{role.name}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="roles-type">
+                      {role.type === 'system' ? <Monitor size={14} /> : <UserRound size={14} />}
+                      {role.type === 'system' ? 'Система' : 'Кастомний'}
+                    </span>
+                  </td>
+                  <td className="roles-col-count">{role.people_count}</td>
+                  <td className="roles-col-desc">{role.description}</td>
+                  <td className="roles-actions-cell">
+                    {role.type === 'custom' ? (
+                      <button
+                        type="button"
+                        className="roles-row-menu"
+                        aria-label="Видалити роль"
+                        title="Видалити"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void accessApi
+                            .deleteRole(role.id)
+                            .then(() => setRoles((prev) => prev.filter((r) => r.id !== role.id)))
+                            .catch((err) => setError(String(err)));
+                        }}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : !loading ? (
+          <div className="roles-empty">Ролей не знайдено.</div>
+        ) : null}
+      </section>
 
       {creating ? (
         <CreateRoleModal
@@ -134,7 +163,7 @@ export function RolesSettingsView({ onBack }: Props) {
           }}
         />
       ) : null}
-    </div>
+    </main>
   );
 }
 
@@ -211,7 +240,6 @@ function RoleEditor({
   onBack: () => void;
   onSaved: (r: Role) => void;
 }) {
-  // code -> level ('' для atomic-вкл; 'view'/'edit' для graded; отсутствие = нет)
   const [grants, setGrants] = useState<Map<string, string>>(
     () => new Map(role.permissions.map((p) => [p.permission_code, p.level])),
   );
@@ -256,19 +284,21 @@ function RoleEditor({
   };
 
   return (
-    <div className="roles-page">
-      <div className="roles-head">
-        <button type="button" className="icon-button" aria-label="Назад" onClick={onBack}>
-          <ChevronLeft size={18} />
-        </button>
-        <div className="roles-editor-title">
-          <h1 className="roles-title">{role.name}</h1>
+    <main className="settings-page settings-option-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} /> Назад
+          </button>
+          <h1>{role.name}</h1>
           {role.description ? <p className="roles-editor-desc">{role.description}</p> : null}
         </div>
-        <button type="button" className="primary-action" onClick={save} disabled={busy}>
-          {busy ? 'Збереження…' : savedAt ? 'Збережено ✓' : 'Зберегти'}
-        </button>
-      </div>
+        <div className="settings-option-actions">
+          <button type="button" className="primary-action" onClick={save} disabled={busy}>
+            {busy ? 'Збереження…' : savedAt ? 'Збережено ✓' : 'Зберегти'}
+          </button>
+        </div>
+      </header>
 
       {role.slug === 'admin' ? (
         <div className="roles-note">Адміністратор має повний доступ і не налаштовується через матрицю.</div>
@@ -336,6 +366,6 @@ function RoleEditor({
           </section>
         ))}
       </div>
-    </div>
+    </main>
   );
 }
