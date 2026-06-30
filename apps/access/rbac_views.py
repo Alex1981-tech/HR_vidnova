@@ -124,7 +124,10 @@ class AccessRoleViewSet(viewsets.ModelViewSet):
             AccessRoleAssignment.objects.filter(role=role, employee__isnull=False)
             .values('employee_id', 'is_active')
         )
-        return {'members': [{'employee_id': r['employee_id'], 'is_active': r['is_active']} for r in rows]}
+        return {
+            'members': [{'employee_id': r['employee_id'], 'is_active': r['is_active']} for r in rows],
+            'people_count': rbac.role_people_count(role),
+        }
 
     @action(detail=True, methods=["get", "post"], url_path="members")
     def members(self, request, pk=None):

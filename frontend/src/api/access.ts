@@ -39,6 +39,7 @@ export type PickEmployee = {
 };
 
 export type RoleMember = { employee_id: number; is_active: boolean };
+export type MembersPayload = { members: RoleMember[]; people_count: number };
 export type MemberAction = 'remove' | 'deactivate' | 'activate';
 
 function getCookie(name: string): string {
@@ -93,17 +94,17 @@ export const accessApi = {
       body: JSON.stringify(items),
     }),
   getMembers: (id: number) =>
-    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/members/`).then((r) => r.members),
+    apiFetch<MembersPayload>(`/api/access/roles/${id}/members/`),
   addMembers: (id: number, add: number[]) =>
-    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/members/`, {
+    apiFetch<MembersPayload>(`/api/access/roles/${id}/members/`, {
       method: 'POST',
       body: JSON.stringify({ add }),
-    }).then((r) => r.members),
+    }),
   memberAction: (id: number, employee_id: number, action: MemberAction) =>
-    apiFetch<{ members: RoleMember[] }>(`/api/access/roles/${id}/member-action/`, {
+    apiFetch<MembersPayload>(`/api/access/roles/${id}/member-action/`, {
       method: 'POST',
       body: JSON.stringify({ employee_id, action }),
-    }).then((r) => r.members),
+    }),
   listEmployees: () =>
     apiFetch<{ results?: PickEmployee[] } | PickEmployee[]>(
       '/api/employees/employees/?compact=1&page_size=500',

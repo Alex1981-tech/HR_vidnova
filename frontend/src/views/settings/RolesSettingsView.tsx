@@ -271,10 +271,10 @@ function AdminRoleEditor({
     let alive = true;
     setLoading(true);
     Promise.all([accessApi.listEmployees(), accessApi.getMembers(role.id)])
-      .then(([emps, rows]) => {
+      .then(([emps, payload]) => {
         if (!alive) return;
         setEmployees(emps);
-        setMembers(rows);
+        setMembers(payload.members);
       })
       .catch((e) => alive && setErr(String(e instanceof Error ? e.message : e)))
       .finally(() => alive && setLoading(false));
@@ -301,13 +301,13 @@ function AdminRoleEditor({
       .sort((a, b) => dir * a.emp.full_name.localeCompare(b.emp.full_name, 'uk'));
   }, [members, byId, sortAsc]);
 
-  const commit = async (op: () => Promise<RoleMember[]>) => {
+  const commit = async (op: () => Promise<{ members: RoleMember[]; people_count: number }>) => {
     setBusy(true);
     setErr('');
     try {
       const next = await op();
-      setMembers(next);
-      onSaved({ ...role, people_count: next.filter((m) => m.is_active).length });
+      setMembers(next.members);
+      onSaved({ ...role, people_count: next.people_count });
     } catch (e) {
       setErr(String(e instanceof Error ? e.message : e));
     } finally {
