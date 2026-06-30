@@ -23,11 +23,13 @@
 
 Сначала самое дешевое-и-важное, до новой фича-работы:
 
-1. **P0** — production safety gate (fail-closed defaults + startup guard). Дешево, страхует от мисконфига.
-2. **P2** — private media для employee documents + cert attachments (закрывает активную утечку PII).
-3. **P11** — CI quality gates + починить failing `test_filter_q` (SQLite artifact). Дешево, высокий рычаг.
-4. **P4** — backend HTML-санитайзер для announcements/notes/knowledge (закрывает активный stored-XSS).
-5. **P1 (старт)** — добавить negative API tests + согласовать с Alex role matrix (продуктовое решение, не чисто техническое).
+1. ✅ **P0** — production safety gate (fail-closed defaults + startup guard). Дешево, страхует от мисконфига. _Сделано 2026-06-30._
+2. ✅ **P2** — private media для employee documents + cert attachments (закрывает активную утечку PII). _Сделано 2026-06-30._
+3. ✅ **P11** — CI quality gates + починить failing `test_filter_q` (SQLite artifact). Дешево, высокий рычаг. _Сделано 2026-06-30._
+4. ✅ **P4** — backend HTML-санитайзер для announcements/notes/knowledge (закрывает активный stored-XSS). _Сделано 2026-06-30._
+5. ⏳ **P1 (старт)** — добавить negative API tests + согласовать с Alex role matrix (продуктовое решение, не чисто техническое). _Блокер: нужна role matrix от Alex._
+
+> Статус 2026-06-30: P0/P2/P11/P4 реализованы и закоммичены локально (commits 38eaca1, ffb7e1b, 39de4ee, f895fd6, 6991009). Backfill существующего HTML — opt-in команда `python manage.py sanitize_stored_html` (НЕ запускалась; dry-run: 33 knowledge-документа изменятся). Активация safety gate в проде (`ENVIRONMENT=production`) — после деплоя нового кода. Frontend defense-in-depth для P4 (render-санитайзер заметок/объявлений) пока не делался — backend boundary авторитетен.
 
 ## Общие правила исполнения
 
@@ -39,7 +41,7 @@
 - Frontend: сначала typed API boundary и error states, потом перенос компонентов.
 - Production changes: без auto-deploy до зеленого CI и ручного подтверждения env.
 
-## P0. Production Safety Gate
+## P0. Production Safety Gate — ✅ Сделано 2026-06-30
 
 Priority: High (превентивно; прод сейчас сконфигурирован безопасно)
 Owner: backend/devops
@@ -102,7 +104,7 @@ Executor prompt:
 Ты реализуешь RBAC/object scoping в /home/serv/hr_vidnova. Начни с docs/employee-profile-plan.md, config/permissions.py, apps/access/services.py, apps/employees/views.py, apps/selfservice/views.py, apps/skud/views.py, apps/leave/views.py. Сначала добавь failing negative API tests: обычный employee не может читать/менять чужие документы/контакты/заметки/посещаемость. Затем введи permission classes и scoped queryset helpers. Не полагайся на скрытые кнопки frontend. Проверь sqlite tests для access/employees/skud/leave и python3 manage.py check.
 ```
 
-## P2. Private Media Architecture
+## P2. Private Media Architecture — ✅ Сделано 2026-06-30
 
 Priority: **Critical/active** (подтверждено: `/media/` файл анонимно отдается 200)
 Owner: backend/devops  
@@ -161,7 +163,7 @@ Executor prompt:
 Ужесточи upload/preview policy. Начни с apps/employees/views.py, apps/knowledge/views.py, apps/announcements/views.py и frontend upload components. Добавь backend allowlist и tests до реализации. Для HR documents запрети active formats и inline preview небезопасных типов. Не меняй публичный UX больше необходимого: ошибки должны быть понятными. Проверь backend tests и npm build.
 ```
 
-## P4. HTML Sanitization, URL Policy, CSP
+## P4. HTML Sanitization, URL Policy, CSP — ✅ Сделано 2026-06-30
 
 Priority: High  
 Owner: backend/frontend/devops  
@@ -356,7 +358,7 @@ Executor prompt:
 Разбей frontend монолит без изменения поведения. Начни с инвентаризации frontend/src/App.tsx imports/routes/state и frontend/src/styles/index.css. Выделяй по одному domain route за PR, используй React.lazy для heavy modules. Не переписывай дизайн. После каждого шага npm run build и smoke routing. В конце добавь bundle budget check и документируй новые boundaries.
 ```
 
-## P11. CI, Tests, Dependency Hygiene
+## P11. CI, Tests, Dependency Hygiene — ✅ Сделано 2026-06-30
 
 Priority: High  
 Owner: devops/backend/frontend  
