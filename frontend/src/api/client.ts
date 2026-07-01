@@ -69,7 +69,11 @@ import type {
   WorkingPatternOption,
   WorkDaySummary,
   CmmsAsset,
+  CmmsAssetDetail,
   CmmsAssetOptions,
+  CmmsOwnershipRow,
+  AssetZone,
+  AssetZoneOptions,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -435,7 +439,21 @@ export const api = {
     const query = sp.toString();
     return request<{ total: number; items: CmmsAsset[] }>(`/api/assets/${query ? `?${query}` : ''}`);
   },
+  assetDetail: (assetId: number) => request<CmmsAssetDetail>(`/api/assets/${assetId}/`),
+  assetOwnershipHistory: (assetId: number) =>
+    request<{ items: CmmsOwnershipRow[] }>(`/api/assets/${assetId}/ownership-history/`),
   assetOptions: () => request<CmmsAssetOptions>('/api/assets/options/'),
+  assetZones: () => request<{ items: AssetZone[] }>('/api/assets/zones/'),
+  assetZoneOptions: () => request<AssetZoneOptions>('/api/assets/zones/options/'),
+  createAssetZone: (payload: Partial<AssetZone>) =>
+    request<AssetZone>('/api/assets/zones/', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAssetZone: (id: number, payload: Partial<AssetZone>) =>
+    request<AssetZone>(`/api/assets/zones/${id}/`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteAssetZone: (id: number) => request<void>(`/api/assets/zones/${id}/`, { method: 'DELETE' }),
+  assetZonePreview: (id: number) =>
+    request<{ count: number }>(`/api/assets/zones/${id}/apply/?preview=1`, { method: 'POST' }),
+  applyAssetZone: (id: number) =>
+    request<{ applied: number }>(`/api/assets/zones/${id}/apply/`, { method: 'POST' }),
   assignAssetResponsible: (assetId: number, employeeId: number | null) =>
     request<{ asset_id: number; responsible_person_id: number | null; responsible_person_name: string | null }>(
       `/api/assets/${assetId}/responsible/`,

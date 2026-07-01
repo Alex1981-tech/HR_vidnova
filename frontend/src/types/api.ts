@@ -860,10 +860,58 @@ export type CmmsAsset = {
   asset_type_id: number | null;
   category_id: number | null;
   location_id?: number | null;
+  location_path?: string[] | null;
+  location_name?: string | null;
   department_id?: number | null;
+  department_name?: string | null;
   responsible_person_id: number | null;
   responsible_person_name: string | null;
+  engineer_id?: number | null;
+  engineer_name?: string | null;
   photo_url?: string | null;
+};
+
+export type CmmsAssetPhoto = {
+  id: number | null;
+  url: string | null;
+  thumbnail_url: string | null;
+  is_primary?: boolean;
+};
+
+export type CmmsAssetDetail = CmmsAsset & {
+  description?: string | null;
+  photos?: CmmsAssetPhoto[];
+};
+
+export type AssetZone = {
+  id: number;
+  name: string;
+  scope_type: 'location' | 'department';
+  location_id: number | null;
+  location_name: string;
+  department_id: number | null;
+  department_name: string;
+  engineer_user_id: number | null;
+  engineer_name: string;
+  last_applied_at: string | null;
+  last_applied_count: number | null;
+};
+
+export type AssetZoneOptions = {
+  locations: CmmsLocation[];
+  departments: Array<{ id: number; name: string }>;
+  engineers: Array<{ id: number; full_name: string }>;
+};
+
+export type CmmsOwnershipRow = {
+  date: string | null;
+  city: string | null;
+  clinic: string | null;
+  cabinet: string | null;
+  responsible_name: string | null;
+  engineer_name: string | null;
+  handed_over: string | null;
+  is_creation?: boolean;
 };
 
 export type CmmsLocation = {

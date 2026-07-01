@@ -72,7 +72,7 @@ employees 167 · departments 26 · clinics 7 · positions 80 · leave_req 218 ·
 ### 2026-06-30 — Реальні політики відпусток
 - Замінили заглушку `/settings/leave-types` на основу реальної моделі політик: `LeavePolicy`, `LeavePolicyAccrualRule`, `EmployeeLeavePolicyAssignment`, `LeaveLedgerEntry`.
 - Додали API політик/призначень/ledger, backfill з PeopleForce балансів, baseline-захист від подвійного нарахування, UI-крок `Нарахування та перенесення`, а також lifecycle заявок: approve списує баланс, cancel/reject повертає через ledger-корекцію.
-- Детальний запис рішень, перевірок і наступних кроків: [docs/сессии/2026-06-30-leave-policies.md](сессии/2026-06-30-leave-policies.md).
+- Детальний запис рішень, перевірок і наступних кроків: [docs/leave/sessions/2026-06-30-leave-policies.md](leave/sessions/2026-06-30-leave-policies.md).
 
 ### 2026-06-26 (пізно) — Звіти + «Дані про людей»
 - **Звіти** (на проді 1.0.08): головна `/reports` (групи Основні/CoreHR, компактні картки) + 3 аналітичні сторінки `headcount`/`turnover`/`tenure` на **recharts**. Backend `/api/reports/*` рахує з Employee. Переви­користовувані чарти у `frontend/src/views/reports/shared.tsx`. Цифри на барах/лінії (`LabelList`).

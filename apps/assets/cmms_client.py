@@ -81,6 +81,10 @@ class CmmsClient:
     def get_asset(self, asset_id: int) -> dict:
         return self._request("GET", f"/api/assets/{asset_id}").json()
 
+    def get_asset_ownership_history(self, asset_id: int) -> list[dict]:
+        # Таблиця історії володіння — CMMS збирає її з location/responsibility/engineer історій.
+        return self._request("GET", f"/api/assets/{asset_id}/ownership-history").json()
+
     def set_asset_responsible(self, asset_id: int, cmms_employee_id: int | None) -> dict:
         # PUT is a partial update (exclude_unset) on the CMMS side and records
         # responsibility history, so sending only this field is safe.
@@ -88,6 +92,14 @@ class CmmsClient:
             "PUT",
             f"/api/assets/{asset_id}",
             json={"responsible_person_id": cmms_employee_id},
+        ).json()
+
+    def set_asset_engineer(self, asset_id: int, engineer_user_id: int | None) -> dict:
+        # engineer_id → CMMS users; partial PUT records engineer history on the CMMS side.
+        return self._request(
+            "PUT",
+            f"/api/assets/{asset_id}",
+            json={"engineer_id": engineer_user_id},
         ).json()
 
     # ---- filter options ---------------------------------------------------
@@ -103,9 +115,14 @@ class CmmsClient:
     def list_asset_types(self) -> list[dict]:
         return self._request("GET", "/api/asset-types/").json()
 
-    # ---- employees --------------------------------------------------------
+    # ---- employees / users ------------------------------------------------
     def list_employees(self) -> list[dict]:
         data = self._request("GET", "/api/employees/").json()
+        return data if isinstance(data, list) else data.get("items", [])
+
+    def list_users(self) -> list[dict]:
+        # Інженери активів — це CMMS users (не employees).
+        data = self._request("GET", "/api/users/").json()
         return data if isinstance(data, list) else data.get("items", [])
 
     def create_employee(self, payload: dict) -> dict:

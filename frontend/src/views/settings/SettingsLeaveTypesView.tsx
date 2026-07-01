@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
+  ChevronUp,
   ClipboardList,
   Copy,
   GripVertical,
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../api/client';
 import type {
+  DepartmentOption,
   EmployeeLeavePolicyAssignment,
   EmployeeListItem,
   LeavePolicy,
@@ -162,6 +164,15 @@ type PolicyPersonRow = {
   effectiveOn: string | null;
 };
 
+type ApprovalTestResult = {
+  key: string;
+  title: string;
+  name: string;
+  subtitle: string;
+  avatarUrl: string;
+  status: 'resolved' | 'missing' | 'skipped';
+};
+
 function dateLabel(value: string | null | undefined): string {
   if (!value) return '-';
   const date = new Date(`${value}T00:00:00`);
@@ -200,6 +211,32 @@ function peopleForPolicy(
         fullName: employee?.full_name || assignment.employee_name || `ID ${assignment.employee}`,
         position: employee?.position_name || assignment.employee_position_name || employee?.department_name || '',
         avatarUrl: employeeAvatar(employee),
+        effectiveOn: assignment.effective_on,
+      };
+    })
+    .sort((first, second) => first.fullName.localeCompare(second.fullName, 'uk'));
+}
+
+function peopleForLeaveType(
+  leaveTypeId: number,
+  assignments: EmployeeLeavePolicyAssignment[],
+  employeesById: Map<number, EmployeeListItem>,
+): PolicyPersonRow[] {
+  const seen = new Set<number>();
+  return assignments
+    .filter((assignment) => assignment.leave_type === leaveTypeId && assignment.is_active)
+    .filter((assignment) => {
+      if (seen.has(assignment.employee)) return false;
+      seen.add(assignment.employee);
+      return true;
+    })
+    .map((assignment) => {
+      const employee = employeesById.get(assignment.employee);
+      return {
+        employeeId: assignment.employee,
+        fullName: employee?.full_name || assignment.employee_name || `ID ${assignment.employee}`,
+        position: employee?.position_name || assignment.employee_position_name || employee?.department_name || assignment.policy_name || '',
+        avatarUrl: employeeAvatar(employee) || assignment.employee_avatar_local_url || assignment.employee_avatar_url || '',
         effectiveOn: assignment.effective_on,
       };
     })
@@ -377,6 +414,7 @@ type ApprovalStepDraft = {
   type: ApprovalOptionKind;
   employeeId: number | null;
   employeeName: string;
+  referenceField: string;
 };
 
 type SubstituteDraft = {
@@ -430,12 +468,21 @@ const SUBSTITUTE_TARGET_OPTIONS: SelectOption[] = [
   { value: 'department_operations_director', label: 'Операційний директор відділення' },
 ];
 
+const PEOPLEFORCE_REFERENCE_FIELD_KEYS: Record<string, string> = {
+  current_responsible: 'відповідальний_на_момент_моєї_відсутності',
+  hire_responsible: 'відповідальний_за_найм_нового_працівника',
+  extra_manager_zaporizhzhia: 'додатковий_керівник_запоріжжя',
+  extra_manager_lviv: 'додатковий_керівник_львів',
+  department_operations_director: 'операційний_директор_відділення_для_затвердження_політики_відсутності',
+};
+
 function createApprovalStep(type: ApprovalOptionKind = 'manager'): ApprovalStepDraft {
   return {
     uiId: `approver-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     type,
     employeeId: null,
     employeeName: '',
+    referenceField: 'current_responsible',
   };
 }
 
@@ -470,6 +517,40 @@ function optionLabel(options: SelectOption[], value: string): string {
   return options.find((option) => option.value === value)?.label ?? 'Менеджер';
 }
 
+function steppedNumberValue(value: string, delta: number, step = 1): string {
+  const normalized = value.trim().replace(',', '.');
+  const parsed = Number.parseFloat(normalized);
+  const decimals = normalized.includes('.') ? Math.min(2, Math.max(1, normalized.split('.')[1]?.length ?? 0)) : step < 1 ? 1 : 0;
+  const next = Math.max(0, (Number.isFinite(parsed) ? parsed : 0) + delta * step);
+  return decimals ? next.toFixed(decimals) : String(Math.round(next));
+}
+
+function StepperInput({
+  value,
+  onChange,
+  step = 1,
+  inputMode = 'decimal',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  step?: number;
+  inputMode?: 'numeric' | 'decimal';
+}) {
+  return (
+    <div className="leave-policy-stepper-input">
+      <input value={value} onChange={(event) => onChange(event.target.value)} inputMode={inputMode} />
+      <span className="leave-policy-stepper-controls">
+        <button type="button" aria-label="Збільшити" onClick={() => onChange(steppedNumberValue(value, 1, step))}>
+          <ChevronUp size={13} />
+        </button>
+        <button type="button" aria-label="Зменшити" onClick={() => onChange(steppedNumberValue(value, -1, step))}>
+          <ChevronDown size={13} />
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function normalizeApproverSteps(rawSteps: unknown): ApprovalStepDraft[] {
   const raw = Array.isArray(rawSteps) ? rawSteps : [];
   const steps = raw
@@ -483,6 +564,12 @@ function normalizeApproverSteps(rawSteps: unknown): ApprovalStepDraft[] {
         type: normalizeApprovalKind(item.type ?? item.kind),
         employeeId: Number.isFinite(employeeId) ? employeeId : null,
         employeeName: typeof item.employee_name === 'string' ? item.employee_name : '',
+        referenceField:
+          typeof item.reference_field === 'string'
+            ? item.reference_field
+            : typeof item.target_type === 'string'
+              ? item.target_type
+              : 'current_responsible',
       };
     });
   return steps.length ? steps : [createApprovalStep()];
@@ -652,11 +739,13 @@ function PolicyEmployeePicker({
 function LeavePolicyWizard({
   initial,
   employees,
+  assignments,
   onBack,
   onFinish,
 }: {
   initial: PolicyWizardRequest;
   employees: EmployeeListItem[];
+  assignments: EmployeeLeavePolicyAssignment[];
   onBack: () => void;
   onFinish: (payload: LeavePolicyPayload) => Promise<void>;
 }) {
@@ -696,6 +785,11 @@ function LeavePolicyWizard({
   const [openSubstituteMenu, setOpenSubstituteMenu] = useState<string | null>(null);
   const [employeeQuery, setEmployeeQuery] = useState('');
   const [substituteQuery, setSubstituteQuery] = useState('');
+  const [approvalTestEmployeeId, setApprovalTestEmployeeId] = useState<number | null>(null);
+  const [approvalTestQuery, setApprovalTestQuery] = useState('');
+  const [approvalTestDetails, setApprovalTestDetails] = useState<Map<number, EmployeeListItem>>(() => new Map());
+  const [approvalTestLoading, setApprovalTestLoading] = useState(false);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [roundingMethod, setRoundingMethod] = useState(policy?.rounding_method ?? 'nearest');
   const [roundingPrecision, setRoundingPrecision] = useState(policy?.rounding_precision ?? 'two_decimals');
   const [allowWithdraw, setAllowWithdraw] = useState(policy?.allow_withdraw ?? true);
@@ -721,16 +815,228 @@ function LeavePolicyWizard({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const steps = [
-    { key: 'details', label: 'Деталі' },
-    { key: 'accruals', label: 'Нарахування та перенесення' },
-    { key: 'approval', label: 'Схвалення' },
-    { key: 'settings', label: 'Налаштування' },
-  ] as const;
-  const activeIndex = steps.findIndex((item) => item.key === step);
+  const steps = useMemo<Array<{ key: PolicyStep; label: string }>>(() => {
+    const nextSteps: Array<{ key: PolicyStep; label: string }> = [{ key: 'details', label: 'Деталі' }];
+    if (policyType === 'accrual') {
+      nextSteps.push({ key: 'accruals', label: 'Нарахування та перенесення' });
+    }
+    nextSteps.push({ key: 'approval', label: 'Схвалення' }, { key: 'settings', label: 'Налаштування' });
+    return nextSteps;
+  }, [policyType]);
+  const activeIndex = Math.max(0, steps.findIndex((item) => item.key === step));
+  const employeesById = useMemo(() => new Map(employees.map((employee) => [employee.id, employee])), [employees]);
+  const assignedPeople = useMemo(
+    () => peopleForLeaveType(initial.leaveType.id, assignments, employeesById),
+    [assignments, employeesById, initial.leaveType.id],
+  );
+  const visibleApprovalTestPeople = useMemo(() => {
+    const query = approvalTestQuery.trim().toLowerCase();
+    if (!query) return assignedPeople;
+    return assignedPeople.filter((person) => `${person.fullName} ${person.position}`.toLowerCase().includes(query));
+  }, [approvalTestQuery, assignedPeople]);
+
+  useEffect(() => {
+    if (step !== 'approval') return;
+    setApprovalTestEmployeeId((current) => {
+      if (current && assignedPeople.some((person) => person.employeeId === current)) return current;
+      return assignedPeople[0]?.employeeId ?? null;
+    });
+  }, [assignedPeople, step]);
+
+  useEffect(() => {
+    if (!steps.some((item) => item.key === step)) {
+      setStep('details');
+    }
+  }, [step, steps]);
+
+  useEffect(() => {
+    if (step !== 'approval' || departments.length) return;
+    let ignore = false;
+    api.departments({ is_active: true, page_size: 1000 })
+      .then((response) => {
+        if (!ignore) setDepartments(response.items);
+      })
+      .catch(() => {
+        if (!ignore) setDepartments([]);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [departments.length, step]);
+
+  useEffect(() => {
+    if (step !== 'approval' || !approvalTestEmployeeId) return;
+    let ignore = false;
+    const selectedEmployeeId = approvalTestEmployeeId;
+    async function loadApprovalTestChain() {
+      setApprovalTestLoading(true);
+      const cache = new Map(approvalTestDetails);
+      async function loadEmployee(id: number): Promise<EmployeeListItem> {
+        const cached = cache.get(id);
+        if (cached?.manager_profile !== undefined && cached.peopleforce_fields !== undefined) return cached;
+        const loaded = await api.employee(id);
+        cache.set(id, loaded);
+        if (!ignore) setApprovalTestDetails(new Map(cache));
+        return loaded;
+      }
+      try {
+        let current = await loadEmployee(selectedEmployeeId);
+        for (let level = 0; level < 3; level += 1) {
+          const managerId = current.manager_profile?.id;
+          if (!managerId) break;
+          current = await loadEmployee(managerId);
+        }
+      } catch {
+        // The tester remains usable with compact employee data if a profile cannot be loaded.
+      } finally {
+        if (!ignore) setApprovalTestLoading(false);
+      }
+    }
+    void loadApprovalTestChain();
+    return () => {
+      ignore = true;
+    };
+  }, [approvalTestEmployeeId, step]);
 
   function stepEmployeeName(stepDraft: ApprovalStepDraft): string {
     return employees.find((employee) => employee.id === stepDraft.employeeId)?.full_name ?? stepDraft.employeeName;
+  }
+
+  function knownEmployee(id: number | null | undefined): EmployeeListItem | undefined {
+    if (!id) return undefined;
+    return approvalTestDetails.get(id) ?? employeesById.get(id);
+  }
+
+  function resultFromEmployee(
+    key: string,
+    title: string,
+    employee: EmployeeListItem | undefined,
+    missing: string,
+  ): ApprovalTestResult {
+    if (!employee) {
+      return {
+        key,
+        title,
+        name: skipUnassigned ? 'Крок буде пропущено' : 'Не призначено',
+        subtitle: skipUnassigned ? missing : `${missing}. Запит чекатиме ручного розбору.`,
+        avatarUrl: '',
+        status: skipUnassigned ? 'skipped' : 'missing',
+      };
+    }
+    return {
+      key,
+      title,
+      name: employee.full_name,
+      subtitle: employee.position_name || employee.department_name || 'Співробітник',
+      avatarUrl: employeeAvatar(employee),
+      status: 'resolved',
+    };
+  }
+
+  function managerAt(employee: EmployeeListItem | undefined, depth: number): EmployeeListItem | undefined {
+    let current = employee;
+    for (let index = 0; index < depth; index += 1) {
+      current = knownEmployee(current?.manager_profile?.id);
+      if (!current) return undefined;
+    }
+    return current;
+  }
+
+  function peopleforceReferenceResult(employee: EmployeeListItem | undefined, field: string, title: string): ApprovalTestResult {
+    const key = PEOPLEFORCE_REFERENCE_FIELD_KEYS[field];
+    const fieldValue = key ? employee?.peopleforce_fields?.[key] : null;
+    const valueRecord = isRecord(fieldValue) ? fieldValue : null;
+    const name = typeof valueRecord?.value === 'string' ? valueRecord.value : '';
+    const peopleforceId = valueRecord?.user_id == null ? '' : String(valueRecord.user_id);
+    const localEmployee = peopleforceId
+      ? [...approvalTestDetails.values()].find((item) => String(item.legacy_peopleforce_id) === peopleforceId)
+      : undefined;
+    if (localEmployee) {
+      return resultFromEmployee(`reference-${field}`, title, localEmployee, 'Поле посилання порожнє');
+    }
+    if (name) {
+      return {
+        key: `reference-${field}`,
+        title,
+        name,
+        subtitle: peopleforceId ? `PeopleForce ID ${peopleforceId}` : optionLabel(SUBSTITUTE_TARGET_OPTIONS, field),
+        avatarUrl: '',
+        status: 'resolved',
+      };
+    }
+    return {
+      key: `reference-${field}`,
+      title,
+      name: skipUnassigned ? 'Крок буде пропущено' : 'Не призначено',
+      subtitle: skipUnassigned ? 'Поле посилання порожнє.' : 'Поле посилання порожнє або не завантажене.',
+      avatarUrl: '',
+      status: skipUnassigned ? 'skipped' : 'missing',
+    };
+  }
+
+  function resolveApprovalStep(stepDraft: ApprovalStepDraft, index: number, employee: EmployeeListItem | undefined): ApprovalTestResult {
+    const title = `${index + 1}. ${optionLabel(APPROVER_OPTIONS, stepDraft.type)}`;
+    if (!employee) {
+      return {
+        key: `${stepDraft.uiId}-no-employee`,
+        title,
+        name: 'Виберіть співробітника',
+        subtitle: 'Ланцюжок схвалення зʼявиться після вибору людини.',
+        avatarUrl: '',
+        status: 'missing',
+      };
+    }
+    if (stepDraft.type === 'manager') {
+      return resultFromEmployee(stepDraft.uiId, title, managerAt(employee, 1), 'У співробітника немає менеджера');
+    }
+    if (stepDraft.type === 'manager_manager') {
+      return resultFromEmployee(stepDraft.uiId, title, managerAt(employee, 2), 'У ланцюжку немає менеджера менеджера');
+    }
+    if (stepDraft.type === 'manager_level_3') {
+      return resultFromEmployee(stepDraft.uiId, title, managerAt(employee, 3), 'У ланцюжку немає менеджера 3-го рівня');
+    }
+    if (stepDraft.type === 'department_manager') {
+      const department = departments.find((item) => item.id === employee.department);
+      const departmentManager = knownEmployee(department?.manager);
+      if (departmentManager) return resultFromEmployee(stepDraft.uiId, title, departmentManager, 'У департаменті немає менеджера');
+      if (department?.manager_name) {
+        return {
+          key: stepDraft.uiId,
+          title,
+          name: department.manager_name,
+          subtitle: department.name,
+          avatarUrl: '',
+          status: 'resolved',
+        };
+      }
+      return resultFromEmployee(stepDraft.uiId, title, undefined, 'У департаменті немає менеджера');
+    }
+    if (stepDraft.type === 'specific_employee') {
+      return resultFromEmployee(stepDraft.uiId, title, knownEmployee(stepDraft.employeeId), 'Конкретного схвалювача не вибрано');
+    }
+    if (stepDraft.type === 'person_reference') {
+      return peopleforceReferenceResult(employee, stepDraft.referenceField, `${title}: ${optionLabel(SUBSTITUTE_TARGET_OPTIONS, stepDraft.referenceField)}`);
+    }
+    return {
+      key: stepDraft.uiId,
+      title,
+      name: skipUnassigned ? 'Крок буде пропущено' : 'Не визначено',
+      subtitle: skipUnassigned ? 'Менеджер команди не визначається з поточних даних.' : 'Менеджер команди не визначається з поточних даних.',
+      avatarUrl: '',
+      status: skipUnassigned ? 'skipped' : 'missing',
+    };
+  }
+
+  function resolveSubstituteLabel(employee: EmployeeListItem | undefined): string {
+    if (!allowSubstitute) return '';
+    if (substituteDraft.sourceType === 'specific_employee') {
+      return knownEmployee(substituteDraft.employeeId)?.full_name ?? 'конкретний заступник не вибраний';
+    }
+    if (substituteDraft.sourceType === 'person_reference') {
+      const result = peopleforceReferenceResult(employee, substituteDraft.targetType, optionLabel(SUBSTITUTE_TARGET_OPTIONS, substituteDraft.targetType));
+      return result.status === 'resolved' ? result.name : result.subtitle;
+    }
+    return optionLabel(SUBSTITUTE_SOURCE_OPTIONS, substituteDraft.sourceType);
   }
 
   function serializedApproverSteps(): unknown[] {
@@ -740,6 +1046,8 @@ function LeavePolicyWizard({
       order: index + 1,
       employee_id: item.type === 'specific_employee' ? item.employeeId : null,
       employee_name: item.type === 'specific_employee' ? stepEmployeeName(item) : '',
+      reference_field: item.type === 'person_reference' ? item.referenceField : '',
+      reference_label: item.type === 'person_reference' ? optionLabel(SUBSTITUTE_TARGET_OPTIONS, item.referenceField) : '',
     }));
     if (!allowSubstitute) return stepsPayload;
     return [
@@ -900,6 +1208,21 @@ function LeavePolicyWizard({
     setStep(steps[Math.max(0, activeIndex - 1)].key);
   }
 
+  const selectedApprovalTestEmployee = approvalTestEmployeeId ? knownEmployee(approvalTestEmployeeId) : undefined;
+  const approvalTestResults = approvalEnabled
+    ? approverSteps.map((item, index) => resolveApprovalStep(item, index, selectedApprovalTestEmployee))
+    : [
+        {
+          key: 'approval-disabled',
+          title: 'Схвалення вимкнене',
+          name: 'Автоматичне схвалення',
+          subtitle: 'Запит не піде на погодження.',
+          avatarUrl: '',
+          status: 'skipped' as const,
+        },
+      ];
+  const substituteLabel = selectedApprovalTestEmployee ? resolveSubstituteLabel(selectedApprovalTestEmployee) : '';
+
   return (
     <main className="settings-page leave-policy-page">
       <button type="button" className="report-back leave-policy-back" onClick={onBack}>
@@ -908,7 +1231,7 @@ function LeavePolicyWizard({
       </button>
       <h1>{policy ? 'Редагувати політику відсутності' : 'Нова політика відсутності'}</h1>
 
-      <div className="leave-policy-tabs" role="tablist" aria-label="Кроки політики">
+      <div className="leave-policy-tabs" role="tablist" aria-label="Кроки політики" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
         {steps.map((item, index) => {
           const isDone = index < activeIndex;
           const isActive = item.key === step;
@@ -1135,7 +1458,7 @@ function LeavePolicyWizard({
               <strong className="leave-policy-accrual-title">Нарахування</strong>
               <div className="leave-policy-accrual-line start">
                 <span>Починається через</span>
-                <input value={startDelayAmount} onChange={(event) => setStartDelayAmount(event.target.value)} inputMode="numeric" />
+                <StepperInput value={startDelayAmount} onChange={setStartDelayAmount} inputMode="numeric" />
                 <select value={startDelayUnit} onChange={(event) => setStartDelayUnit(event.target.value)}>
                   {DELAY_UNIT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1144,12 +1467,12 @@ function LeavePolicyWizard({
                   ))}
                 </select>
                 <span>після дати прийому, з початковим залишком</span>
-                <input value={startBalance} onChange={(event) => setStartBalance(event.target.value)} inputMode="decimal" />
+                <StepperInput value={startBalance} onChange={setStartBalance} />
                 <span>днів</span>
               </div>
               <div className="leave-policy-accrual-line earn">
                 <span>Нарахування</span>
-                <input value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} inputMode="decimal" />
+                <StepperInput value={periodAmount} onChange={setPeriodAmount} />
                 <span>днів</span>
                 <select value={frequency} onChange={(event) => setFrequency(event.target.value)}>
                   {ACCRUAL_FREQUENCY_OPTIONS.map((option) => (
@@ -1191,13 +1514,13 @@ function LeavePolicyWizard({
                   ))}
                 </select>
                 <span>Використайте нараховані дні або втратите у дату перенесення</span>
-                <input value={carryoverExpireMonths} onChange={(event) => setCarryoverExpireMonths(event.target.value)} inputMode="numeric" />
+                <StepperInput value={carryoverExpireMonths} onChange={setCarryoverExpireMonths} inputMode="numeric" />
                 <span>місяці</span>
               </div>
               {carryoverMode === 'limited' ? (
                 <label className="leave-policy-accrual-stack compact-limit">
                   <span>Ліміт перенесення</span>
-                  <input value={carryoverLimit} onChange={(event) => setCarryoverLimit(event.target.value)} inputMode="decimal" />
+                  <StepperInput value={carryoverLimit} onChange={setCarryoverLimit} />
                 </label>
               ) : null}
               <label className="leave-policy-check">
@@ -1236,9 +1559,9 @@ function LeavePolicyWizard({
                         <label className="leave-policy-field">
                           <span>Загальний досвід роботи</span>
                           <div className="leave-policy-unit-input">
-                            <input
+                            <StepperInput
                               value={level.seniorityYears}
-                              onChange={(event) => updateSeniorityLevel(level.uiId, { seniorityYears: event.target.value })}
+                              onChange={(value) => updateSeniorityLevel(level.uiId, { seniorityYears: value })}
                               inputMode="numeric"
                             />
                             <em>роки</em>
@@ -1247,10 +1570,9 @@ function LeavePolicyWizard({
                         <label className="leave-policy-field">
                           <span>Нарахування додаткової відпустки</span>
                           <div className="leave-policy-unit-input">
-                            <input
+                            <StepperInput
                               value={level.periodAmount}
-                              onChange={(event) => updateSeniorityLevel(level.uiId, { periodAmount: event.target.value })}
-                              inputMode="decimal"
+                              onChange={(value) => updateSeniorityLevel(level.uiId, { periodAmount: value })}
                             />
                             <em>днів</em>
                           </div>
@@ -1277,10 +1599,9 @@ function LeavePolicyWizard({
                         </label>
                         <label className="leave-policy-field">
                           <span>Максимальний баланс</span>
-                          <input
+                          <StepperInput
                             value={level.maxBalance}
-                            onChange={(event) => updateSeniorityLevel(level.uiId, { maxBalance: event.target.value })}
-                            inputMode="decimal"
+                            onChange={(value) => updateSeniorityLevel(level.uiId, { maxBalance: value })}
                           />
                         </label>
                         <label className="leave-policy-field">
@@ -1360,7 +1681,7 @@ function LeavePolicyWizard({
               </label>
               <label className="leave-policy-field">
                 <span>Річний ліміт</span>
-                <input value={annualAllowance} onChange={(event) => setAnnualAllowance(event.target.value)} inputMode="decimal" />
+                <StepperInput value={annualAllowance} onChange={setAnnualAllowance} />
               </label>
             </fieldset>
           </div>
@@ -1368,6 +1689,7 @@ function LeavePolicyWizard({
       ) : null}
 
       {step === 'approval' ? (
+        <>
         <section className="leave-policy-card leave-policy-approval-card">
           <div className="leave-policy-section">
             <h2>Схвалення</h2>
@@ -1377,7 +1699,7 @@ function LeavePolicyWizard({
             </label>
             <div className="leave-policy-approver-list">
               {approverSteps.map((item) => (
-                <div className={`leave-policy-approver-row ${item.type === 'specific_employee' ? '' : 'single'}`} key={item.uiId}>
+                <div className={`leave-policy-approver-row ${item.type === 'specific_employee' || item.type === 'person_reference' ? '' : 'single'}`} key={item.uiId}>
                   <PolicySelectMenu
                     value={item.type}
                     options={APPROVER_OPTIONS}
@@ -1408,6 +1730,25 @@ function LeavePolicyWizard({
                       }}
                       onChange={(employeeId) => {
                         updateApproverStep(item.uiId, { employeeId, employeeName: employees.find((employee) => employee.id === employeeId)?.full_name ?? '' });
+                        setOpenEmployeeMenu(null);
+                      }}
+                    />
+                  ) : item.type === 'person_reference' ? (
+                    <PolicySelectMenu
+                      value={item.referenceField}
+                      options={SUBSTITUTE_TARGET_OPTIONS}
+                      disabled={!approvalEnabled}
+                      searchable
+                      query={employeeQuery}
+                      onQueryChange={setEmployeeQuery}
+                      open={openEmployeeMenu === item.uiId}
+                      onToggle={() => {
+                        setEmployeeQuery('');
+                        setOpenApproverMenu(null);
+                        setOpenEmployeeMenu((current) => (current === item.uiId ? null : item.uiId));
+                      }}
+                      onChange={(value) => {
+                        updateApproverStep(item.uiId, { referenceField: value });
                         setOpenEmployeeMenu(null);
                       }}
                     />
@@ -1505,6 +1846,83 @@ function LeavePolicyWizard({
             ) : null}
           </div>
         </section>
+        <section className="leave-policy-card leave-policy-approval-test-card">
+          <div className="leave-policy-section">
+            <div className="leave-policy-test-head">
+              <div>
+                <h2>Тест схвалення</h2>
+                <p>Перевірка працює тільки для людей, які призначені на «{initial.leaveType.name}».</p>
+              </div>
+              <span>{assignedPeople.length} людей</span>
+            </div>
+            <div className="leave-policy-approval-test">
+              <div className="leave-policy-test-people">
+                <label className="leave-policy-test-search">
+                  <Search size={15} />
+                  <input value={approvalTestQuery} onChange={(event) => setApprovalTestQuery(event.target.value)} placeholder="Пошук..." />
+                </label>
+                <div className="leave-policy-test-people-list">
+                  {visibleApprovalTestPeople.map((person) => (
+                    <button
+                      type="button"
+                      key={person.employeeId}
+                      className={approvalTestEmployeeId === person.employeeId ? 'active' : ''}
+                      onClick={() => setApprovalTestEmployeeId(person.employeeId)}
+                    >
+                      {person.avatarUrl ? <img src={person.avatarUrl} alt="" /> : <em>{employeeInitials(person.fullName)}</em>}
+                      <span>
+                        <strong>{person.fullName}</strong>
+                        <small>{person.position || dateLabel(person.effectiveOn)}</small>
+                      </span>
+                    </button>
+                  ))}
+                  {!visibleApprovalTestPeople.length ? (
+                    <div className="leave-policy-test-empty">
+                      {assignedPeople.length ? 'За пошуком нікого не знайдено.' : 'На цей тип відсутності ще нікого не призначено.'}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="leave-policy-test-results">
+                {selectedApprovalTestEmployee ? (
+                  <div className="leave-policy-test-selected">
+                    {employeeAvatar(selectedApprovalTestEmployee) ? (
+                      <img src={employeeAvatar(selectedApprovalTestEmployee)} alt="" />
+                    ) : (
+                      <em>{employeeInitials(selectedApprovalTestEmployee.full_name)}</em>
+                    )}
+                    <span>
+                      <strong>{selectedApprovalTestEmployee.full_name}</strong>
+                      <small>{selectedApprovalTestEmployee.position_name || selectedApprovalTestEmployee.department_name || 'Співробітник'}</small>
+                    </span>
+                    {approvalTestLoading ? <b>Оновлення…</b> : null}
+                  </div>
+                ) : (
+                  <div className="leave-policy-test-empty">Виберіть співробітника зліва.</div>
+                )}
+                <div className="leave-policy-test-result-list">
+                  {approvalTestResults.map((result) => (
+                    <div className={`leave-policy-test-result ${result.status}`} key={result.key}>
+                      {result.avatarUrl ? <img src={result.avatarUrl} alt="" /> : <em>{employeeInitials(result.name)}</em>}
+                      <span>
+                        <small>{result.title}</small>
+                        <strong>{result.name}</strong>
+                        <b>{result.subtitle}</b>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                {substituteLabel ? (
+                  <div className="leave-policy-test-substitute">
+                    <strong>Заступник</strong>
+                    <span>{substituteLabel}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+        </>
       ) : null}
 
       {step === 'settings' ? (
@@ -1617,15 +2035,17 @@ function LeavePolicyPeopleDrawer({
   rows: PolicyPersonRow[];
   onClose: () => void;
 }) {
-  const pageSize = 10;
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  function go(nextPage: number) {
-    setPage(Math.min(Math.max(nextPage, 1), pageCount));
-  }
+  const [query, setQuery] = useState('');
+  const filteredRows = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return rows;
+    }
+    return rows.filter((row) => {
+      const haystack = `${row.fullName} ${row.position || ''} ${dateLabel(row.effectiveOn)}`.toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [query, rows]);
 
   return (
     <aside className="leave-people-drawer" aria-label={`Призначення ${policy.name}`}>
@@ -1636,28 +2056,17 @@ function LeavePolicyPeopleDrawer({
         </button>
       </div>
       <div className="leave-people-drawer-meta">
-        <span>
-          Відображено {visibleRows.length ? (safePage - 1) * pageSize + 1 : 0} - {Math.min(safePage * pageSize, rows.length)} з {rows.length}
-        </span>
-        <div className="leave-people-pager compact">
-          <button type="button" onClick={() => go(safePage - 1)} disabled={safePage <= 1} aria-label="Попередня сторінка">
-            <ChevronLeft size={16} />
-          </button>
-          {[1, 2, 3, 4, 5].filter((item) => item <= pageCount).map((item) => (
-            <button key={item} type="button" className={safePage === item ? 'active' : ''} onClick={() => go(item)}>
-              {item}
-            </button>
-          ))}
-          {pageCount > 6 ? <span>...</span> : null}
-          {pageCount > 5 ? (
-            <button type="button" className={safePage === pageCount ? 'active' : ''} onClick={() => go(pageCount)}>
-              {pageCount}
-            </button>
-          ) : null}
-          <button type="button" onClick={() => go(safePage + 1)} disabled={safePage >= pageCount} aria-label="Наступна сторінка">
-            <ChevronDown className="next-icon" size={16} />
-          </button>
-        </div>
+        <span>{query.trim() ? `Знайдено ${filteredRows.length} з ${rows.length}` : `Відображено ${filteredRows.length} з ${rows.length}`}</span>
+        <label className="leave-people-search">
+          <Search size={16} />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Пошук людини..."
+            aria-label="Пошук людини"
+          />
+        </label>
       </div>
       <div className="leave-people-table-shell">
         <table className="leave-people-table">
@@ -1669,8 +2078,8 @@ function LeavePolicyPeopleDrawer({
             </tr>
           </thead>
           <tbody>
-            {visibleRows.length ? (
-              visibleRows.map((row) => (
+            {filteredRows.length ? (
+              filteredRows.map((row) => (
                 <tr key={row.employeeId}>
                   <td>
                     <span className="leave-person-cell">
@@ -1688,31 +2097,12 @@ function LeavePolicyPeopleDrawer({
             ) : (
               <tr>
                 <td colSpan={3} className="leave-people-empty">
-                  Людей не знайдено
+                  {rows.length ? 'За пошуком нікого не знайдено' : 'Людей не знайдено'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
-      <div className="leave-people-pager">
-        <button type="button" onClick={() => go(safePage - 1)} disabled={safePage <= 1} aria-label="Попередня сторінка">
-          <ChevronLeft size={16} />
-        </button>
-        {Array.from({ length: Math.min(pageCount, 5) }, (_, index) => index + 1).map((item) => (
-          <button key={item} type="button" className={safePage === item ? 'active' : ''} onClick={() => go(item)}>
-            {item}
-          </button>
-        ))}
-        {pageCount > 6 ? <span>...</span> : null}
-        {pageCount > 5 ? (
-          <button type="button" className={safePage === pageCount ? 'active' : ''} onClick={() => go(pageCount)}>
-            {pageCount}
-          </button>
-        ) : null}
-        <button type="button" onClick={() => go(safePage + 1)} disabled={safePage >= pageCount} aria-label="Наступна сторінка">
-          <ChevronDown className="next-icon" size={16} />
-        </button>
       </div>
     </aside>
   );
@@ -2109,6 +2499,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
       <LeavePolicyWizard
         initial={policyWizard}
         employees={employees}
+        assignments={assignments}
         onBack={() => setPolicyWizard(null)}
         onFinish={async (payload) => {
           const saved = policyWizard.policy
@@ -2267,9 +2658,11 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
                     <div className="leave-policy-row" key={policy.id}>
                       <div>
                         <strong>{policy.name}</strong>
-                        <span>
+                        <span className="leave-policy-meta">
                           {activityLabel(policy.activity_type)} · {policyTypeLabel(policy.policy_type)} · {countedAsLabel(policy.counted_as)} ·{' '}
-                          {employeesCountLabel(policy.employee_count)}
+                          <button type="button" onClick={() => openPeoplePanel(type, policy)}>
+                            {employeesCountLabel(policy.employee_count)}
+                          </button>
                         </span>
                       </div>
                       <div className="leave-policy-row-actions">

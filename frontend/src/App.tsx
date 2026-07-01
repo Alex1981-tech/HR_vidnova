@@ -13,11 +13,13 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleGauge,
   Clock3,
   Columns3,
   Edit3,
   ArrowUpRight,
+  ArrowLeft,
   Eye,
   FileText,
   Folder,
@@ -43,6 +45,8 @@ import {
   LogOut,
   Mail,
   MapPin,
+  Wrench,
+  Hash,
   Menu,
   Maximize2,
   MoreHorizontal,
@@ -77,7 +81,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { ECanDrag, GraphState, MultipointConnection, polyline } from '@gravity-ui/graph';
+import { ECameraScaleLevel, ECanDrag, GraphState, MultipointConnection, polyline } from '@gravity-ui/graph';
 import type { Graph, TBlock, TConnection, TGraphColors, TGraphConstants, TPoint, TRect } from '@gravity-ui/graph';
 import { GraphBlock, GraphCanvas, useGraph } from '@gravity-ui/graph/react';
 import type { LucideIcon } from 'lucide-react';
@@ -118,7 +122,12 @@ import type {
   DashboardOverview,
   DepartmentLevelOption,
   CmmsAsset,
+  CmmsAssetDetail,
+  CmmsAssetPhoto,
   CmmsAssetOptions,
+  CmmsOwnershipRow,
+  AssetZone,
+  AssetZoneOptions,
   CmmsLocation,
   DepartmentOption,
   DivisionOption,
@@ -675,6 +684,7 @@ const settingsGroups: SettingsGroup[] = [
       { slug: 'calendars', label: 'Календарі', icon: Calendar },
       { slug: 'company-links', label: 'Посилання компанії', icon: Link },
       { slug: 'departments', label: 'Департаменти', icon: Building2 },
+      { slug: 'asset-zones', label: 'Активи', icon: Boxes },
       { slug: 'holiday-policies', label: 'Політики свят', icon: Sparkles },
       { slug: 'positions', label: 'Посади', icon: BriefcaseBusiness },
       { slug: 'divisions', label: 'Підрозділи', icon: GitBranch },
@@ -16097,8 +16107,8 @@ type OrgGraphDimensions = {
 
 function orgGraphDimensions(compact: boolean): OrgGraphDimensions {
   return compact
-    ? { nodeWidth: 188, nodeHeight: 72, columnGap: 14, rowGap: 28, levelGap: 58, maxColumns: 0 }
-    : { nodeWidth: 218, nodeHeight: 86, columnGap: 22, rowGap: 34, levelGap: 70, maxColumns: 0 };
+    ? { nodeWidth: 292, nodeHeight: 104, columnGap: 28, rowGap: 24, levelGap: 62, maxColumns: 0 }
+    : { nodeWidth: 342, nodeHeight: 118, columnGap: 44, rowGap: 30, levelGap: 76, maxColumns: 0 };
 }
 
 class OrgElbowConnection extends MultipointConnection {
@@ -16152,16 +16162,19 @@ type OrgRowsLayout = Pick<OrgGraphBranch, 'width' | 'height' | 'blocks' | 'conne
 function composeOrgColumn(parentId: string, children: OrgGraphBranch[], dimensions: OrgGraphDimensions): OrgRowsLayout {
   const { nodeWidth, nodeHeight } = dimensions;
   const busX = nodeWidth / 2;
-  const childX = nodeWidth / 2 + 18;
-  const topGap = Math.round(dimensions.levelGap * 0.42);
-  const rowGap = Math.max(10, Math.round(dimensions.rowGap * 0.42));
+  const childX = nodeWidth / 2 + 22;
+  const topGap = Math.round(dimensions.levelGap * 0.36);
+  const rowGap = Math.max(10, Math.round(dimensions.rowGap * 0.58));
   const blocks: OrgGraphBlock[] = [];
   const connections: OrgGraphConnection[] = [];
   let y = nodeHeight + topGap;
+  let minLeft = 0;
   let maxRight = nodeWidth;
 
   children.forEach((branch) => {
-    const shifted = shiftOrgGraphBranch(branch, childX, y);
+    const rootBlock = branch.blocks.find((block) => block.id === branch.rootId) ?? branch.blocks[0];
+    const shiftX = rootBlock ? childX - rootBlock.x : childX;
+    const shifted = shiftOrgGraphBranch(branch, shiftX, y);
     const targetBlock = shifted.blocks.find((block) => block.id === branch.rootId);
     blocks.push(...shifted.blocks);
     connections.push(...shifted.connections);
@@ -16176,31 +16189,44 @@ function composeOrgColumn(parentId: string, children: OrgGraphBranch[], dimensio
         { x: childX, y: centerY },
       ],
     });
-    maxRight = Math.max(maxRight, childX + branch.width);
+    shifted.blocks.forEach((block) => {
+      minLeft = Math.min(minLeft, block.x);
+      maxRight = Math.max(maxRight, block.x + block.width);
+    });
     y += branch.height + rowGap;
   });
 
+  const offsetX = minLeft < 0 ? -minLeft : 0;
+  const normalizedBlocks = offsetX ? blocks.map((block) => ({ ...block, x: block.x + offsetX })) : blocks;
+  const normalizedConnections = offsetX
+    ? connections.map((connection) =>
+        connection.points
+          ? {
+              ...connection,
+              points: connection.points.map((point) => ({ x: point.x + offsetX, y: point.y })),
+            }
+          : connection,
+      )
+    : connections;
+
   return {
-    width: maxRight,
+    width: maxRight + offsetX,
     height: y - rowGap,
-    blocks,
-    connections,
-    parentX: 0,
+    blocks: normalizedBlocks,
+    connections: normalizedConnections,
+    parentX: offsetX,
   };
 }
 
-function composeOrgRows(parentId: string, children: OrgGraphBranch[], dimensions: OrgGraphDimensions): OrgRowsLayout {
+function composeOrgRows(parentId: string, children: OrgGraphBranch[], dimensions: OrgGraphDimensions, depth: number): OrgRowsLayout {
   if (!children.length) {
     return { width: dimensions.nodeWidth, height: dimensions.nodeHeight, blocks: [], connections: [], parentX: 0 };
   }
 
-  // Stack reports as a vertical column when the group is predominantly leaves
-  // (a flat list of staff). The managerial "backbone" — where a meaningful share
-  // of children have their own subtrees — stays horizontal, like PeopleForce.
-  const isLeafBranch = (branch: OrgGraphBranch) =>
-    branch.blocks.length === 1 && Number(branch.blocks[0]?.meta.directReportsCount || 0) === 0;
-  const leafShare = children.filter(isLeafBranch).length / children.length;
-  if (children.length >= 2 && leafShare >= 0.8) {
+  // 1 -> 2 і 2 -> 3 лишаємо горизонтальними. Із 4-го рівня і глибше
+  // розкриваємо вкладені вертикальні колонки, щоб п'ятий рівень не
+  // розривався на ліву/праву сторону від батьківської картки.
+  if (depth >= 2) {
     return composeOrgColumn(parentId, children, dimensions);
   }
 
@@ -16239,10 +16265,10 @@ function composeOrgRows(parentId: string, children: OrgGraphBranch[], dimensions
   };
 }
 
-function buildPersonGraphBranch(node: OrgPersonNode, dimensions: OrgGraphDimensions, nextIndex: () => number): OrgGraphBranch {
+function buildPersonGraphBranch(node: OrgPersonNode, dimensions: OrgGraphDimensions, nextIndex: () => number, depth = 0): OrgGraphBranch {
   const id = `person-${node.employee.id}`;
-  const childBranches = node.children.map((child) => buildPersonGraphBranch(child, dimensions, nextIndex));
-  const childLayout = composeOrgRows(id, childBranches, dimensions);
+  const childBranches = node.children.map((child) => buildPersonGraphBranch(child, dimensions, nextIndex, depth + 1));
+  const childLayout = composeOrgRows(id, childBranches, dimensions, depth);
   const reportsCount = node.children.length || Number(node.employee.direct_reports_count || 0);
   const directReportsCount = node.directReportsCount ?? reportsCount;
   const totalReportsCount = node.totalReportsCount ?? countPersonDescendants(node);
@@ -16266,10 +16292,10 @@ function buildPersonGraphBranch(node: OrgPersonNode, dimensions: OrgGraphDimensi
   };
 }
 
-function buildDepartmentGraphBranch(node: OrgDepartmentNode, dimensions: OrgGraphDimensions): OrgGraphBranch {
+function buildDepartmentGraphBranch(node: OrgDepartmentNode, dimensions: OrgGraphDimensions, depth = 0): OrgGraphBranch {
   const id = `department-${node.department.id}`;
-  const childBranches = node.children.map((child) => buildDepartmentGraphBranch(child, dimensions));
-  const childLayout = composeOrgRows(id, childBranches, dimensions);
+  const childBranches = node.children.map((child) => buildDepartmentGraphBranch(child, dimensions, depth + 1));
+  const childLayout = composeOrgRows(id, childBranches, dimensions, depth);
   const color = node.department.level_color || '#8f83f6';
   const directReportsCount = node.directReportsCount ?? node.children.length;
   const totalReportsCount = node.totalReportsCount ?? countDepartmentDescendants(node);
@@ -16336,11 +16362,17 @@ function buildDepartmentOrgGraph(nodes: OrgDepartmentNode[], compact: boolean): 
 }
 
 function readableOrgRect(entities: OrgGraphEntities, compact: boolean): TRect {
-  const width = Math.min(entities.rect.width, compact ? 980 : 1320);
-  const height = Math.min(entities.rect.height, compact ? 720 : 820);
+  const width = Math.min(entities.rect.width, compact ? 1080 : 1380);
+  const height = Math.min(entities.rect.height, compact ? 760 : 860);
+  const rootBlocks = entities.blocks.filter((block) => Math.abs(block.y - entities.rect.y) < 1);
+  const centerX = rootBlocks.length
+    ? rootBlocks.reduce((sum, block) => sum + block.x + block.width / 2, 0) / rootBlocks.length
+    : entities.rect.x + entities.rect.width / 2;
+  const maxX = entities.rect.x + entities.rect.width - width;
+  const x = Math.max(entities.rect.x, Math.min(centerX - width / 2, maxX));
   return {
-    x: 0,
-    y: 0,
+    x,
+    y: entities.rect.y,
     width: Math.max(width, 1),
     height: Math.max(height, 1),
   };
@@ -16391,6 +16423,14 @@ function orgGraphColors(isDark: boolean): { colors: TGraphColors; constants: Par
         AUTO_PAN_THRESHOLD: 50,
         AUTO_PAN_SPEED: 10,
       },
+      // Gravity renders custom React blocks only on the "Detailed" camera level.
+      // The default Detailed threshold is 0.7, so the org chart fell back to
+      // plain canvas rectangles when the graph was auto-fitted. Keep the React
+      // card layer active at practical overview zooms; the canvas block remains
+      // only as the hitbox and is hidden by GraphBlock after mount.
+      block: {
+        SCALES: [0.01, 0.02, 0.03],
+      } as TGraphConstants['block'],
     },
   };
 }
@@ -16440,7 +16480,24 @@ function OrgView({
   const [expandedDepartmentIds, setExpandedDepartmentIds] = useState<Set<number>>(new Set());
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState('');
+  const [detailEmployeeId, setDetailEmployeeId] = useState<number | null>(null);
   const actionsRef = useRef<HTMLDivElement | null>(null);
+
+  // Клік по картці відкриває бічний drawer з деталями (як у PeopleForce), а не
+  // веде одразу на сторінку профілю. Тримаємо лише id — сам об'єкт завжди беремо
+  // з актуального списку, тож drawer підхоплює оновлення даних.
+  const detailEmployee = useMemo(
+    () => (detailEmployeeId == null ? null : employees.find((employee) => employee.id === detailEmployeeId) ?? null),
+    [detailEmployeeId, employees],
+  );
+
+  function openEmployeeDetail(employee: EmployeeListItem) {
+    setDetailEmployeeId(employee.id);
+  }
+
+  function selectDetailEmployeeById(employeeId: number) {
+    setDetailEmployeeId(employeeId);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -16771,9 +16828,7 @@ function OrgView({
 
   const graphState =
     loadState === 'loading' ? (
-      <div className="org-empty-panel">
-        <EmptyState title={copy.common.loading} />
-      </div>
+      <OrgGraphLoadingState label={copy.common.loading} />
     ) : loadState === 'error' ? (
       <div className="org-empty-panel">
         <EmptyState title={copy.people.employeesLoadError} text={error || copy.common.backendRetry} />
@@ -16787,7 +16842,7 @@ function OrgView({
               node={node}
               index={index}
               copy={copy}
-              onOpenEmployee={openEmployee}
+              onOpenEmployee={openEmployeeDetail}
             />
           ))}
         </div>
@@ -16986,7 +17041,7 @@ function OrgView({
           cardFields={cardFields}
           themeMode={themeMode}
           copy={copy}
-          onOpenEmployee={openEmployee}
+          onOpenEmployee={openEmployeeDetail}
           onTogglePerson={togglePersonNode}
           onToggleDepartment={toggleDepartmentNode}
           onExpandAll={expandAllNodes}
@@ -16996,7 +17051,53 @@ function OrgView({
           {graphState}
         </section>
       )}
+
+      {detailEmployee ? (
+        <OrgDetailDrawer
+          employee={detailEmployee}
+          copy={copy}
+          onClose={() => setDetailEmployeeId(null)}
+          onViewProfile={openEmployee}
+          onSelectEmployeeId={selectDetailEmployeeById}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function OrgGraphLoadingState({ label }: { label: string }) {
+  return (
+    <div className="org-graph-loader" role="status" aria-live="polite">
+      <div className="org-loader-map" aria-hidden="true">
+        <span className="org-loader-connector org-loader-connector-main" />
+        <span className="org-loader-connector org-loader-connector-left" />
+        <span className="org-loader-connector org-loader-connector-right" />
+        <span className="org-loader-node org-loader-node-root">
+          <i />
+          <b />
+          <small />
+        </span>
+        <span className="org-loader-node org-loader-node-left">
+          <i />
+          <b />
+          <small />
+        </span>
+        <span className="org-loader-node org-loader-node-right">
+          <i />
+          <b />
+          <small />
+        </span>
+        <span className="org-loader-node org-loader-node-bottom">
+          <i />
+          <b />
+          <small />
+        </span>
+      </div>
+      <div className="org-loader-copy">
+        <strong>Будуємо оргструктуру</strong>
+        <span>{label}</span>
+      </div>
+    </div>
   );
 }
 
@@ -17027,6 +17128,7 @@ function OrgGraphCanvasView({
 }) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
+  const initialReadyFitRef = useRef(false);
   const [canvasFullscreen, setCanvasFullscreen] = useState(false);
   const isDark = useEffectiveDarkMode(themeMode);
   const graphTheme = useMemo(() => orgGraphColors(isDark), [isDark]);
@@ -17045,6 +17147,7 @@ function OrgGraphCanvasView({
       connectivityComponentOnClickRaise: false,
       connection: OrgElbowConnection,
       emulateMouseEventsOnCameraChange: true,
+      getCameraBlockScaleLevel: () => ECameraScaleLevel.Detailed,
     },
     viewConfiguration: graphTheme,
   });
@@ -17052,6 +17155,8 @@ function OrgGraphCanvasView({
     () => (mode === 'people' ? buildPeopleOrgGraph(peopleTree, compactView) : buildDepartmentOrgGraph(departmentTree, compactView)),
     [compactView, departmentTree, mode, peopleTree],
   );
+  const readableRect = useMemo(() => readableOrgRect(entities, compactView), [compactView, entities]);
+  const readableScaleFloor = compactView ? 0.82 : 0.86;
 
   useEffect(() => {
     setViewConfiguration(graphTheme);
@@ -17062,16 +17167,17 @@ function OrgGraphCanvasView({
     const focusId = pendingFocusRef.current;
     pendingFocusRef.current = null;
     const frame = window.requestAnimationFrame(() => {
-      // After an expand/collapse keep the toggled node centred instead of
-      // refitting the whole graph (which made the view jump around).
+      // After expand/collapse fit the toggled node together with its visible
+      // subtree. This keeps the opened manager and their reports centred and
+      // fully visible instead of jumping back to the whole org chart.
       if (focusId && entities.blocks.some((block) => block.id === focusId)) {
-        centerOnBlock(focusId);
+        focusSubtree(focusId);
       } else {
-        fitOrgRect(entities.rect);
+        fitOrgRect(readableRect, 48, readableScaleFloor);
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [compactView, entities, graph, setEntities]);
+  }, [compactView, entities, graph, readableRect, readableScaleFloor, setEntities]);
 
   useEffect(() => {
     if (!canvasFullscreen) return undefined;
@@ -17088,14 +17194,16 @@ function OrgGraphCanvasView({
 
   useEffect(() => {
     // Refit after entering/leaving fullscreen, once the canvas has resized.
+    // Do not depend on entities here: expand/collapse has its own focused
+    // camera move, and a delayed global fit would pull the view away.
     const timer = window.setTimeout(() => {
-      window.requestAnimationFrame(() => fitOrgRect(entities.rect));
+      window.requestAnimationFrame(() => fitOrgRect(readableRect, 48, readableScaleFloor));
     }, 80);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasFullscreen]);
 
-  function fitOrgRect(rect: TRect, padding = 48) {
+  function fitOrgRect(rect: TRect, padding = 48, minReadableScale = 0) {
     const canvas = canvasRef.current;
     // Fall back to a rect-derived viewport when the canvas has not been measured
     // yet (initial mount / fullscreen transition) so we never divide by zero and
@@ -17104,7 +17212,8 @@ function OrgGraphCanvasView({
     const viewHeight = canvas && canvas.clientHeight > 0 ? canvas.clientHeight : rect.height + padding * 2;
     const camera = graph.cameraService.getCameraState();
     const rawScale = Math.min((viewWidth - padding * 2) / rect.width, (viewHeight - padding * 2) / rect.height);
-    const scale = Math.max(camera.scaleMin, Math.min(camera.scaleMax, Math.min(rawScale, 1.1)));
+    const targetScale = Math.min(rawScale, 1);
+    const scale = Math.max(camera.scaleMin, minReadableScale, Math.min(camera.scaleMax, targetScale));
     // Centre the whole content rect in the viewport so everything stays visible.
     graph.cameraService.set({
       x: (viewWidth - rect.width * scale) / 2 - rect.x * scale,
@@ -17113,21 +17222,49 @@ function OrgGraphCanvasView({
     });
   }
 
-  function centerOnBlock(blockId: string) {
-    const block = entities.blocks.find((item) => item.id === blockId);
-    const canvas = canvasRef.current;
-    if (!block || !canvas || canvas.clientWidth === 0) {
-      fitOrgRect(entities.rect);
+  function subtreeRect(blockId: string): TRect | null {
+    const childIdsByParent = new Map<string, string[]>();
+    entities.connections.forEach((connection) => {
+      if (connection.sourceBlockId == null || connection.targetBlockId == null) return;
+      const sourceId = String(connection.sourceBlockId);
+      const targetId = String(connection.targetBlockId);
+      const ids = childIdsByParent.get(sourceId) ?? [];
+      ids.push(targetId);
+      childIdsByParent.set(sourceId, ids);
+    });
+
+    const visibleBlockIds = new Set(entities.blocks.map((block) => String(block.id)));
+    const subtreeIds = new Set<string>();
+    const stack = [blockId];
+    while (stack.length) {
+      const currentId = stack.pop();
+      if (!currentId || subtreeIds.has(currentId) || !visibleBlockIds.has(currentId)) continue;
+      subtreeIds.add(currentId);
+      (childIdsByParent.get(currentId) ?? []).forEach((childId) => stack.push(childId));
+    }
+
+    const blocks = entities.blocks.filter((block) => subtreeIds.has(String(block.id)));
+    if (!blocks.length) return null;
+
+    const minX = Math.min(...blocks.map((block) => block.x));
+    const minY = Math.min(...blocks.map((block) => block.y));
+    const maxX = Math.max(...blocks.map((block) => block.x + block.width));
+    const maxY = Math.max(...blocks.map((block) => block.y + block.height));
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(maxX - minX, 1),
+      height: Math.max(maxY - minY, 1),
+    };
+  }
+
+  function focusSubtree(blockId: string) {
+    const rect = subtreeRect(blockId);
+    if (!rect) {
+      fitOrgRect(readableRect, 48, readableScaleFloor);
       return;
     }
-    const scale = graph.cameraService.getCameraState().scale;
-    const centerX = block.x + block.width / 2;
-    const centerY = block.y + block.height / 2;
-    graph.cameraService.set({
-      x: canvas.clientWidth / 2 - centerX * scale,
-      y: canvas.clientHeight / 2 - centerY * scale,
-      scale,
-    });
+    fitOrgRect(rect, 76);
   }
 
   function zoomToGraph(padding = 42) {
@@ -17135,7 +17272,7 @@ function OrgGraphCanvasView({
   }
 
   function focusReadableGraph() {
-    fitOrgRect(entities.rect);
+    fitOrgRect(readableRect, 48, readableScaleFloor);
   }
 
   function zoomGraph(direction: 1 | -1) {
@@ -17200,7 +17337,8 @@ function OrgGraphCanvasView({
           if (state === GraphState.ATTACHED) {
             start();
           }
-          if (state === GraphState.READY) {
+          if (state === GraphState.READY && !initialReadyFitRef.current) {
+            initialReadyFitRef.current = true;
             window.requestAnimationFrame(() => focusReadableGraph());
           }
         }}
@@ -17251,10 +17389,11 @@ function OrgGraphBlockCard({
     const employee = block.meta.employee;
     const person = employeeToPerson(employee, block.meta.index, copy);
     const expandLabel = formatOrgExpandLabel(block.meta.directReportsCount, block.meta.totalReportsCount);
+    const cardStyle = { '--org-node-index': block.meta.index } as CSSProperties;
     return (
-      <article className={`org-card org-graph-card org-person-card${cardFields.photo ? '' : ' no-photo'}`}>
+      <article className={`org-card org-graph-card org-person-card${cardFields.photo ? '' : ' no-photo'}`} style={cardStyle}>
         <button type="button" className="org-graph-card-body" onClick={() => onOpenEmployee(employee)}>
-          {cardFields.photo ? <Avatar name={person.fullName} src={person.avatarUrl} accent={person.accent} /> : null}
+          <Avatar name={person.fullName} src={cardFields.photo ? person.avatarUrl : ''} accent={person.accent} />
           <div>
             <strong>{person.fullName}</strong>
             {cardFields.position ? <span>{person.role}</span> : null}
@@ -17270,7 +17409,8 @@ function OrgGraphBlockCard({
             aria-expanded={block.meta.isExpanded}
             onClick={() => onTogglePerson(employee.id)}
           >
-            {expandLabel}
+            {block.meta.isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            <span>{expandLabel}</span>
           </button>
         ) : null}
       </article>
@@ -17280,14 +17420,13 @@ function OrgGraphBlockCard({
   const department = block.meta.department;
   const color = block.meta.color;
   const expandLabel = formatOrgExpandLabel(block.meta.directReportsCount, block.meta.totalReportsCount);
+  const cardStyle = { '--department-color': color, '--org-node-index': 0 } as CSSProperties;
   return (
-    <article className={`org-card org-graph-card org-department-card${cardFields.photo ? '' : ' no-photo'}`} style={{ '--department-color': color } as CSSProperties}>
+    <article className={`org-card org-graph-card org-department-card${cardFields.photo ? '' : ' no-photo'}`} style={cardStyle}>
       <div className="org-graph-card-body static">
-        {cardFields.photo ? (
-          <div className="org-department-icon">
-            <Building2 size={18} />
-          </div>
-        ) : null}
+        <div className={`org-department-icon${cardFields.photo ? '' : ' ghost'}`}>
+          <Building2 size={18} />
+        </div>
         <div>
           <strong>{department.name}</strong>
           {cardFields.position ? <span>{department.level_name || department.clinic_name || 'Підрозділ'}</span> : null}
@@ -17302,10 +17441,133 @@ function OrgGraphBlockCard({
           aria-expanded={block.meta.isExpanded}
           onClick={() => onToggleDepartment(department.id)}
         >
-          {expandLabel}
+          {block.meta.isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          <span>{expandLabel}</span>
         </button>
       ) : null}
     </article>
+  );
+}
+
+// Бічна панель деталей співробітника — відкривається кліком по картці графа,
+// як у PeopleForce (docs/фото/image copy 20.png). Дані беремо зі вже завантаженого
+// списку employees, тож окремий запит не потрібен.
+function OrgDetailDrawer({
+  employee,
+  copy,
+  onClose,
+  onViewProfile,
+  onSelectEmployeeId,
+}: {
+  employee: EmployeeListItem;
+  copy: AppCopy;
+  onClose: () => void;
+  onViewProfile: (employee: EmployeeListItem) => void;
+  onSelectEmployeeId: (employeeId: number) => void;
+}) {
+  const [closing, setClosing] = useState(false);
+  const person = employeeToPerson(employee, 0, copy);
+
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    // Тривалість збігається з CSS-транзишеном виходу — інакше панель зникне різко.
+    window.setTimeout(onClose, 200);
+  }, [onClose]);
+
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') requestClose();
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [requestClose]);
+
+  const email = employee.email || employee.personal_email || '';
+  const workPhone = employee.phone || '';
+  const mobile = employee.phone2 || '';
+  const managerProfile = employee.manager_profile;
+  const directReportsCount = Number(employee.direct_reports_count || 0);
+
+  const fields: Array<{ label: string; value: string; href?: string }> = [
+    { label: copy.people.email || 'Ел. пошта', value: email || '-', href: email ? `mailto:${email}` : undefined },
+    {
+      label: copy.people.workPhone || 'Робочий телефон',
+      value: workPhone || '-',
+      href: workPhone ? `tel:${workPhone.replace(/\s/g, '')}` : undefined,
+    },
+    {
+      label: copy.people.mobilePhone || 'Мобільний телефон',
+      value: mobile || '-',
+      href: mobile ? `tel:${mobile.replace(/\s/g, '')}` : undefined,
+    },
+    { label: copy.people.startDate || 'Дата найму', value: employee.hired_on ? formatDate(employee.hired_on) : '-' },
+    { label: copy.people.workType || 'Тип зайнятості', value: employee.employment_type_name || '-' },
+    { label: copy.people.position || 'Посада', value: employee.position_name || '-' },
+    { label: copy.people.level || 'Рівень посади', value: employee.job_level_name || '-' },
+    { label: copy.people.department || 'Департамент', value: employee.department_name || '-' },
+    { label: copy.people.division || 'Підрозділ', value: employee.division_name || '-' },
+    { label: copy.people.location || 'Локація', value: person.location || '-' },
+    { label: copy.people.tenure || 'Стаж роботи', value: formatTenure(employee.hired_on ?? null) },
+  ];
+
+  return (
+    <div className={`org-detail-layer${closing ? ' closing' : ''}`}>
+      <button type="button" className="org-detail-backdrop" aria-label="Закрити" onClick={requestClose} />
+      <aside className="org-detail-drawer" role="dialog" aria-modal="true" aria-label={person.fullName}>
+        <header className="org-detail-head">
+          <div className="org-detail-identity">
+            <Avatar name={person.fullName} src={person.avatarUrl} accent={person.accent} size="lg" />
+            <div className="org-detail-identity-text">
+              <strong>{person.fullName}</strong>
+              {person.role ? <span>{person.role}</span> : null}
+              {employee.department_name ? <small>{employee.department_name}</small> : null}
+            </div>
+          </div>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={requestClose}>
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="org-detail-body">
+          <dl className="org-detail-fields">
+            {fields.map((field) => (
+              <div key={field.label} className="org-detail-field">
+                <dt>{field.label}</dt>
+                <dd>
+                  {field.href && field.value !== '-' ? (
+                    <a href={field.href}>{field.value}</a>
+                  ) : (
+                    field.value
+                  )}
+                </dd>
+              </div>
+            ))}
+            <div className="org-detail-field">
+              <dt>Керівник</dt>
+              <dd>
+                {managerProfile ? (
+                  <button type="button" className="org-detail-link" onClick={() => onSelectEmployeeId(managerProfile.id)}>
+                    {managerProfile.full_name || employee.manager_name || '-'}
+                  </button>
+                ) : (
+                  employee.manager_name || '-'
+                )}
+              </dd>
+            </div>
+            <div className="org-detail-field">
+              <dt>Прямих підлеглих</dt>
+              <dd>{directReportsCount}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <footer className="org-detail-foot">
+          <button type="button" className="primary-action" onClick={() => onViewProfile(employee)}>
+            Переглянути профіль
+          </button>
+        </footer>
+      </aside>
+    </div>
   );
 }
 
@@ -20750,6 +21012,8 @@ function SettingsDepartmentsView({ onBack, copy }: { onBack: () => void; copy: A
     setError('');
     const payload = {
       name,
+      // clinic явно null: бекенд дефолтить його (unique_together робить поле обов'язковим при omit → 400).
+      clinic: null,
       parent: departmentForm.parent ? Number(departmentForm.parent) : null,
       manager: departmentForm.manager ? Number(departmentForm.manager) : null,
       level: departmentForm.level ? Number(departmentForm.level) : null,
@@ -23561,6 +23825,9 @@ function SettingsView({
   if (activeSlug === 'company-links') {
     return <SettingsCompanyLinksView onBack={() => navigate('/settings')} copy={copy} />;
   }
+  if (activeSlug === 'asset-zones') {
+    return <AssetZonesSettingsView onBack={() => navigate('/settings')} />;
+  }
 
   if (
     activeSlug === 'experience-levels' ||
@@ -23708,16 +23975,16 @@ function NotificationsView() {
 }
 
 function AssetsView({ copy }: { copy: AppCopy }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const detailId = assetDetailIdFromPathname(location.pathname);
+
   const [items, setItems] = useState<CmmsAsset[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState('');
-  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
-  const [openAssetId, setOpenAssetId] = useState<number | null>(null);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const [savingId, setSavingId] = useState<number | null>(null);
   const [options, setOptions] = useState<CmmsAssetOptions | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [locationPath, setLocationPath] = useState<number[]>([]);
@@ -23726,10 +23993,6 @@ function AssetsView({ copy }: { copy: AppCopy }) {
   const pageSize = 28;
 
   useEffect(() => {
-    api
-      .employees({ status: 'active', page_size: 500 })
-      .then((result) => setEmployees(result.items))
-      .catch(() => setEmployees([]));
     api
       .assetOptions()
       .then(setOptions)
@@ -23797,43 +24060,12 @@ function AssetsView({ copy }: { copy: AppCopy }) {
     });
   }
 
-  useEffect(() => {
-    if (openAssetId == null) return undefined;
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.asset-responsible')) setOpenAssetId(null);
-    }
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [openAssetId]);
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const pickerOptions = useMemo(() => {
-    const query = pickerQuery.trim().toLowerCase();
-    return employees
-      .filter((employee) => !query || `${employee.full_name} ${employee.position_name} ${employee.department_name}`.toLowerCase().includes(query))
-      .slice(0, 60);
-  }, [employees, pickerQuery]);
 
-  async function assign(asset: CmmsAsset, employeeId: number | null) {
-    setSavingId(asset.id);
-    setError('');
-    try {
-      const result = await api.assignAssetResponsible(asset.id, employeeId);
-      setItems((current) =>
-        current.map((item) =>
-          item.id === asset.id
-            ? { ...item, responsible_person_id: result.responsible_person_id, responsible_person_name: result.responsible_person_name }
-            : item,
-        ),
-      );
-      setOpenAssetId(null);
-      setPickerQuery('');
-    } catch (assignError) {
-      setError(assignError instanceof ApiError ? assignError.message : 'Не вдалося призначити відповідального');
-    } finally {
-      setSavingId(null);
-    }
+  if (detailId != null) {
+    const fromState = (location.state as { asset?: CmmsAsset } | null)?.asset;
+    const known = items.find((asset) => asset.id === detailId) ?? fromState ?? null;
+    return <AssetDetailView assetId={detailId} initial={known} onBack={() => navigate('/assets')} />;
   }
 
   return (
@@ -23955,7 +24187,19 @@ function AssetsView({ copy }: { copy: AppCopy }) {
       ) : (
         <div className="asset-grid">
           {items.map((asset) => (
-            <article key={asset.id} className="asset-card">
+            <article
+              key={asset.id}
+              className="asset-card asset-card--link"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/assets/${asset.id}`, { state: { asset } })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  navigate(`/assets/${asset.id}`, { state: { asset } });
+                }
+              }}
+            >
               <div className="asset-card-media">
                 <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
                 {asset.photo_url ? (
@@ -23968,54 +24212,30 @@ function AssetsView({ copy }: { copy: AppCopy }) {
               </div>
               <div className="asset-card-body">
                 <strong className="asset-card-name" title={asset.name}>{asset.name}</strong>
-                <span className="asset-card-inv">Інв. № {asset.inventory_number}</span>
-                <div className="asset-responsible">
-                  <button
-                    type="button"
-                    className={`asset-responsible-trigger${openAssetId === asset.id ? ' active' : ''}`}
-                    disabled={savingId === asset.id}
-                    onClick={() => {
-                      setOpenAssetId(openAssetId === asset.id ? null : asset.id);
-                      setPickerQuery('');
-                    }}
-                  >
+                <dl className="asset-card-facts">
+                  <div className="asset-fact">
+                    <MapPin size={14} />
+                    <span className="asset-fact-value" title={asset.location_name ?? undefined}>
+                      {asset.location_name || '—'}
+                    </span>
+                  </div>
+                  <div className="asset-fact">
                     <Users size={14} />
-                    {asset.responsible_person_name ? (
-                      <span className="asset-responsible-name">{asset.responsible_person_name}</span>
-                    ) : (
-                      <span className="asset-responsible-empty">Не призначено</span>
-                    )}
-                    <ChevronDown size={14} />
-                  </button>
-                  {openAssetId === asset.id ? (
-                    <div className="asset-picker">
-                      <div className="org-picker-search">
-                        <Search size={15} />
-                        <input type="text" value={pickerQuery} onChange={(event) => setPickerQuery(event.target.value)} placeholder="Пошук співробітника…" autoFocus />
-                      </div>
-                      <div className="asset-picker-list">
-                        {asset.responsible_person_id != null ? (
-                          <button type="button" className="org-picker-item reset" onClick={() => assign(asset, null)}>
-                            Зняти відповідального
-                          </button>
-                        ) : null}
-                        {pickerOptions.map((employee, index) => {
-                          const person = employeeToPerson(employee, index, copy);
-                          return (
-                            <button type="button" key={employee.id} className="org-picker-item" onClick={() => assign(asset, employee.id)}>
-                              <Avatar name={person.fullName} src={person.avatarUrl} accent={person.accent} />
-                              <span>
-                                <strong>{person.fullName}</strong>
-                                <small>{person.role}</small>
-                              </span>
-                            </button>
-                          );
-                        })}
-                        {pickerOptions.length === 0 ? <div className="org-picker-empty">Нічого не знайдено</div> : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                    <span className="asset-fact-value" title={asset.responsible_person_name ?? undefined}>
+                      {asset.responsible_person_name || <span className="asset-fact-empty">Без відповідального</span>}
+                    </span>
+                  </div>
+                  <div className="asset-fact">
+                    <Wrench size={14} />
+                    <span className="asset-fact-value" title={asset.engineer_name ?? undefined}>
+                      {asset.engineer_name || <span className="asset-fact-empty">Інженер не призначений</span>}
+                    </span>
+                  </div>
+                  <div className="asset-fact">
+                    <Hash size={14} />
+                    <span className="asset-fact-value">{asset.inventory_number || '—'}</span>
+                  </div>
+                </dl>
               </div>
             </article>
           ))}
@@ -24023,6 +24243,607 @@ function AssetsView({ copy }: { copy: AppCopy }) {
       )}
     </main>
   );
+}
+
+// Публічний домен CMMS (кнопка «Перейти в CMMS» на сторінці активу).
+const CMMS_APP_URL = (import.meta.env.VITE_CMMS_APP_URL as string | undefined) ?? 'https://cmms.vidnova.app';
+
+// Дата в таблиці історії володіння (ISO → dd.mm.yyyy).
+function formatAssetHistoryDate(value: string | null): string {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('uk-UA', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+// /assets/:id → id, або null для списку активів.
+function assetDetailIdFromPathname(pathname: string): number | null {
+  const [section, idSegment] = pathname.split('/').filter(Boolean);
+  if (section !== 'assets' || !idSegment) return null;
+  const id = Number(idSegment);
+  return Number.isFinite(id) ? id : null;
+}
+
+function AssetDetailView({
+  assetId,
+  initial,
+  onBack,
+}: {
+  assetId: number;
+  initial: CmmsAsset | null;
+  onBack: () => void;
+}) {
+  const [asset, setAsset] = useState<CmmsAssetDetail | null>(initial);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
+  const [history, setHistory] = useState<CmmsOwnershipRow[]>([]);
+  const [historyState, setHistoryState] = useState<LoadState>('idle');
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    api
+      .assetDetail(assetId)
+      .then((data) => {
+        if (alive) setAsset(data);
+      })
+      .catch((loadError) => {
+        if (alive) setError(loadError instanceof ApiError ? loadError.message : 'Не вдалося завантажити актив');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [assetId]);
+
+  useEffect(() => {
+    let alive = true;
+    setHistoryState('loading');
+    api
+      .assetOwnershipHistory(assetId)
+      .then((data) => {
+        if (alive) {
+          setHistory(data.items);
+          setHistoryState('ok');
+        }
+      })
+      .catch(() => {
+        if (alive) setHistoryState('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [assetId]);
+
+  const photos: CmmsAssetPhoto[] = asset?.photos ?? [];
+  const coverIndex = Math.max(0, photos.findIndex((photo) => photo.is_primary));
+  const cover = photos[coverIndex] ?? null;
+  const coverSrc = cover?.thumbnail_url ?? cover?.url ?? asset?.photo_url ?? initial?.photo_url ?? null;
+
+  const rows: Array<{ icon: ReactNode; label: string; value: ReactNode; strong?: boolean }> = [
+    { icon: <Hash size={16} />, label: 'Інвентарний номер', value: asset?.inventory_number || '—', strong: true },
+    { icon: <MapPin size={16} />, label: 'Локація', value: asset?.location_name || '—' },
+    { icon: <Users size={16} />, label: 'Відповідальна особа', value: asset?.responsible_person_name || '—' },
+    { icon: <Wrench size={16} />, label: 'Відповідальний інженер', value: asset?.engineer_name || '—' },
+    { icon: <FileText size={16} />, label: 'Опис', value: asset?.description?.trim() || '—' },
+  ];
+
+  return (
+    <main className="workspace asset-detail-page">
+      <header className="page-header asset-detail-header">
+        <button type="button" className="toolbar-button" onClick={onBack}>
+          <ArrowLeft size={15} />
+          До активів
+        </button>
+        <h1 className="asset-detail-title">{asset?.name || initial?.name || `Актив #${assetId}`}</h1>
+        <a
+          className="toolbar-button asset-detail-cmms-link"
+          href={`${CMMS_APP_URL}/assets/${assetId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Перейти в CMMS
+          <ArrowUpRight size={15} />
+        </a>
+      </header>
+
+      {error ? (
+        <div className="org-empty-panel"><EmptyState title="Помилка" text={error} /></div>
+      ) : (
+        <div className="asset-detail-hero">
+          <button
+            type="button"
+            className="asset-detail-photo"
+            onClick={() => photos.length && setGalleryIndex(coverIndex)}
+            disabled={!photos.length}
+            aria-label={photos.length ? 'Відкрити галерею' : undefined}
+          >
+            {coverSrc ? (
+              <img src={coverSrc} alt={asset?.name ?? ''} />
+            ) : (
+              <div className="asset-card-noimg">
+                <Boxes size={54} />
+              </div>
+            )}
+            <span className="asset-detail-photo-star" aria-hidden="true">
+              <Star size={13} />
+            </span>
+            {photos.length ? <span className="asset-detail-photo-count">{photos.length} фото</span> : null}
+          </button>
+
+          <dl className="asset-detail-table">
+            {rows.map((row) => (
+              <div key={row.label} className="asset-detail-row">
+                <dt>
+                  {row.icon}
+                  <span>{row.label}:</span>
+                </dt>
+                <dd className={row.strong ? 'strong' : ''}>{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {loading && !asset ? <div className="asset-detail-loading">{'Завантаження…'}</div> : null}
+
+      {!error ? (
+        <section className="asset-history">
+          <h2 className="asset-history-title">Історія володіння</h2>
+          {historyState === 'loading' ? (
+            <div className="asset-detail-loading">Завантаження…</div>
+          ) : history.length ? (
+            <div className="asset-history-table-wrap">
+              <table className="asset-history-table">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Місто</th>
+                    <th>Клініка</th>
+                    <th>Кабінет</th>
+                    <th>Відповідальний</th>
+                    <th>Відповідальний інженер</th>
+                    <th>Сдано</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((row, index) => (
+                    <tr key={`${row.date ?? 'row'}-${index}`} className={row.is_creation ? 'asset-history-creation' : ''}>
+                      <td>
+                        {formatAssetHistoryDate(row.date)}
+                        {row.is_creation ? <span className="asset-history-badge">Додано в систему</span> : null}
+                      </td>
+                      <td>{row.city || '—'}</td>
+                      <td>{row.clinic || '—'}</td>
+                      <td>{row.cabinet || '—'}</td>
+                      <td>{row.responsible_name || '—'}</td>
+                      <td>{row.engineer_name || '—'}</td>
+                      <td>{row.handed_over ? formatAssetHistoryDate(row.handed_over) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="org-empty-panel">
+              <EmptyState title="Історія відсутня" text="Зміни власника, інженера чи локації зʼявляться тут." />
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {galleryIndex != null && photos.length ? (
+        <AssetGalleryModal
+          photos={photos}
+          index={galleryIndex}
+          onIndex={setGalleryIndex}
+          onClose={() => setGalleryIndex(null)}
+        />
+      ) : null}
+    </main>
+  );
+}
+
+// Лайтбокс галереї фото активу — без рамок і зайвих смуг: темний фон, фото по центру, стрілки.
+function AssetGalleryModal({
+  photos,
+  index,
+  onIndex,
+  onClose,
+}: {
+  photos: CmmsAssetPhoto[];
+  index: number;
+  onIndex: (next: number) => void;
+  onClose: () => void;
+}) {
+  const total = photos.length;
+  const go = (delta: number) => onIndex((index + delta + total) % total);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'ArrowRight') onIndex((index + 1) % total);
+      if (event.key === 'ArrowLeft') onIndex((index - 1 + total) % total);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [index, total, onClose, onIndex]);
+
+  const current = photos[index];
+  const src = current?.url ?? current?.thumbnail_url ?? '';
+
+  return createPortal(
+    <div className="asset-gallery-backdrop" onClick={onClose}>
+      <button type="button" className="asset-gallery-close" onClick={onClose} aria-label="Закрити">
+        <X size={22} />
+      </button>
+      {total > 1 ? (
+        <button
+          type="button"
+          className="asset-gallery-nav asset-gallery-prev"
+          onClick={(event) => {
+            event.stopPropagation();
+            go(-1);
+          }}
+          aria-label="Попереднє фото"
+        >
+          <ChevronLeft size={30} />
+        </button>
+      ) : null}
+      <img className="asset-gallery-image" src={src} alt="" onClick={(event) => event.stopPropagation()} />
+      {total > 1 ? (
+        <button
+          type="button"
+          className="asset-gallery-nav asset-gallery-next"
+          onClick={(event) => {
+            event.stopPropagation();
+            go(1);
+          }}
+          aria-label="Наступне фото"
+        >
+          <ChevronRight size={30} />
+        </button>
+      ) : null}
+      {total > 1 ? <div className="asset-gallery-counter">{index + 1} / {total}</div> : null}
+    </div>,
+    document.body,
+  );
+}
+
+type ZoneForm = {
+  id: number | null;
+  name: string;
+  scope_type: 'location' | 'department';
+  locationPath: number[];
+  department_id: number | '';
+  engineer_user_id: number | '';
+};
+
+const EMPTY_ZONE_FORM: ZoneForm = {
+  id: null,
+  name: '',
+  scope_type: 'location',
+  locationPath: [],
+  department_id: '',
+  engineer_user_id: '',
+};
+
+// Назви рівнів обраного шляху локації → "Місто → Клініка → Кабінет".
+function locationPathNames(locations: CmmsLocation[], path: number[]): string {
+  const names: string[] = [];
+  let level = locations;
+  for (const id of path) {
+    const node = level.find((loc) => loc.id === id);
+    if (!node) break;
+    names.push(node.name);
+    level = node.sublocations ?? [];
+  }
+  return names.join(' → ');
+}
+
+function AssetZonesSettingsView({ onBack }: { onBack: () => void }) {
+  const [zones, setZones] = useState<AssetZone[]>([]);
+  const [options, setOptions] = useState<AssetZoneOptions | null>(null);
+  const [loadState, setLoadState] = useState<LoadState>('idle');
+  const [error, setError] = useState('');
+  const [form, setForm] = useState<ZoneForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  function reload() {
+    setLoadState('loading');
+    api
+      .assetZones()
+      .then((data) => {
+        setZones(data.items);
+        setLoadState('ok');
+      })
+      .catch(() => setLoadState('error'));
+  }
+
+  useEffect(() => {
+    reload();
+    api.assetZoneOptions().then(setOptions).catch(() => setOptions(null));
+  }, []);
+
+  function openCreate() {
+    setError('');
+    setForm({ ...EMPTY_ZONE_FORM });
+  }
+
+  function openEdit(zone: AssetZone) {
+    setError('');
+    setForm({
+      id: zone.id,
+      name: zone.name,
+      scope_type: zone.scope_type,
+      locationPath: zone.scope_type === 'location' && zone.location_id && options
+        ? locationPathToRoot(options.locations, zone.location_id)
+        : [],
+      department_id: zone.department_id ?? '',
+      engineer_user_id: zone.engineer_user_id ?? '',
+    });
+  }
+
+  function setLocationLevel(level: number, value: string) {
+    setForm((current) => {
+      if (!current) return current;
+      const next = current.locationPath.slice(0, level);
+      if (value) next.push(Number(value));
+      return { ...current, locationPath: next };
+    });
+  }
+
+  async function save() {
+    if (!form || !options) return;
+    const deepest = form.locationPath[form.locationPath.length - 1] ?? null;
+    if (form.scope_type === 'location' && !deepest) {
+      setError('Оберіть локацію');
+      return;
+    }
+    if (form.scope_type === 'department' && !form.department_id) {
+      setError('Оберіть департамент');
+      return;
+    }
+    const engineer = options.engineers.find((e) => e.id === form.engineer_user_id);
+    const department = options.departments.find((d) => d.id === form.department_id);
+    const payload: Partial<AssetZone> = {
+      name: form.name,
+      scope_type: form.scope_type,
+      location_id: form.scope_type === 'location' ? deepest : null,
+      location_name: form.scope_type === 'location' ? locationPathNames(options.locations, form.locationPath) : '',
+      department_id: form.scope_type === 'department' ? Number(form.department_id) : null,
+      department_name: form.scope_type === 'department' ? department?.name ?? '' : '',
+      engineer_user_id: form.engineer_user_id ? Number(form.engineer_user_id) : null,
+      engineer_name: engineer?.full_name ?? '',
+    };
+    setSaving(true);
+    setError('');
+    try {
+      if (form.id) await api.updateAssetZone(form.id, payload);
+      else await api.createAssetZone(payload);
+      setForm(null);
+      reload();
+    } catch (saveError) {
+      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося зберегти зону');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(zone: AssetZone) {
+    setBusyId(zone.id);
+    try {
+      await api.deleteAssetZone(zone.id);
+      reload();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function apply(zone: AssetZone) {
+    setBusyId(zone.id);
+    setError('');
+    try {
+      const preview = await api.assetZonePreview(zone.id);
+      const ok = window.confirm(
+        `Застосувати зону? Інженера «${zone.engineer_name || '—'}» буде проставлено ${preview.count} активам у скоупі «${zone.location_name || zone.department_name}».`,
+      );
+      if (!ok) return;
+      const res = await api.applyAssetZone(zone.id);
+      window.alert(`Готово: оновлено ${res.applied} активів.`);
+      reload();
+    } catch (applyError) {
+      setError(applyError instanceof ApiError ? applyError.message : 'Не вдалося застосувати зону');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <main className="settings-page settings-option-page">
+      <header className="settings-option-header">
+        <div>
+          <button type="button" className="settings-back-link" onClick={onBack}>
+            <ChevronLeft size={17} />
+            Назад
+          </button>
+          <h1>Активи · Зони відповідальності</h1>
+        </div>
+        <div className="settings-option-actions">
+          <button type="button" className="primary-action" onClick={openCreate}>
+            <Plus size={16} />
+            Додати зону
+          </button>
+        </div>
+      </header>
+
+      <p className="settings-option-hint">
+        Зона = скоуп (клініка / департамент / кабінет) + інженер. «Застосувати» проставляє інженера всім активам у скоупі.
+      </p>
+
+      {error ? <div className="org-empty-panel"><EmptyState title="Помилка" text={error} /></div> : null}
+
+      {form ? (
+        <div className="zone-editor">
+          <div className="zone-editor-row">
+            <label>Назва (необовʼязково)</label>
+            <input
+              type="text"
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+              placeholder="напр. Косметологія ЗП"
+            />
+          </div>
+
+          <div className="zone-editor-row">
+            <label>Скоуп</label>
+            <div className="segmented flat">
+              <button
+                type="button"
+                className={form.scope_type === 'location' ? 'active' : ''}
+                onClick={() => setForm({ ...form, scope_type: 'location' })}
+              >
+                Локація
+              </button>
+              <button
+                type="button"
+                className={form.scope_type === 'department' ? 'active' : ''}
+                onClick={() => setForm({ ...form, scope_type: 'department' })}
+              >
+                Департамент
+              </button>
+            </div>
+          </div>
+
+          {form.scope_type === 'location' && options ? (
+            <div className="zone-editor-row">
+              <label>Локація (клініка / поверх / кабінет)</label>
+              <div className="asset-location-levels">
+                {Array.from({ length: form.locationPath.length + 1 }).map((_, level) => {
+                  const levelOptions = locationLevelOptions(options.locations, form.locationPath.slice(0, level));
+                  if (levelOptions.length === 0) return null;
+                  return (
+                    <select
+                      key={level}
+                      value={form.locationPath[level] ?? ''}
+                      onChange={(event) => setLocationLevel(level, event.target.value)}
+                    >
+                      <option value="">— оберіть —</option>
+                      {levelOptions.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {form.scope_type === 'department' && options ? (
+            <div className="zone-editor-row">
+              <label>Департамент</label>
+              <select
+                value={form.department_id}
+                onChange={(event) => setForm({ ...form, department_id: event.target.value ? Number(event.target.value) : '' })}
+              >
+                <option value="">— оберіть —</option>
+                {options.departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          <div className="zone-editor-row">
+            <label>Відповідальний інженер</label>
+            <select
+              value={form.engineer_user_id}
+              onChange={(event) => setForm({ ...form, engineer_user_id: event.target.value ? Number(event.target.value) : '' })}
+            >
+              <option value="">— оберіть —</option>
+              {options?.engineers.map((eng) => (
+                <option key={eng.id} value={eng.id}>
+                  {eng.full_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="zone-editor-actions">
+            <button type="button" className="toolbar-button" onClick={() => setForm(null)} disabled={saving}>
+              Скасувати
+            </button>
+            <button type="button" className="primary-action" onClick={save} disabled={saving}>
+              {saving ? 'Збереження…' : 'Зберегти'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {loadState === 'loading' ? (
+        <div className="asset-detail-loading">Завантаження…</div>
+      ) : zones.length === 0 && !form ? (
+        <div className="org-empty-panel"><EmptyState title="Зон ще немає" text="Створіть першу зону відповідальності." /></div>
+      ) : (
+        <div className="zone-list">
+          {zones.map((zone) => (
+            <div key={zone.id} className="zone-card">
+              <div className="zone-card-main">
+                <div className="zone-card-scope">
+                  {zone.scope_type === 'location' ? <MapPin size={15} /> : <Building2 size={15} />}
+                  <span>{zone.name || zone.location_name || zone.department_name || '—'}</span>
+                </div>
+                <div className="zone-card-meta">
+                  <span className="zone-card-target">{zone.location_name || zone.department_name || '—'}</span>
+                  <span className="zone-card-eng">
+                    <Wrench size={13} />
+                    {zone.engineer_name || 'Інженер не призначений'}
+                  </span>
+                  {zone.last_applied_count != null ? (
+                    <span className="zone-card-applied">застосовано до {zone.last_applied_count} активів</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="zone-card-actions">
+                <button type="button" className="toolbar-button" disabled={busyId === zone.id || !zone.engineer_user_id} onClick={() => apply(zone)}>
+                  Застосувати
+                </button>
+                <button type="button" className="icon-button" onClick={() => openEdit(zone)} aria-label="Редагувати">
+                  <Pencil size={15} />
+                </button>
+                <button type="button" className="icon-button" disabled={busyId === zone.id} onClick={() => remove(zone)} aria-label="Видалити">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </main>
+  );
+}
+
+// CMMS location id → шлях id-шників від кореня до вузла (для відновлення каскаду при редагуванні).
+function locationPathToRoot(locations: CmmsLocation[], targetId: number): number[] {
+  function dfs(nodes: CmmsLocation[], trail: number[]): number[] | null {
+    for (const node of nodes) {
+      const nextTrail = [...trail, node.id];
+      if (node.id === targetId) return nextTrail;
+      const found = dfs(node.sublocations ?? [], nextTrail);
+      if (found) return found;
+    }
+    return null;
+  }
+  return dfs(locations, []) ?? [];
 }
 
 function collectLocationIds(node: CmmsLocation): number[] {

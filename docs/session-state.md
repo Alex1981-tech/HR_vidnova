@@ -190,3 +190,20 @@
 - 2026-06-30: **Этап 6 (RBAC management API) готов** — /api/access/ (roles/
   assignments/audit/permissions/effective-preview) + 12 тестов. Дальше Этап 7
   (фронт /settings/roles). Падения leave-тестов (3) — WIP Alex (не RBAC).
+- 2026-07-01: **Оргструктура — бічна панель деталей (PeopleForce-стиль).** Клік
+  по картці графа тепер відкриває правий drawer (`OrgDetailDrawer` у App.tsx)
+  замість переходу на профіль — референс `docs/фото/image copy 20.png`. Поля:
+  пошта/тел./моб./дата найму/тип/посада/рівень/департамент/підрозділ/локація/
+  стаж/керівник(клікабельний → перемикає drawer)/прямих підлеглих + кнопка
+  «Переглянути профіль». Slide-in анімація + backdrop (CSS `.org-detail-*` в
+  index.css, з prefers-reduced-motion). Сам canvas-граф (@gravity-ui/graph) вже
+  був PeopleForce-подібним. tsc чистий, перевірено вживу на DEV. Версію ще НЕ
+  бампав, не комічено — чекає рев'ю Alex.
+- 2026-07-01: **Оргструктура — компактне «стек»-розкриття** (референс ескіз
+  `docs/фото/image copy 27.png`, PeopleForce Stacked). Раніше глибокі гілки
+  розходилися горизонтально → дерево ставало надто широким → сильний zoom-out →
+  дрібні негарні картки (`image copy 26.png`). Тепер layout depth-aware:
+  `composeOrgRows(…, depth)` — depth 0 (прямі підлеглі кореня) горизонтально,
+  depth ≥1 завжди `composeOrgColumn` (вертикальна колонка з відступом). Дерево
+  росте вниз, картки лишаються читабельними. `buildPersonGraphBranch`/
+  `buildDepartmentGraphBranch` проброшують depth. tsc чистий, перевірено вживу.
