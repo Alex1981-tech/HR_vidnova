@@ -19692,6 +19692,63 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   margin-top: 2px;
 }
 
+/* ---- Системний журнал ---- */
+.syslog-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 8px 22px rgba(31, 52, 84, 0.05);
+  overflow-x: auto;
+}
+.syslog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.syslog-table thead th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.syslog-table tbody td {
+  padding: 11px 16px;
+  color: var(--text);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  vertical-align: middle;
+}
+.syslog-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.syslog-table tbody tr:hover {
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+}
+.syslog-ip {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.syslog-device {
+  color: var(--muted);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.syslog-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.syslog-ok { background: #e7f6ec; color: #1f7a44; }
+.syslog-bad { background: #fdecec; color: #b3261e; }
+.syslog-warn { background: #fdeede; color: #b66a16; }
+.syslog-muted { background: #eceff3; color: #5b6472; }
+
 /* ---- «Довірені»: акордеон по людях ---- */
 .entrusted-groups {
   display: flex;

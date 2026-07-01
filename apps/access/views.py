@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import time
 from datetime import timedelta
 
 from django.conf import settings
@@ -466,6 +467,9 @@ class VerifyLoginCodeView(APIView):
             login_code.save(update_fields=["consumed_at", "updated_at"])
 
         django_login(request, user)
+        # Позначка часу входу — для жорсткого ліміту сесії (SessionMaxAgeMiddleware).
+        request.session["login_at"] = time.time()
+        request.session.set_expiry(settings.SESSION_MAX_AGE_SECONDS)
         _audit(
             request,
             event=AuthAuditEvent.Event.LOGIN_SUCCEEDED,

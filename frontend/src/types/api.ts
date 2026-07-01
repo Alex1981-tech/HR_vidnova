@@ -887,6 +887,16 @@ export type AssetPerson = {
   avatar_url: string | null;
 };
 
+export type SecurityLogEvent = {
+  id: number;
+  event: string;
+  event_label: string;
+  result: string;
+  ip_address: string | null;
+  user_agent: string;
+  created_at: string;
+};
+
 export type EntrustedGroup = {
   employee: AssetPerson;
   assets: CmmsAsset[];

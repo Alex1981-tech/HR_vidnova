@@ -63,6 +63,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.access.middleware.SessionMaxAgeMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -153,6 +154,10 @@ SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "hr_sessionid")
 CSRF_COOKIE_NAME = os.getenv("CSRF_COOKIE_NAME", "hr_csrftoken")
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = False
+
+# Ліміт сесії: перелогін через 1 год від входу (жорстко, навіть якщо активна).
+SESSION_MAX_AGE_SECONDS = int(os.getenv("SESSION_MAX_AGE_SECONDS", "3600"))
+SESSION_COOKIE_AGE = SESSION_MAX_AGE_SECONDS
 
 # Behind a TLS-terminating reverse proxy (nginx / Cloudflare tunnel): trust the
 # forwarded scheme so request.is_secure() works and secure cookies / CSRF over

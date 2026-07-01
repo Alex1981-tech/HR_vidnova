@@ -220,3 +220,30 @@ class SelfKnowledgeView(APIView):
                 "documents": SelfKnowledgeDocumentSerializer(documents[:100], many=True).data,
             }
         )
+
+
+class SelfSecurityLogView(APIView):
+    """Події безпеки поточного користувача (вхід/вихід/сесія) з телеметрією."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.access.models import AuthAuditEvent
+
+        events = AuthAuditEvent.objects.filter(user=request.user).order_by("-created_at")[:100]
+        return Response(
+            {
+                "items": [
+                    {
+                        "id": e.id,
+                        "event": e.event,
+                        "event_label": e.get_event_display(),
+                        "result": e.result,
+                        "ip_address": e.ip_address,
+                        "user_agent": e.user_agent,
+                        "created_at": e.created_at.isoformat(),
+                    }
+                    for e in events
+                ]
+            }
+        )

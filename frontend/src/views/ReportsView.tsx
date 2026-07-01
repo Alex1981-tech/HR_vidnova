@@ -5,6 +5,7 @@ import { ReportsIndex } from './reports/ReportsIndex';
 import { HeadcountReportView } from './reports/HeadcountReportView';
 import { TurnoverReportView } from './reports/TurnoverReportView';
 import { TenureReportView } from './reports/TenureReportView';
+import { SystemLogView } from './reports/SystemLogView';
 
 // Routes /reports and /reports/<key>. Index list when no key (or unknown key);
 // a dedicated analytics view when the key is implemented.
@@ -12,6 +13,7 @@ const REPORT_VIEWS: Record<string, () => ReactElement> = {
   headcount: HeadcountReportView,
   turnover: TurnoverReportView,
   tenure: TenureReportView,
+  'system-log': SystemLogView,
 };
 
 export function ReportsView() {

@@ -91,6 +91,7 @@ class AuthAuditEvent(models.Model):
         LOGIN_SUCCEEDED = "login_succeeded", "Login succeeded"
         LOGIN_FAILED = "login_failed", "Login failed"
         LOGOUT = "logout", "Logout"
+        SESSION_EXPIRED = "session_expired", "Session expired"
         ACCESS_DENIED = "access_denied", "Access denied"
 
     class Result(models.TextChoices):
