@@ -426,6 +426,7 @@ export const api = {
       department_ids?: number[];
       responsible_ids?: number[];
       hr_employee_id?: number;
+      hr_engineer_id?: number;
     } = {},
   ) => {
     const sp = new URLSearchParams();
@@ -434,6 +435,7 @@ export const api = {
     if (params.search) sp.set('search', params.search);
     if (params.status && params.status !== 'all') sp.set('status', params.status);
     if (params.hr_employee_id) sp.set('hr_employee_id', String(params.hr_employee_id));
+    if (params.hr_engineer_id) sp.set('hr_engineer_id', String(params.hr_engineer_id));
     for (const id of params.location_ids ?? []) sp.append('location_ids', String(id));
     for (const id of params.department_ids ?? []) sp.append('department_ids', String(id));
     for (const id of params.responsible_ids ?? []) sp.append('responsible_ids', String(id));

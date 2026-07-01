@@ -9531,15 +9531,23 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
   );
 }
 
+type EmployeeAssetsMode = 'mine' | 'service';
+
 function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<EmployeeAssetsMode>('mine');
   const [items, setItems] = useState<CmmsAsset[]>([]);
   const [state, setState] = useState<LoadState>('idle');
 
   useEffect(() => {
     let alive = true;
     setState('loading');
+    const params =
+      mode === 'mine'
+        ? { hr_employee_id: employeeId, page_size: 100 as const }
+        : { hr_engineer_id: employeeId, page_size: 100 as const };
     api
-      .assets({ hr_employee_id: employeeId, page_size: 100 })
+      .assets(params)
       .then((res) => {
         if (alive) {
           setItems(res.items);
@@ -9552,22 +9560,45 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
     return () => {
       alive = false;
     };
-  }, [employeeId]);
+  }, [employeeId, mode]);
+
+  const emptyText = mode === 'mine' ? 'Активів, де співробітник відповідальний, немає.' : 'Активів на обслуговуванні немає.';
 
   return (
     <MoreSubPanel title="Активи">
+      <nav className="asset-tabs employee-asset-tabs">
+        <button type="button" className={`asset-tab${mode === 'mine' ? ' active' : ''}`} onClick={() => setMode('mine')}>
+          Мої
+        </button>
+        <button type="button" className={`asset-tab${mode === 'service' ? ' active' : ''}`} onClick={() => setMode('service')}>
+          На обслуговуванні
+        </button>
+      </nav>
+
       {state === 'loading' ? (
         <div className="profile-tab-placeholder">
           <p className="people-data-empty">Завантаження…</p>
         </div>
       ) : state === 'error' ? (
         <div className="profile-tab-placeholder">
-          <EmptyState title="Не вдалося завантажити активи" text="CMMS може бути недоступний." />
+          <EmptyState title="Не вдалося завантажити активи" />
         </div>
       ) : items.length ? (
         <div className="asset-grid asset-grid--profile">
           {items.map((asset) => (
-            <article className="asset-card" key={asset.id}>
+            <article
+              className="asset-card asset-card--link"
+              key={asset.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/assets/${asset.id}`, { state: { asset } })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  navigate(`/assets/${asset.id}`, { state: { asset } });
+                }
+              }}
+            >
               <div className="asset-card-media">
                 {asset.status ? (
                   <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
@@ -9591,7 +9622,7 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
         </div>
       ) : (
         <div className="profile-tab-placeholder">
-          <EmptyState title="Призначених активів немає" />
+          <EmptyState title="Активів немає" text={emptyText} />
         </div>
       )}
     </MoreSubPanel>

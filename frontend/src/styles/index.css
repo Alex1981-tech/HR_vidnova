@@ -19688,6 +19688,9 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   border-bottom-color: var(--primary);
   font-weight: 600;
 }
+.employee-asset-tabs {
+  margin-top: 2px;
+}
 .asset-history-table-wrap {
   border: 1px solid var(--line);
   border-radius: 12px;

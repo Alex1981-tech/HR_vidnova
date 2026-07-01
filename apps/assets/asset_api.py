@@ -182,6 +182,10 @@ class AssetListView(APIView):
         if hr_employee_id:
             qs = qs.filter(responsible_id=hr_employee_id)
 
+        hr_engineer_id = request.query_params.get("hr_engineer_id")
+        if hr_engineer_id:
+            qs = qs.filter(engineer_id=hr_engineer_id)
+
         qs = qs.order_by("name")
         total = qs.count()
 
