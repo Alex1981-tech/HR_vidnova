@@ -163,10 +163,15 @@ class AssetOwnershipEvent(models.Model):
 class AssetPhoto(models.Model):
     asset = models.ForeignKey(Asset, related_name="photos", on_delete=models.CASCADE)
     image = models.FileField(upload_to="assets/%Y/%m/", blank=True)
+    content_type = models.CharField(max_length=60, blank=True)  # image/jpeg, video/mp4, …
     is_primary = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
     cmms_photo_id = models.IntegerField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_video(self) -> bool:
+        return self.content_type.startswith("video/")
 
     class Meta:
         db_table = "asset_photos"

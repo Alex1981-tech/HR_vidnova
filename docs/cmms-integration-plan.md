@@ -88,11 +88,15 @@ POST `/api/employees/departments/` давав 400 «clinic обов'язкове
 - ✅ **Фронт працює нативно БЕЗ ЗМІН** (шейп-сумісність): /assets список + дет/фото/галерея — HR-дані, фото з HR media, інженер тепер показується (нативний FK). Vite проксує /media на бекенд.
 - ✅ **Tree-builder фізструктури** (2026-07-01): `/settings/asset-zones` перероблено на дерево клініка→поверхи→кабінети. API `/api/assets/physical-locations/` (list-tree + `_CHILD_KIND` + asset_count, CRUD, delete guard якщо є активи у субдереві). Фронт `AssetZonesSettingsView` → tree-builder (expand/collapse, kind-бейджі, hover-дії +/✎/🗑, інлайн-додавання дочірнього, rename-modal). Перевірено: створення клініки під містом працює.
 
-### Roadmap що лишилось (Alex: «тоже надо закончить»)
-- ⏳ **1. Native ownership-history** — HR-трекінг змін (Django signals на Asset: responsible/engineer/location) замість транзитного проксі CMMS.
-- ⏳ **2. Зони→нативний apply**: призначення інженера на вузол фізструктури + «Застосувати» ставить `Asset.engineer` напряму (без CMMS PUT). Інтегрувати в tree-builder (engineer на вузол).
-- ⏳ **3. QR + ТО** — генерація QR на актив + `MaintenanceTask`/`MaintenanceLog`.
-- ⏳ **4. Прибрати залишковий `cmms_client`** (лишився тільки в ownership-history proxy) → CMMS холодний архів.
+### Roadmap
+- ✅ **1. Native ownership-history** (1.0.40): модель `AssetOwnershipEvent` + сигнали (pre/post_save на Asset ловлять зміну location/responsible/engineer → пишуть снапшот). Ендпоінт нативний (aggregation, is_creation на найранішому, handed_over). Бекфіл `backfill_ownership_events` (721 стартова подія). Без CMMS.
+- ✅ **2. Зони→нативний apply**: `PhysicalLocation.engineer`→Employee (замість CMMS user). Tree-builder: 🔧 інженер на вузол (модалка) + «Застосувати» (`/physical-locations/<id>/apply/`, +preview) ставить `Asset.engineer` субдерева → тригерить ownership-event.
+- ✅ **4. cmms_client прибрано з рантайму**: urls.py імпортує лише asset_api; ownership-history нативна; views.py+cmms_client лишились як archival dead code (+ import-команди). django check ок.
+- ✅ **Person-чіпи**: відповідальний/інженер на сторінці активу = аватар+ПІБ+посада (detail віддає `responsible`/`engineer` обʼєкти). Кнопку «Перейти в CMMS» прибрано.
+- ⏳ **3. QR + ТО** — генерація QR + `MaintenanceTask`/`MaintenanceLog` (пізніше).
+
+### Прод-деплой 1.0.40 (2026-07-01)
+Push→main→CI(build.yml) success→GHCR. Прод (172.16.33.14): бекап БД (`backup-pre-assets-*.sql.gz`), `docker-compose.prod.ghcr.yml pull+up -d web frontend` (міграції 0001-0004 [X]), import_cmms_locations (115) + import_cmms_assets (у процесі) + backfill_ownership_events. Смоук hr.vidnova.app/assets.
 
 **Реюз попередньої роботи:** фізструктура (Phase A3) = ядро локацій; ownership-history/зони переходять на нативні моделі; сторінки активів/галерея/таблиця історії вже є — треба лише перецілити на HR-дані.
 

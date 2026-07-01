@@ -876,6 +876,8 @@ export type CmmsAssetPhoto = {
   url: string | null;
   thumbnail_url: string | null;
   is_primary?: boolean;
+  content_type?: string;
+  is_video?: boolean;
 };
 
 export type AssetPerson = {

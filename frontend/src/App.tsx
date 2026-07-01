@@ -20,6 +20,7 @@ import {
   Edit3,
   ArrowUpRight,
   ArrowLeft,
+  Activity,
   Eye,
   FileText,
   Folder,
@@ -24352,13 +24353,32 @@ function AssetDetailView({
   }, [assetId]);
 
   const photos: CmmsAssetPhoto[] = asset?.photos ?? [];
-  const coverIndex = Math.max(0, photos.findIndex((photo) => photo.is_primary));
+  const isPhotoVideo = (p: CmmsAssetPhoto) => p.is_video || p.content_type?.startsWith('video/');
+  // Обкладинка — зображення (не відео); галерею відкриваємо з першого зображення.
+  const coverIndex = Math.max(
+    0,
+    photos.findIndex((photo) => photo.is_primary && !isPhotoVideo(photo)),
+    photos.findIndex((photo) => !isPhotoVideo(photo)),
+  );
   const cover = photos[coverIndex] ?? null;
-  const coverSrc = cover?.thumbnail_url ?? cover?.url ?? asset?.photo_url ?? initial?.photo_url ?? null;
+  const coverSrc =
+    cover && !isPhotoVideo(cover)
+      ? (cover.thumbnail_url ?? cover.url ?? null)
+      : (asset?.photo_url ?? initial?.photo_url ?? null);
 
   const rows: Array<{ icon: ReactNode; label: string; value: ReactNode; strong?: boolean }> = [
     { icon: <Hash size={16} />, label: 'Інвентарний номер', value: asset?.inventory_number || '—', strong: true },
+    {
+      icon: <Activity size={16} />,
+      label: 'Статус',
+      value: asset?.status ? (
+        <span className={`asset-status-pill asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
+      ) : (
+        <span className="asset-fact-empty">—</span>
+      ),
+    },
     { icon: <MapPin size={16} />, label: 'Локація', value: asset?.location_name || '—' },
+    { icon: <Building2 size={16} />, label: 'Департамент', value: asset?.department_name || '—' },
     { icon: <Users size={16} />, label: 'Відповідальна особа', value: assetPersonChip(asset?.responsible) },
     { icon: <Wrench size={16} />, label: 'Відповідальний інженер', value: assetPersonChip(asset?.engineer) },
     { icon: <FileText size={16} />, label: 'Опис', value: asset?.description?.trim() || '—' },
@@ -24498,6 +24518,7 @@ function AssetGalleryModal({
 
   const current = photos[index];
   const src = current?.url ?? current?.thumbnail_url ?? '';
+  const isVideo = current?.is_video || current?.content_type?.startsWith('video/');
 
   return createPortal(
     <div className="asset-gallery-backdrop" onClick={onClose}>
@@ -24517,7 +24538,17 @@ function AssetGalleryModal({
           <ChevronLeft size={30} />
         </button>
       ) : null}
-      <img className="asset-gallery-image" src={src} alt="" onClick={(event) => event.stopPropagation()} />
+      {isVideo ? (
+        <video
+          className="asset-gallery-image"
+          src={src}
+          controls
+          autoPlay
+          onClick={(event) => event.stopPropagation()}
+        />
+      ) : (
+        <img className="asset-gallery-image" src={src} alt="" onClick={(event) => event.stopPropagation()} />
+      )}
       {total > 1 ? (
         <button
           type="button"

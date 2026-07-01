@@ -70,11 +70,12 @@ def _location_tree() -> list[dict]:
 
 
 def _photo_url(asset) -> str | None:
-    primary = next((p for p in asset.photos.all() if p.is_primary), None)
-    primary = primary or (asset.photos.all()[0] if asset.photos.all() else None)
-    if primary and primary.image:
-        return primary.image.url
-    return None
+    # Обкладинка картки — тільки зображення (не відео).
+    images = [p for p in asset.photos.all() if p.image and not p.is_video]
+    if not images:
+        return None
+    primary = next((p for p in images if p.is_primary), images[0])
+    return primary.image.url
 
 
 def _person_dict(emp) -> dict | None:
@@ -128,6 +129,8 @@ def _asset_dict(asset, index, *, detail=False) -> dict:
                 "url": p.image.url if p.image else None,
                 "thumbnail_url": p.image.url if p.image else None,
                 "is_primary": p.is_primary,
+                "content_type": p.content_type,
+                "is_video": p.is_video,
             }
             for p in asset.photos.all()
         ]

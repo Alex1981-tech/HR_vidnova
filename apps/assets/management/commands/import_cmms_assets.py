@@ -171,17 +171,23 @@ class Command(BaseCommand):
                 resp = httpx.get(f"{base}{url}", timeout=30)
                 if resp.status_code != 200:
                     continue
-                ext = "jpg"
-                ct = resp.headers.get("content-type", "")
-                if "png" in ct:
-                    ext = "png"
-                elif "webp" in ct:
-                    ext = "webp"
+                head = resp.content[:16]
+                if head[:3] == b"\xff\xd8\xff":
+                    ext, ctype = "jpg", "image/jpeg"
+                elif head[:8] == b"\x89PNG\r\n\x1a\n":
+                    ext, ctype = "png", "image/png"
+                elif head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+                    ext, ctype = "webp", "image/webp"
+                elif head[4:8] == b"ftyp" and head[8:12] not in (b"heic", b"heix", b"mif1"):
+                    ext, ctype = "mp4", "video/mp4"
+                else:
+                    ext, ctype = "jpg", resp.headers.get("content-type", "image/jpeg")
                 obj = AssetPhoto(
                     asset=asset,
                     is_primary=bool(photo.get("is_primary")),
                     order=order,
                     cmms_photo_id=cmms_photo_id,
+                    content_type=ctype,
                 )
                 obj.image.save(f"cmms_{cmms_photo_id or order}.{ext}", ContentFile(resp.content), save=True)
                 saved += 1
