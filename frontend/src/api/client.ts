@@ -75,6 +75,7 @@ import type {
   AssetZone,
   AssetZoneOptions,
   PhysicalNode,
+  EntrustedGroup,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -446,6 +447,8 @@ export const api = {
   assetOwnershipHistory: (assetId: number) =>
     request<{ items: CmmsOwnershipRow[] }>(`/api/assets/${assetId}/ownership-history/`),
   assetOptions: () => request<CmmsAssetOptions>('/api/assets/options/'),
+  assetsEntrusted: (managerId: number) =>
+    request<{ items: EntrustedGroup[] }>(`/api/assets/entrusted/?manager_id=${managerId}`),
   physicalLocations: () => request<{ items: PhysicalNode[] }>('/api/assets/physical-locations/'),
   createPhysicalLocation: (payload: { name: string; parent_id?: number | null; kind?: string }) =>
     request<PhysicalNode>('/api/assets/physical-locations/', { method: 'POST', body: JSON.stringify(payload) }),

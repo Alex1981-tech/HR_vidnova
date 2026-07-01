@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -454,3 +455,44 @@ class PhysicalLocationApplyView(APIView):
             asset.save(update_fields=["engineer", "updated_at"])  # тригерить ownership-event
             applied += 1
         return Response({"applied": applied, "total": qs.count()})
+
+
+class EntrustedAssetsView(APIView):
+    """«Довірені» — активи прямих підлеглих менеджера, згруповані по людях (для акордеона)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        manager_id = request.query_params.get("manager_id")
+        if not manager_id:
+            return Response({"items": []})
+        today = timezone.localdate()
+        reports = (
+            Employee.objects.filter(
+                manager_assignments__manager_id=manager_id,
+                manager_assignments__is_primary=True,
+                manager_assignments__valid_from__lte=today,
+            )
+            .filter(Q(manager_assignments__valid_to__isnull=True) | Q(manager_assignments__valid_to__gte=today))
+            .select_related("position")
+            .distinct()
+            .order_by("last_name", "first_name")
+        )
+        report_ids = [e.id for e in reports]
+        assets = (
+            Asset.objects.filter(responsible_id__in=report_ids, is_active=True)
+            .select_related("location", "department", "responsible", "engineer")
+            .prefetch_related("photos")
+            .order_by("name")
+        )
+        index = _location_index()
+        by_resp: dict[int, list] = {}
+        for asset in assets:
+            by_resp.setdefault(asset.responsible_id, []).append(_asset_dict(asset, index))
+
+        items = [
+            {"employee": _person_dict(emp), "assets": by_resp[emp.id]}
+            for emp in reports
+            if by_resp.get(emp.id)
+        ]
+        return Response({"items": items})

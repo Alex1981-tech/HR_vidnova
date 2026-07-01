@@ -887,6 +887,11 @@ export type AssetPerson = {
   avatar_url: string | null;
 };
 
+export type EntrustedGroup = {
+  employee: AssetPerson;
+  assets: CmmsAsset[];
+};
+
 export type CmmsAssetDetail = CmmsAsset & {
   description?: string | null;
   photos?: CmmsAssetPhoto[];

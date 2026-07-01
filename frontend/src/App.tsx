@@ -123,6 +123,7 @@ import type {
   DashboardOverview,
   DepartmentLevelOption,
   AssetPerson,
+  EntrustedGroup,
   CmmsAsset,
   CmmsAssetDetail,
   CmmsAssetPhoto,
@@ -9531,72 +9532,151 @@ function EmployeeNotesTab({ employeeId }: { employeeId: number }) {
   );
 }
 
-type EmployeeAssetsMode = 'mine' | 'service';
+type EmployeeAssetsMode = 'mine' | 'service' | 'entrusted';
+
+function ProfileAssetCard({ asset }: { asset: CmmsAsset }) {
+  const navigate = useNavigate();
+  const open = () => navigate(`/assets/${asset.id}`, { state: { asset } });
+  return (
+    <article
+      className="asset-card asset-card--link"
+      role="button"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          open();
+        }
+      }}
+    >
+      <div className="asset-card-media">
+        {asset.status ? (
+          <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
+        ) : null}
+        {asset.photo_url ? (
+          <img src={asset.photo_url} alt={asset.name} loading="lazy" />
+        ) : (
+          <div className="asset-card-noimg">
+            <Boxes size={42} />
+          </div>
+        )}
+      </div>
+      <div className="asset-card-body">
+        <strong className="asset-card-name" title={asset.name}>{asset.name}</strong>
+        {asset.inventory_number ? <span className="asset-card-inv">Інв. № {asset.inventory_number}</span> : null}
+      </div>
+    </article>
+  );
+}
 
 function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
-  const navigate = useNavigate();
   const [mode, setMode] = useState<EmployeeAssetsMode>('mine');
   const [items, setItems] = useState<CmmsAsset[]>([]);
   const [state, setState] = useState<LoadState>('idle');
-  // Вкладка «На обслуговуванні» лише для інженерів (є ≥1 актив, де співробітник — інженер).
   const [isEngineer, setIsEngineer] = useState<boolean>(false);
+  const [entrusted, setEntrusted] = useState<EntrustedGroup[]>([]);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
+  // Ознаки інженера («На обслуговуванні») та менеджера («Довірені») — визначаємо на маунт.
   useEffect(() => {
     let alive = true;
     setIsEngineer(false);
+    setEntrusted([]);
+    setExpanded(new Set());
     setMode('mine');
-    api
-      .assets({ hr_engineer_id: employeeId, page_size: 1 })
-      .then((res) => {
-        if (alive) setIsEngineer(res.total > 0);
-      })
-      .catch(() => {
-        if (alive) setIsEngineer(false);
-      });
+    api.assets({ hr_engineer_id: employeeId, page_size: 1 }).then((res) => {
+      if (alive) setIsEngineer(res.total > 0);
+    }).catch(() => {});
+    api.assetsEntrusted(employeeId).then((res) => {
+      if (alive) setEntrusted(res.items);
+    }).catch(() => {});
     return () => {
       alive = false;
     };
   }, [employeeId]);
 
+  // Плоскі списки для «Мої»/«На обслуговуванні».
   useEffect(() => {
+    if (mode === 'entrusted') return;
     let alive = true;
     setState('loading');
     const params =
       mode === 'mine'
         ? { hr_employee_id: employeeId, page_size: 100 as const }
         : { hr_engineer_id: employeeId, page_size: 100 as const };
-    api
-      .assets(params)
-      .then((res) => {
-        if (alive) {
-          setItems(res.items);
-          setState('ok');
-        }
-      })
-      .catch(() => {
-        if (alive) setState('error');
-      });
+    api.assets(params).then((res) => {
+      if (alive) {
+        setItems(res.items);
+        setState('ok');
+      }
+    }).catch(() => {
+      if (alive) setState('error');
+    });
     return () => {
       alive = false;
     };
   }, [employeeId, mode]);
 
+  function toggleGroup(id: number) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const emptyText = mode === 'mine' ? 'Активів, де співробітник відповідальний, немає.' : 'Активів на обслуговуванні немає.';
+  const hasTabs = isEngineer || entrusted.length > 0;
 
   return (
     <MoreSubPanel title="Активи">
-      {isEngineer ? (
+      {hasTabs ? (
         <nav className="asset-tabs employee-asset-tabs">
           <button type="button" className={`asset-tab${mode === 'mine' ? ' active' : ''}`} onClick={() => setMode('mine')}>
             Мої
           </button>
-          <button type="button" className={`asset-tab${mode === 'service' ? ' active' : ''}`} onClick={() => setMode('service')}>
-            На обслуговуванні
-          </button>
+          {isEngineer ? (
+            <button type="button" className={`asset-tab${mode === 'service' ? ' active' : ''}`} onClick={() => setMode('service')}>
+              На обслуговуванні
+            </button>
+          ) : null}
+          {entrusted.length ? (
+            <button type="button" className={`asset-tab${mode === 'entrusted' ? ' active' : ''}`} onClick={() => setMode('entrusted')}>
+              Довірені
+            </button>
+          ) : null}
         </nav>
       ) : null}
 
-      {state === 'loading' ? (
+      {mode === 'entrusted' ? (
+        <div className="entrusted-groups">
+          {entrusted.map((group) => {
+            const isOpen = expanded.has(group.employee.id);
+            return (
+              <div key={group.employee.id} className="entrusted-group">
+                <button type="button" className="entrusted-group-head" onClick={() => toggleGroup(group.employee.id)}>
+                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Avatar name={group.employee.full_name} src={group.employee.avatar_url ?? ''} size="sm" />
+                  <span className="entrusted-group-info">
+                    <strong>{group.employee.full_name}</strong>
+                    {group.employee.position ? <small>{group.employee.position}</small> : null}
+                  </span>
+                  <span className="entrusted-group-count">{group.assets.length}</span>
+                </button>
+                {isOpen ? (
+                  <div className="asset-grid asset-grid--profile entrusted-group-body">
+                    {group.assets.map((asset) => (
+                      <ProfileAssetCard key={asset.id} asset={asset} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : state === 'loading' ? (
         <div className="profile-tab-placeholder">
           <p className="people-data-empty">Завантаження…</p>
         </div>
@@ -9607,38 +9687,7 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
       ) : items.length ? (
         <div className="asset-grid asset-grid--profile">
           {items.map((asset) => (
-            <article
-              className="asset-card asset-card--link"
-              key={asset.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate(`/assets/${asset.id}`, { state: { asset } })}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  navigate(`/assets/${asset.id}`, { state: { asset } });
-                }
-              }}
-            >
-              <div className="asset-card-media">
-                {asset.status ? (
-                  <span className={`asset-status asset-status-${assetStatusClass(asset.status)}`}>{asset.status}</span>
-                ) : null}
-                {asset.photo_url ? (
-                  <img src={asset.photo_url} alt={asset.name} loading="lazy" />
-                ) : (
-                  <div className="asset-card-noimg">
-                    <Boxes size={42} />
-                  </div>
-                )}
-              </div>
-              <div className="asset-card-body">
-                <strong className="asset-card-name" title={asset.name}>{asset.name}</strong>
-                {asset.inventory_number ? (
-                  <span className="asset-card-inv">Інв. № {asset.inventory_number}</span>
-                ) : null}
-              </div>
-            </article>
+            <ProfileAssetCard key={asset.id} asset={asset} />
           ))}
         </div>
       ) : (
