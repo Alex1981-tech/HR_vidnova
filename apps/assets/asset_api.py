@@ -457,8 +457,34 @@ class PhysicalLocationApplyView(APIView):
         return Response({"applied": applied, "total": qs.count()})
 
 
+def _all_subordinate_ids(manager_id: int, today) -> list[int]:
+    """Транзитивно всі підлеглі (підлеглі підлеглих і т.д.) по дереву керування."""
+    seen: set[int] = set()
+    frontier = [int(manager_id)]
+    order: list[int] = []
+    while frontier:
+        direct = (
+            Employee.objects.filter(
+                manager_assignments__manager_id__in=frontier,
+                manager_assignments__is_primary=True,
+                manager_assignments__valid_from__lte=today,
+            )
+            .filter(Q(manager_assignments__valid_to__isnull=True) | Q(manager_assignments__valid_to__gte=today))
+            .values_list("id", flat=True)
+            .distinct()
+        )
+        next_frontier = []
+        for eid in direct:
+            if eid not in seen and eid != int(manager_id):
+                seen.add(eid)
+                order.append(eid)
+                next_frontier.append(eid)
+        frontier = next_frontier
+    return order
+
+
 class EntrustedAssetsView(APIView):
-    """«Довірені» — активи прямих підлеглих менеджера, згруповані по людях (для акордеона)."""
+    """«Довірені» — активи ВСІХ підлеглих по гілці (транзитивно), згруповані по людях."""
 
     permission_classes = [IsAuthenticated]
 
@@ -467,32 +493,24 @@ class EntrustedAssetsView(APIView):
         if not manager_id:
             return Response({"items": []})
         today = timezone.localdate()
-        reports = (
-            Employee.objects.filter(
-                manager_assignments__manager_id=manager_id,
-                manager_assignments__is_primary=True,
-                manager_assignments__valid_from__lte=today,
-            )
-            .filter(Q(manager_assignments__valid_to__isnull=True) | Q(manager_assignments__valid_to__gte=today))
-            .select_related("position")
-            .distinct()
-            .order_by("last_name", "first_name")
-        )
-        report_ids = [e.id for e in reports]
+        sub_ids = _all_subordinate_ids(manager_id, today)
+        if not sub_ids:
+            return Response({"items": []})
+
         assets = (
-            Asset.objects.filter(responsible_id__in=report_ids, is_active=True)
-            .select_related("location", "department", "responsible", "engineer")
+            Asset.objects.filter(responsible_id__in=sub_ids, is_active=True)
+            .select_related("location", "department", "responsible__position", "engineer")
             .prefetch_related("photos")
             .order_by("name")
         )
         index = _location_index()
         by_resp: dict[int, list] = {}
+        people: dict[int, object] = {}
         for asset in assets:
             by_resp.setdefault(asset.responsible_id, []).append(_asset_dict(asset, index))
+            people[asset.responsible_id] = asset.responsible
 
-        items = [
-            {"employee": _person_dict(emp), "assets": by_resp[emp.id]}
-            for emp in reports
-            if by_resp.get(emp.id)
-        ]
+        # Групи — люди, що мають активи; сортуємо за ПІБ.
+        ordered = sorted(people.values(), key=lambda e: (e.last_name or "", e.first_name or ""))
+        items = [{"employee": _person_dict(emp), "assets": by_resp[emp.id]} for emp in ordered]
         return Response({"items": items})
