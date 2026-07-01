@@ -9861,6 +9861,7 @@ textarea.profile-field-input {
   position: sticky;
   top: 0;
   z-index: 60;
+  isolation: isolate;
 }
 
 .employee-head,
@@ -9885,6 +9886,9 @@ textarea.profile-field-input {
   z-index: 45;
   background: var(--panel);
   box-shadow: 8px 0 14px -14px rgba(24, 45, 70, 0.45);
+  overflow: hidden;
+  isolation: isolate;
+  transform: translateZ(0);
 }
 
 .employee-head {
