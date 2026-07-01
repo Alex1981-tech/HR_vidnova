@@ -19654,6 +19654,40 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
   font-size: 15px;
   font-weight: 600;
 }
+
+/* ---- Вкладки сторінки активу ---- */
+.asset-tabs-section {
+  margin-top: 20px;
+}
+.asset-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
+.asset-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.asset-tab:hover {
+  color: var(--text);
+}
+.asset-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
 .asset-history-table-wrap {
   border: 1px solid var(--line);
   border-radius: 12px;

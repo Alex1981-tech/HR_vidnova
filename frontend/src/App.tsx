@@ -24283,6 +24283,16 @@ function assetDetailIdFromPathname(pathname: string): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
+type AssetDetailTab = 'history' | 'finance' | 'instructions' | 'maintenance' | 'tasks';
+
+const ASSET_DETAIL_TABS: Array<{ key: AssetDetailTab; label: string }> = [
+  { key: 'history', label: 'Історія володіння' },
+  { key: 'finance', label: 'Фінанси' },
+  { key: 'instructions', label: 'Інструкції' },
+  { key: 'maintenance', label: 'Ремонт / ТО' },
+  { key: 'tasks', label: 'Задачі' },
+];
+
 // Відповідальний/інженер на сторінці активу — картка людини (аватар + ПІБ + посада).
 function assetPersonChip(person?: AssetPerson | null): ReactNode {
   if (!person) return <span className="asset-fact-empty">—</span>;
@@ -24312,6 +24322,7 @@ function AssetDetailView({
   const [galleryIndex, setGalleryIndex] = useState<number | null>(null);
   const [history, setHistory] = useState<CmmsOwnershipRow[]>([]);
   const [historyState, setHistoryState] = useState<LoadState>('idle');
+  const [assetTab, setAssetTab] = useState<AssetDetailTab>('history');
 
   useEffect(() => {
     let alive = true;
@@ -24435,45 +24446,66 @@ function AssetDetailView({
       {loading && !asset ? <div className="asset-detail-loading">{'Завантаження…'}</div> : null}
 
       {!error ? (
-        <section className="asset-history">
-          <h2 className="asset-history-title">Історія володіння</h2>
-          {historyState === 'loading' ? (
-            <div className="asset-detail-loading">Завантаження…</div>
-          ) : history.length ? (
-            <div className="asset-history-table-wrap">
-              <table className="asset-history-table">
-                <thead>
-                  <tr>
-                    <th>Дата</th>
-                    <th>Місто</th>
-                    <th>Клініка</th>
-                    <th>Кабінет</th>
-                    <th>Відповідальний</th>
-                    <th>Відповідальний інженер</th>
-                    <th>Сдано</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((row, index) => (
-                    <tr key={`${row.date ?? 'row'}-${index}`} className={row.is_creation ? 'asset-history-creation' : ''}>
-                      <td>
-                        {formatAssetHistoryDate(row.date)}
-                        {row.is_creation ? <span className="asset-history-badge">Додано в систему</span> : null}
-                      </td>
-                      <td>{row.city || '—'}</td>
-                      <td>{row.clinic || '—'}</td>
-                      <td>{row.cabinet || '—'}</td>
-                      <td>{row.responsible_name || '—'}</td>
-                      <td>{row.engineer_name || '—'}</td>
-                      <td>{row.handed_over ? formatAssetHistoryDate(row.handed_over) : '—'}</td>
+        <section className="asset-tabs-section">
+          <nav className="asset-tabs">
+            {ASSET_DETAIL_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                className={`asset-tab${assetTab === tab.key ? ' active' : ''}`}
+                onClick={() => setAssetTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {assetTab === 'history' ? (
+            historyState === 'loading' ? (
+              <div className="asset-detail-loading">Завантаження…</div>
+            ) : history.length ? (
+              <div className="asset-history-table-wrap">
+                <table className="asset-history-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Місто</th>
+                      <th>Клініка</th>
+                      <th>Кабінет</th>
+                      <th>Відповідальний</th>
+                      <th>Відповідальний інженер</th>
+                      <th>Сдано</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {history.map((row, index) => (
+                      <tr key={`${row.date ?? 'row'}-${index}`} className={row.is_creation ? 'asset-history-creation' : ''}>
+                        <td>
+                          {formatAssetHistoryDate(row.date)}
+                          {row.is_creation ? <span className="asset-history-badge">Додано в систему</span> : null}
+                        </td>
+                        <td>{row.city || '—'}</td>
+                        <td>{row.clinic || '—'}</td>
+                        <td>{row.cabinet || '—'}</td>
+                        <td>{row.responsible_name || '—'}</td>
+                        <td>{row.engineer_name || '—'}</td>
+                        <td>{row.handed_over ? formatAssetHistoryDate(row.handed_over) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="org-empty-panel">
+                <EmptyState title="Історія відсутня" text="Зміни власника, інженера чи локації зʼявляться тут." />
+              </div>
+            )
           ) : (
             <div className="org-empty-panel">
-              <EmptyState title="Історія відсутня" text="Зміни власника, інженера чи локації зʼявляться тут." />
+              <EmptyState
+                title={`${ASSET_DETAIL_TABS.find((tab) => tab.key === assetTab)?.label ?? ''} — у розробці`}
+                text="Розділ зʼявиться тут найближчим часом."
+              />
             </div>
           )}
         </section>
