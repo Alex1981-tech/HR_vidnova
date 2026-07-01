@@ -76,7 +76,27 @@ CMMS-ендпоінт задеплоєно (2 коміти в `master`: `6adeaf1
 ### Департамент-баг (2026-07-01) — ✅ FIX
 POST `/api/employees/departments/` давав 400 «clinic обов'язкове» коли фронт **опускав** clinic (DRF UniqueTogether робить поле required при omit). Фронт тепер шле `clinic: null` (бекенд дефолтить на активну клініку). `frontend/src/App.tsx` ~payload департаменту.
 
-## Phase B — HR→CMMS майстер-синк (людей/структури) — ⏸ ВІДКЛАДЕНО
+## Phase C — КОНСОЛІДАЦІЯ: активи в HR (відмова від CMMS) — 🚧 В РОБОТІ (2026-07-01)
+
+**Стратегічне рішення Alex:** CMMS не доробили, нею не користуються (лише ядро-сховище активів: активи+фото+локація+QR). Замість тягнути дві системи й синк — **консолідувати активи в HR** (нативні FK), CMMS вивести з гри. ТО/QR — вести в HR за потреби. MVP: активи+фото+локація+категорії/типи.
+
+- ✅ **Моделі HR** (`apps/assets/models.py`, міграція 0003): `Asset` (інв.№/назва/статус/виробник + FK location→PhysicalLocation, department→Department, **responsible→Employee**, **engineer→Employee** (нативно, без user-костиля!), category/asset_type, фінанси, tags, description, cmms_asset_id для міграції), `AssetPhoto` (FileField, без Pillow), `AssetCategory` (дерево), `AssetType`.
+- ✅ **Міграційна команда** `import_cmms_assets` (`--no-photos`, `--limit`): імпортує категорії(дерево)+типи, активи (upsert по cmms_asset_id), мапить локацію (cmms_location_id), департамент/відповідального (peopleforce_id→HR), інженера (CMMS user→HR Employee за email/ПІБ), фото (download з CMMS /uploads→HR media).
+- ✅ **Перевірено на 20 активах**: location 20/20, department 20/20, responsible 20/20, category 19/20 (1 без кат. у CMMS), type 20/20, engineer 0/20 (у цих немає інженера в CMMS — норм). Фото: 15 з 10 активів завантажено в HR media. **Імена HR перемагають** (напр. CMMS «Побережник Оксана» → HR «Кубриш Оксана», та сама pf 559449 — заміжжя).
+- ✅ **Повна міграція** (2026-07-01): `import_cmms_assets` — **721 актив, 1200 фото, 606 категорій**. Локація/департамент 100%, відповідальний 454/721, інженер 258/721 (решта не мали в CMMS). Фото в HR media (`/media/assets/`).
+- ✅ **HR-нативний API** — `apps/assets/asset_api.py`: `AssetListView`/`AssetDetailView`/`AssetOptionsView`/`AssignResponsibleView` читають з HR ORM (нативні FK), шейп-сумісні зі старим проксі. `AssetOwnershipHistoryView` — транзитно проксі CMMS за `cmms_asset_id`. URL перецілено (`urls.py` → asset_api).
+- ✅ **Фронт працює нативно БЕЗ ЗМІН** (шейп-сумісність): /assets список + дет/фото/галерея — HR-дані, фото з HR media, інженер тепер показується (нативний FK). Vite проксує /media на бекенд.
+- ✅ **Tree-builder фізструктури** (2026-07-01): `/settings/asset-zones` перероблено на дерево клініка→поверхи→кабінети. API `/api/assets/physical-locations/` (list-tree + `_CHILD_KIND` + asset_count, CRUD, delete guard якщо є активи у субдереві). Фронт `AssetZonesSettingsView` → tree-builder (expand/collapse, kind-бейджі, hover-дії +/✎/🗑, інлайн-додавання дочірнього, rename-modal). Перевірено: створення клініки під містом працює.
+
+### Roadmap що лишилось (Alex: «тоже надо закончить»)
+- ⏳ **1. Native ownership-history** — HR-трекінг змін (Django signals на Asset: responsible/engineer/location) замість транзитного проксі CMMS.
+- ⏳ **2. Зони→нативний apply**: призначення інженера на вузол фізструктури + «Застосувати» ставить `Asset.engineer` напряму (без CMMS PUT). Інтегрувати в tree-builder (engineer на вузол).
+- ⏳ **3. QR + ТО** — генерація QR на актив + `MaintenanceTask`/`MaintenanceLog`.
+- ⏳ **4. Прибрати залишковий `cmms_client`** (лишився тільки в ownership-history proxy) → CMMS холодний архів.
+
+**Реюз попередньої роботи:** фізструктура (Phase A3) = ядро локацій; ownership-history/зони переходять на нативні моделі; сторінки активів/галерея/таблиця історії вже є — треба лише перецілити на HR-дані.
+
+## Phase B — HR→CMMS майстер-синк (людей/структури) — ⏸ ВІДКЛАДЕНО (втрачає сенс при консолідації)
 
 Alex переключив пріоритет на зони (Phase A2). Bulk-синк співробітників/департаментів/локацій/посад лишається на потім.
 

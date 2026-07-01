@@ -878,9 +878,18 @@ export type CmmsAssetPhoto = {
   is_primary?: boolean;
 };
 
+export type AssetPerson = {
+  id: number;
+  full_name: string;
+  position: string;
+  avatar_url: string | null;
+};
+
 export type CmmsAssetDetail = CmmsAsset & {
   description?: string | null;
   photos?: CmmsAssetPhoto[];
+  responsible?: AssetPerson | null;
+  engineer?: AssetPerson | null;
 };
 
 export type AssetZone = {
@@ -895,6 +904,18 @@ export type AssetZone = {
   engineer_name: string;
   last_applied_at: string | null;
   last_applied_count: number | null;
+};
+
+export type PhysicalNode = {
+  id: number;
+  name: string;
+  kind: 'city' | 'clinic' | 'floor' | 'cabinet';
+  parent_id: number | null;
+  order: number;
+  asset_count: number;
+  engineer_id: number | null;
+  engineer_name: string | null;
+  children: PhysicalNode[];
 };
 
 export type AssetZoneOptions = {

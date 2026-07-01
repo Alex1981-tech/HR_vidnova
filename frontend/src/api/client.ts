@@ -74,6 +74,7 @@ import type {
   CmmsOwnershipRow,
   AssetZone,
   AssetZoneOptions,
+  PhysicalNode,
 } from '../types/api';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -443,6 +444,17 @@ export const api = {
   assetOwnershipHistory: (assetId: number) =>
     request<{ items: CmmsOwnershipRow[] }>(`/api/assets/${assetId}/ownership-history/`),
   assetOptions: () => request<CmmsAssetOptions>('/api/assets/options/'),
+  physicalLocations: () => request<{ items: PhysicalNode[] }>('/api/assets/physical-locations/'),
+  createPhysicalLocation: (payload: { name: string; parent_id?: number | null; kind?: string }) =>
+    request<PhysicalNode>('/api/assets/physical-locations/', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePhysicalLocation: (id: number, payload: { name?: string; kind?: string; order?: number; engineer_id?: number | null }) =>
+    request<PhysicalNode>(`/api/assets/physical-locations/${id}/`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deletePhysicalLocation: (id: number) =>
+    request<void>(`/api/assets/physical-locations/${id}/`, { method: 'DELETE' }),
+  previewPhysicalLocation: (id: number) =>
+    request<{ count: number }>(`/api/assets/physical-locations/${id}/apply/?preview=1`, { method: 'POST' }),
+  applyPhysicalLocation: (id: number) =>
+    request<{ applied: number; total: number }>(`/api/assets/physical-locations/${id}/apply/`, { method: 'POST' }),
   assetZones: () => request<{ items: AssetZone[] }>('/api/assets/zones/'),
   assetZoneOptions: () => request<AssetZoneOptions>('/api/assets/zones/options/'),
   createAssetZone: (payload: Partial<AssetZone>) =>

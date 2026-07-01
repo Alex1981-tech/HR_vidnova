@@ -121,6 +121,7 @@ import type {
   CompanyAttendanceSummary,
   DashboardOverview,
   DepartmentLevelOption,
+  AssetPerson,
   CmmsAsset,
   CmmsAssetDetail,
   CmmsAssetPhoto,
@@ -128,6 +129,7 @@ import type {
   CmmsOwnershipRow,
   AssetZone,
   AssetZoneOptions,
+  PhysicalNode,
   CmmsLocation,
   DepartmentOption,
   DivisionOption,
@@ -16113,9 +16115,25 @@ function orgGraphDimensions(compact: boolean): OrgGraphDimensions {
 
 class OrgElbowConnection extends MultipointConnection {
   createPath(): Path2D {
-    const points = this.getPoints();
-    if (!points.length) return super.createPath();
+    const points = this.getPoints().filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+    if (points.length < 2) return super.createPath();
     return polyline(points);
+  }
+
+  updatePoints() {
+    super.updatePoints();
+    this.path2d = this.createPath();
+  }
+
+  onHitBox(shape: Parameters<MultipointConnection['onHitBox']>[0]) {
+    try {
+      if (!(this.path2d instanceof Path2D)) {
+        this.path2d = this.createPath();
+      }
+      return super.onHitBox(shape);
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -17146,7 +17164,7 @@ function OrgGraphCanvasView({
       showConnectionLabels: false,
       connectivityComponentOnClickRaise: false,
       connection: OrgElbowConnection,
-      emulateMouseEventsOnCameraChange: true,
+      emulateMouseEventsOnCameraChange: false,
       getCameraBlockScaleLevel: () => ECameraScaleLevel.Detailed,
     },
     viewConfiguration: graphTheme,
@@ -24264,6 +24282,20 @@ function assetDetailIdFromPathname(pathname: string): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
+// Відповідальний/інженер на сторінці активу — картка людини (аватар + ПІБ + посада).
+function assetPersonChip(person?: AssetPerson | null): ReactNode {
+  if (!person) return <span className="asset-fact-empty">—</span>;
+  return (
+    <span className="asset-person">
+      <Avatar name={person.full_name} src={person.avatar_url ?? ''} size="sm" />
+      <span className="asset-person-info">
+        <strong>{person.full_name}</strong>
+        {person.position ? <small>{person.position}</small> : null}
+      </span>
+    </span>
+  );
+}
+
 function AssetDetailView({
   assetId,
   initial,
@@ -24327,8 +24359,8 @@ function AssetDetailView({
   const rows: Array<{ icon: ReactNode; label: string; value: ReactNode; strong?: boolean }> = [
     { icon: <Hash size={16} />, label: 'Інвентарний номер', value: asset?.inventory_number || '—', strong: true },
     { icon: <MapPin size={16} />, label: 'Локація', value: asset?.location_name || '—' },
-    { icon: <Users size={16} />, label: 'Відповідальна особа', value: asset?.responsible_person_name || '—' },
-    { icon: <Wrench size={16} />, label: 'Відповідальний інженер', value: asset?.engineer_name || '—' },
+    { icon: <Users size={16} />, label: 'Відповідальна особа', value: assetPersonChip(asset?.responsible) },
+    { icon: <Wrench size={16} />, label: 'Відповідальний інженер', value: assetPersonChip(asset?.engineer) },
     { icon: <FileText size={16} />, label: 'Опис', value: asset?.description?.trim() || '—' },
   ];
 
@@ -24340,15 +24372,6 @@ function AssetDetailView({
           До активів
         </button>
         <h1 className="asset-detail-title">{asset?.name || initial?.name || `Актив #${assetId}`}</h1>
-        <a
-          className="toolbar-button asset-detail-cmms-link"
-          href={`${CMMS_APP_URL}/assets/${assetId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Перейти в CMMS
-          <ArrowUpRight size={15} />
-        </a>
       </header>
 
       {error ? (
@@ -24514,52 +24537,30 @@ function AssetGalleryModal({
   );
 }
 
-type ZoneForm = {
-  id: number | null;
-  name: string;
-  scope_type: 'location' | 'department';
-  locationPath: number[];
-  department_id: number | '';
-  engineer_user_id: number | '';
-};
+const KIND_LABEL: Record<string, string> = { city: 'Місто', clinic: 'Клініка', floor: 'Поверх', cabinet: 'Кабінет' };
+const CHILD_KIND: Record<string, string> = { city: 'clinic', clinic: 'floor', floor: 'cabinet', cabinet: 'cabinet' };
+const CHILD_LABEL: Record<string, string> = { city: 'клініку', clinic: 'поверх', floor: 'кабінет', cabinet: 'підкабінет' };
 
-const EMPTY_ZONE_FORM: ZoneForm = {
-  id: null,
-  name: '',
-  scope_type: 'location',
-  locationPath: [],
-  department_id: '',
-  engineer_user_id: '',
-};
-
-// Назви рівнів обраного шляху локації → "Місто → Клініка → Кабінет".
-function locationPathNames(locations: CmmsLocation[], path: number[]): string {
-  const names: string[] = [];
-  let level = locations;
-  for (const id of path) {
-    const node = level.find((loc) => loc.id === id);
-    if (!node) break;
-    names.push(node.name);
-    level = node.sublocations ?? [];
-  }
-  return names.join(' → ');
-}
+type NodeForm = { id: number | null; parentId: number | null; kind: string; name: string };
 
 function AssetZonesSettingsView({ onBack }: { onBack: () => void }) {
-  const [zones, setZones] = useState<AssetZone[]>([]);
-  const [options, setOptions] = useState<AssetZoneOptions | null>(null);
+  const [tree, setTree] = useState<PhysicalNode[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('idle');
   const [error, setError] = useState('');
-  const [form, setForm] = useState<ZoneForm | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [form, setForm] = useState<NodeForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const [engineers, setEngineers] = useState<Array<{ id: number; full_name: string }>>([]);
+  const [engNode, setEngNode] = useState<PhysicalNode | null>(null);
+  const [engSel, setEngSel] = useState<number | ''>('');
   const [busyId, setBusyId] = useState<number | null>(null);
 
   function reload() {
     setLoadState('loading');
     api
-      .assetZones()
+      .physicalLocations()
       .then((data) => {
-        setZones(data.items);
+        setTree(data.items);
         setLoadState('ok');
       })
       .catch(() => setLoadState('error'));
@@ -24567,101 +24568,169 @@ function AssetZonesSettingsView({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     reload();
-    api.assetZoneOptions().then(setOptions).catch(() => setOptions(null));
+    api.assetOptions().then((opts) => setEngineers(opts.employees)).catch(() => setEngineers([]));
   }, []);
 
-  function openCreate() {
+  function openEngineer(node: PhysicalNode) {
     setError('');
-    setForm({ ...EMPTY_ZONE_FORM });
+    setEngSel(node.engineer_id ?? '');
+    setEngNode(node);
   }
 
-  function openEdit(zone: AssetZone) {
-    setError('');
-    setForm({
-      id: zone.id,
-      name: zone.name,
-      scope_type: zone.scope_type,
-      locationPath: zone.scope_type === 'location' && zone.location_id && options
-        ? locationPathToRoot(options.locations, zone.location_id)
-        : [],
-      department_id: zone.department_id ?? '',
-      engineer_user_id: zone.engineer_user_id ?? '',
-    });
-  }
-
-  function setLocationLevel(level: number, value: string) {
-    setForm((current) => {
-      if (!current) return current;
-      const next = current.locationPath.slice(0, level);
-      if (value) next.push(Number(value));
-      return { ...current, locationPath: next };
-    });
-  }
-
-  async function save() {
-    if (!form || !options) return;
-    const deepest = form.locationPath[form.locationPath.length - 1] ?? null;
-    if (form.scope_type === 'location' && !deepest) {
-      setError('Оберіть локацію');
-      return;
-    }
-    if (form.scope_type === 'department' && !form.department_id) {
-      setError('Оберіть департамент');
-      return;
-    }
-    const engineer = options.engineers.find((e) => e.id === form.engineer_user_id);
-    const department = options.departments.find((d) => d.id === form.department_id);
-    const payload: Partial<AssetZone> = {
-      name: form.name,
-      scope_type: form.scope_type,
-      location_id: form.scope_type === 'location' ? deepest : null,
-      location_name: form.scope_type === 'location' ? locationPathNames(options.locations, form.locationPath) : '',
-      department_id: form.scope_type === 'department' ? Number(form.department_id) : null,
-      department_name: form.scope_type === 'department' ? department?.name ?? '' : '',
-      engineer_user_id: form.engineer_user_id ? Number(form.engineer_user_id) : null,
-      engineer_name: engineer?.full_name ?? '',
-    };
+  async function saveEngineer() {
+    if (!engNode) return;
     setSaving(true);
     setError('');
     try {
-      if (form.id) await api.updateAssetZone(form.id, payload);
-      else await api.createAssetZone(payload);
-      setForm(null);
+      await api.updatePhysicalLocation(engNode.id, { engineer_id: engSel ? Number(engSel) : null });
+      setEngNode(null);
       reload();
     } catch (saveError) {
-      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося зберегти зону');
+      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося зберегти інженера');
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(zone: AssetZone) {
-    setBusyId(zone.id);
+  async function applyNode(node: PhysicalNode) {
+    setBusyId(node.id);
+    setError('');
     try {
-      await api.deleteAssetZone(zone.id);
+      const preview = await api.previewPhysicalLocation(node.id);
+      const ok = window.confirm(
+        `Застосувати? Інженера «${node.engineer_name}» буде проставлено ${preview.count} активам у «${node.name}» (з субдеревом).`,
+      );
+      if (!ok) return;
+      const res = await api.applyPhysicalLocation(node.id);
+      window.alert(`Готово: оновлено ${res.applied} з ${res.total} активів.`);
       reload();
+    } catch (applyError) {
+      setError(applyError instanceof ApiError ? applyError.message : 'Не вдалося застосувати');
     } finally {
       setBusyId(null);
     }
   }
 
-  async function apply(zone: AssetZone) {
-    setBusyId(zone.id);
+  function toggle(id: number) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function openAddChild(parent: PhysicalNode | null) {
+    setError('');
+    const kind = parent ? CHILD_KIND[parent.kind] : 'city';
+    setForm({ id: null, parentId: parent?.id ?? null, kind, name: '' });
+    if (parent) setExpanded((current) => new Set(current).add(parent.id));
+  }
+
+  function openRename(node: PhysicalNode) {
+    setError('');
+    setForm({ id: node.id, parentId: node.parent_id, kind: node.kind, name: node.name });
+  }
+
+  async function save() {
+    if (!form || !form.name.trim()) {
+      setError('Вкажіть назву');
+      return;
+    }
+    setSaving(true);
     setError('');
     try {
-      const preview = await api.assetZonePreview(zone.id);
-      const ok = window.confirm(
-        `Застосувати зону? Інженера «${zone.engineer_name || '—'}» буде проставлено ${preview.count} активам у скоупі «${zone.location_name || zone.department_name}».`,
-      );
-      if (!ok) return;
-      const res = await api.applyAssetZone(zone.id);
-      window.alert(`Готово: оновлено ${res.applied} активів.`);
+      if (form.id) await api.updatePhysicalLocation(form.id, { name: form.name.trim() });
+      else await api.createPhysicalLocation({ name: form.name.trim(), parent_id: form.parentId, kind: form.kind });
+      setForm(null);
       reload();
-    } catch (applyError) {
-      setError(applyError instanceof ApiError ? applyError.message : 'Не вдалося застосувати зону');
+    } catch (saveError) {
+      setError(saveError instanceof ApiError ? saveError.message : 'Не вдалося зберегти');
     } finally {
-      setBusyId(null);
+      setSaving(false);
     }
+  }
+
+  async function remove(node: PhysicalNode) {
+    const label = node.children.length ? `«${node.name}» і всі дочірні` : `«${node.name}»`;
+    if (!window.confirm(`Видалити ${label}?`)) return;
+    setError('');
+    try {
+      await api.deletePhysicalLocation(node.id);
+      reload();
+    } catch (removeError) {
+      setError(removeError instanceof ApiError ? removeError.message : 'Не вдалося видалити');
+    }
+  }
+
+  function inlineForm(depth: number) {
+    if (!form || form.id) return null;
+    return (
+      <div className="pl-row pl-form-row" style={{ paddingLeft: `${depth * 22 + 8}px` }}>
+        <span className={`pl-kind pl-kind-${form.kind}`}>{KIND_LABEL[form.kind]}</span>
+        <input
+          className="pl-input"
+          autoFocus
+          value={form.name}
+          onChange={(event) => setForm({ ...form, name: event.target.value })}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') save();
+            if (event.key === 'Escape') setForm(null);
+          }}
+          placeholder={`Назва (${KIND_LABEL[form.kind]})`}
+        />
+        <button type="button" className="primary-action" onClick={save} disabled={saving}>
+          Додати
+        </button>
+        <button type="button" className="toolbar-button" onClick={() => setForm(null)}>
+          <X size={15} />
+        </button>
+      </div>
+    );
+  }
+
+  function renderNode(node: PhysicalNode, depth: number): ReactNode {
+    const hasChildren = node.children.length > 0;
+    const isOpen = expanded.has(node.id);
+    const canAddChild = node.kind !== 'cabinet';
+    return (
+      <div key={node.id} className="pl-node">
+        <div className="pl-row" style={{ paddingLeft: `${depth * 22 + 8}px` }}>
+          <button type="button" className="pl-toggle" onClick={() => hasChildren && toggle(node.id)} disabled={!hasChildren}>
+            {hasChildren ? (isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />) : <span className="pl-dot" />}
+          </button>
+          <span className={`pl-kind pl-kind-${node.kind}`}>{KIND_LABEL[node.kind]}</span>
+          <span className="pl-name">{node.name}</span>
+          {node.asset_count ? <span className="pl-count">{node.asset_count} активів</span> : null}
+          {node.engineer_name ? (
+            <span className="pl-eng"><Wrench size={12} />{node.engineer_name}</span>
+          ) : null}
+          <span className="pl-actions">
+            {node.engineer_id ? (
+              <button type="button" className="toolbar-button pl-apply" disabled={busyId === node.id} onClick={() => applyNode(node)}>
+                Застосувати
+              </button>
+            ) : null}
+            <button type="button" className="icon-button" title="Інженер зони" onClick={() => openEngineer(node)}>
+              <Wrench size={14} />
+            </button>
+            {canAddChild ? (
+              <button type="button" className="icon-button" title={`Додати ${CHILD_LABEL[node.kind]}`} onClick={() => openAddChild(node)}>
+                <Plus size={14} />
+              </button>
+            ) : null}
+            <button type="button" className="icon-button" title="Перейменувати" onClick={() => openRename(node)}>
+              <Pencil size={14} />
+            </button>
+            <button type="button" className="icon-button" title="Видалити" onClick={() => remove(node)}>
+              <Trash2 size={14} />
+            </button>
+          </span>
+        </div>
+        {isOpen && hasChildren ? node.children.map((child) => renderNode(child, depth + 1)) : null}
+        {form && !form.id && form.parentId === node.id ? inlineForm(depth + 1) : null}
+      </div>
+    );
   }
 
   return (
@@ -24672,167 +24741,92 @@ function AssetZonesSettingsView({ onBack }: { onBack: () => void }) {
             <ChevronLeft size={17} />
             Назад
           </button>
-          <h1>Активи · Зони відповідальності</h1>
+          <h1>Активи · Фізична структура</h1>
         </div>
         <div className="settings-option-actions">
-          <button type="button" className="primary-action" onClick={openCreate}>
+          <button type="button" className="primary-action" onClick={() => openAddChild(null)}>
             <Plus size={16} />
-            Додати зону
+            Додати місто
           </button>
         </div>
       </header>
 
       <p className="settings-option-hint">
-        Зона = скоуп (клініка / департамент / кабінет) + інженер. «Застосувати» проставляє інженера всім активам у скоупі.
+        Будуйте фізичну структуру: місто → клініка → поверх → кабінет. Активи привʼязуються до вузлів. Наведіть на рядок — додати дочірній / перейменувати / видалити.
       </p>
 
       {error ? <div className="org-empty-panel"><EmptyState title="Помилка" text={error} /></div> : null}
 
-      {form ? (
-        <div className="zone-editor">
-          <div className="zone-editor-row">
-            <label>Назва (необовʼязково)</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(event) => setForm({ ...form, name: event.target.value })}
-              placeholder="напр. Косметологія ЗП"
-            />
-          </div>
-
-          <div className="zone-editor-row">
-            <label>Скоуп</label>
-            <div className="segmented flat">
-              <button
-                type="button"
-                className={form.scope_type === 'location' ? 'active' : ''}
-                onClick={() => setForm({ ...form, scope_type: 'location' })}
-              >
-                Локація
-              </button>
-              <button
-                type="button"
-                className={form.scope_type === 'department' ? 'active' : ''}
-                onClick={() => setForm({ ...form, scope_type: 'department' })}
-              >
-                Департамент
-              </button>
-            </div>
-          </div>
-
-          {form.scope_type === 'location' && options ? (
-            <div className="zone-editor-row">
-              <label>Локація (клініка / поверх / кабінет)</label>
-              <div className="asset-location-levels">
-                {Array.from({ length: form.locationPath.length + 1 }).map((_, level) => {
-                  const levelOptions = locationLevelOptions(options.locations, form.locationPath.slice(0, level));
-                  if (levelOptions.length === 0) return null;
-                  return (
-                    <select
-                      key={level}
-                      value={form.locationPath[level] ?? ''}
-                      onChange={(event) => setLocationLevel(level, event.target.value)}
-                    >
-                      <option value="">— оберіть —</option>
-                      {levelOptions.map((loc) => (
-                        <option key={loc.id} value={loc.id}>
-                          {loc.name}
-                        </option>
-                      ))}
-                    </select>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {form.scope_type === 'department' && options ? (
-            <div className="zone-editor-row">
-              <label>Департамент</label>
-              <select
-                value={form.department_id}
-                onChange={(event) => setForm({ ...form, department_id: event.target.value ? Number(event.target.value) : '' })}
-              >
-                <option value="">— оберіть —</option>
-                {options.departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
-          <div className="zone-editor-row">
-            <label>Відповідальний інженер</label>
-            <select
-              value={form.engineer_user_id}
-              onChange={(event) => setForm({ ...form, engineer_user_id: event.target.value ? Number(event.target.value) : '' })}
-            >
-              <option value="">— оберіть —</option>
-              {options?.engineers.map((eng) => (
-                <option key={eng.id} value={eng.id}>
-                  {eng.full_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="zone-editor-actions">
-            <button type="button" className="toolbar-button" onClick={() => setForm(null)} disabled={saving}>
-              Скасувати
-            </button>
-            <button type="button" className="primary-action" onClick={save} disabled={saving}>
-              {saving ? 'Збереження…' : 'Зберегти'}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {loadState === 'loading' ? (
         <div className="asset-detail-loading">Завантаження…</div>
-      ) : zones.length === 0 && !form ? (
-        <div className="org-empty-panel"><EmptyState title="Зон ще немає" text="Створіть першу зону відповідальності." /></div>
+      ) : tree.length === 0 && !form ? (
+        <div className="org-empty-panel"><EmptyState title="Структура порожня" text="Додайте перше місто/клініку." /></div>
       ) : (
-        <div className="zone-list">
-          {zones.map((zone) => (
-            <div key={zone.id} className="zone-card">
-              <div className="zone-card-main">
-                <div className="zone-card-scope">
-                  {zone.scope_type === 'location' ? <MapPin size={15} /> : <Building2 size={15} />}
-                  <span>{zone.name || zone.location_name || zone.department_name || '—'}</span>
-                </div>
-                <div className="zone-card-meta">
-                  <span className="zone-card-target">{zone.location_name || zone.department_name || '—'}</span>
-                  <span className="zone-card-eng">
-                    <Wrench size={13} />
-                    {zone.engineer_name || 'Інженер не призначений'}
-                  </span>
-                  {zone.last_applied_count != null ? (
-                    <span className="zone-card-applied">застосовано до {zone.last_applied_count} активів</span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="zone-card-actions">
-                <button type="button" className="toolbar-button" disabled={busyId === zone.id || !zone.engineer_user_id} onClick={() => apply(zone)}>
-                  Застосувати
-                </button>
-                <button type="button" className="icon-button" onClick={() => openEdit(zone)} aria-label="Редагувати">
-                  <Pencil size={15} />
-                </button>
-                <button type="button" className="icon-button" disabled={busyId === zone.id} onClick={() => remove(zone)} aria-label="Видалити">
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="pl-tree">
+          {tree.map((node) => renderNode(node, 0))}
+          {form && !form.id && form.parentId === null ? inlineForm(0) : null}
         </div>
       )}
+
+      {form && form.id
+        ? createPortal(
+            <div className="pl-modal-backdrop" onClick={() => setForm(null)}>
+              <div className="pl-modal" onClick={(event) => event.stopPropagation()}>
+                <label>Назва ({KIND_LABEL[form.kind]})</label>
+                <input
+                  className="pl-input"
+                  autoFocus
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') save();
+                    if (event.key === 'Escape') setForm(null);
+                  }}
+                />
+                <div className="pl-modal-actions">
+                  <button type="button" className="toolbar-button" onClick={() => setForm(null)}>
+                    Скасувати
+                  </button>
+                  <button type="button" className="primary-action" onClick={save} disabled={saving}>
+                    Зберегти
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+
+      {engNode
+        ? createPortal(
+            <div className="pl-modal-backdrop" onClick={() => setEngNode(null)}>
+              <div className="pl-modal" onClick={(event) => event.stopPropagation()}>
+                <label>Інженер зони «{engNode.name}»</label>
+                <select className="pl-input" value={engSel} onChange={(event) => setEngSel(event.target.value ? Number(event.target.value) : '')}>
+                  <option value="">— без інженера —</option>
+                  {engineers.map((eng) => (
+                    <option key={eng.id} value={eng.id}>
+                      {eng.full_name}
+                    </option>
+                  ))}
+                </select>
+                <div className="pl-modal-actions">
+                  <button type="button" className="toolbar-button" onClick={() => setEngNode(null)}>
+                    Скасувати
+                  </button>
+                  <button type="button" className="primary-action" onClick={saveEngineer} disabled={saving}>
+                    Зберегти
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </main>
   );
 }
 
-// CMMS location id → шлях id-шників від кореня до вузла (для відновлення каскаду при редагуванні).
 function locationPathToRoot(locations: CmmsLocation[], targetId: number): number[] {
   function dfs(nodes: CmmsLocation[], trail: number[]): number[] | null {
     for (const node of nodes) {
