@@ -5,7 +5,7 @@ from django.db.models import Count
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.permissions import ConfiguredReadOnlyOrAuthenticated
+from config.permissions import ConfiguredReadOnlyOrAuthenticated, IsSystemAdmin
 from apps.employees.models import Employee
 from apps.leave.models import LeaveRequest
 from apps.skud.models import IntegrationRun, WorkDaySummary
@@ -314,3 +314,43 @@ class TenureReportView(APIView):
                 "by_clinic": avg_table(clinic_days),
             }
         )
+
+
+class SystemSecurityLogView(APIView):
+    """Системний журнал подій безпеки (усі користувачі). Лише для адмінів."""
+
+    permission_classes = [IsSystemAdmin]
+
+    def get(self, request):
+        from apps.access.models import AuthAuditEvent
+
+        qs = AuthAuditEvent.objects.select_related("employee", "user").order_by("-created_at")
+
+        event = request.query_params.get("event")
+        if event:
+            qs = qs.filter(event=event)
+
+        try:
+            limit = max(1, min(500, int(request.query_params.get("limit", 200) or 200)))
+        except (TypeError, ValueError):
+            limit = 200
+
+        items = []
+        for e in qs[:limit]:
+            who = ""
+            if e.employee:
+                who = e.employee.full_name
+            elif e.user:
+                who = e.user.get_full_name() or e.user.username
+            items.append({
+                "id": e.id,
+                "who": who or "—",
+                "event": e.event,
+                "event_label": e.get_event_display(),
+                "result": e.result,
+                "phone": e.phone_normalized,
+                "ip_address": e.ip_address,
+                "user_agent": e.user_agent,
+                "created_at": e.created_at.isoformat(),
+            })
+        return Response({"items": items})

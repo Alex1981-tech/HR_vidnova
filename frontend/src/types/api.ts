@@ -889,9 +889,11 @@ export type AssetPerson = {
 
 export type SecurityLogEvent = {
   id: number;
+  who?: string;
   event: string;
   event_label: string;
   result: string;
+  phone?: string;
   ip_address: string | null;
   user_agent: string;
   created_at: string;

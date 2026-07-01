@@ -71,7 +71,7 @@ export function SystemLogView() {
     let alive = true;
     setState('loading');
     api
-      .selfSecurityLog()
+      .systemSecurityLog()
       .then((res) => {
         if (alive) {
           setItems(res.items);
@@ -96,7 +96,7 @@ export function SystemLogView() {
       <header className="report-head">
         <div>
           <h1>Системний журнал</h1>
-          <p>Події безпеки у вашому акаунті: входи, виходи, завершення сесії та телеметрія.</p>
+          <p>Події безпеки всієї системи: входи, виходи, невдалі спроби та завершення сесій із телеметрією.</p>
         </div>
       </header>
 
@@ -115,6 +115,7 @@ export function SystemLogView() {
           <table className="syslog-table">
             <thead>
               <tr>
+                <th>Хто</th>
                 <th>Подія</th>
                 <th>Дата й час</th>
                 <th>IP-адреса</th>
@@ -124,6 +125,7 @@ export function SystemLogView() {
             <tbody>
               {items.map((e) => (
                 <tr key={e.id}>
+                  <td className="syslog-who">{e.who || '—'}</td>
                   <td>
                     <span className={`syslog-badge syslog-${EVENT_TONE[e.event] ?? 'muted'}`}>{eventLabel(e)}</span>
                   </td>

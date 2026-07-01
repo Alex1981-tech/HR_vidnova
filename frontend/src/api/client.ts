@@ -1156,7 +1156,7 @@ export const api = {
       body: form,
     });
   },
-  selfSecurityLog: () => request<{ items: SecurityLogEvent[] }>('/api/me/security-log/'),
+  systemSecurityLog: () => request<{ items: SecurityLogEvent[] }>('/api/reports/system-log/'),
   selfProfile: () => request<EmployeeProfile>('/api/me/profile/'),
   selfPreferences: () => request<UserPreferences>('/api/me/preferences/'),
   updateSelfPreferences: (payload: Partial<UserPreferences>) =>

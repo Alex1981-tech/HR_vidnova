@@ -19725,6 +19725,10 @@ body:has(.app-shell[data-theme="dark"]) { background: #080c18; }
 .syslog-table tbody tr:hover {
   background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
+.syslog-who {
+  font-weight: 500;
+  color: var(--text);
+}
 .syslog-ip {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
