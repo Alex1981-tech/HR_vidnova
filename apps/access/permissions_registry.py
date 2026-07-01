@@ -181,6 +181,8 @@ PERMISSIONS: tuple[Permission, ...] = (
        "Дозволити доступ до графіка відсутностей", "Бачити всі відсутності компанії в графіку.", RiskLevel.LOW, _V),
     _p("leave.approve", "leave", Group.HR, "hr", "approve",
        "Затвердити та відхилити відсутності", "Перегляд і керування всіма відсутностями співробітників.", RiskLevel.HIGH),
+    _p("leave.delete_requests", "leave", Group.HR, "hr", "delete_requests",
+       "Видаляти запити на відсутність", "Видаляти заявки на відсутність співробітників.", RiskLevel.HIGH),
     _p("leave.policies", "leave", Group.HR, "hr", "policies",
        "Керувати політиками відсутностей", "Додавати/вилучати політики відсутностей співробітників.", RiskLevel.HIGH),
     _p("documents.manage", "documents", Group.HR, "hr", "manage",

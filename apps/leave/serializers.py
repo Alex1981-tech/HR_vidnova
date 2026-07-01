@@ -14,7 +14,7 @@ from .models import (
     LeaveRequest,
     LeaveType,
 )
-from .services import assign_policy_to_employee, current_balance, transition_leave_request_status
+from .services import assign_policy_to_employee, current_balance, transition_leave_request_status, validate_leave_request_policy
 
 
 class LeaveTypeSerializer(serializers.ModelSerializer):
@@ -98,6 +98,7 @@ class LeavePolicyAccrualRuleSerializer(serializers.ModelSerializer):
             "carryover_day",
             "carryover_month",
             "seniority_bonus_enabled",
+            "seniority_bonus_levels",
         )
         read_only_fields = ("id",)
 
@@ -122,6 +123,9 @@ class LeavePolicySerializer(serializers.ModelSerializer):
             "counted_as",
             "visibility",
             "instructions_html",
+            "deduct_non_working_holidays",
+            "allow_on_demand_absence",
+            "on_demand_limit",
             "prevent_overlapping_requests",
             "forbid_probation_requests",
             "forbid_breakdown_edit",
@@ -136,6 +140,9 @@ class LeavePolicySerializer(serializers.ModelSerializer):
             "skip_unassigned_approvers",
             "allow_substitute_approvers",
             "approver_steps",
+            "allow_negative_balance",
+            "limit_negative_balance",
+            "max_negative_balance",
             "rounding_method",
             "rounding_precision",
             "allow_withdraw",
@@ -156,9 +163,15 @@ class LeavePolicySerializer(serializers.ModelSerializer):
             setattr(rule, field, value)
         if policy.policy_type != LeavePolicy.PolicyType.ACCRUAL:
             rule.enabled = False
-        rule.full_clean()
+        self._full_clean(rule)
         rule.save()
         return rule
+
+    def _full_clean(self, instance):
+        try:
+            instance.full_clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
 
     def get_employee_count(self, obj):
         annotated = getattr(obj, "employee_count", None)
@@ -169,7 +182,7 @@ class LeavePolicySerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accrual_data = validated_data.pop("accrual_rule", {})
         policy = LeavePolicy(**validated_data)
-        policy.full_clean()
+        self._full_clean(policy)
         policy.save()
         self._save_accrual_rule(policy, accrual_data)
         return policy
@@ -178,7 +191,7 @@ class LeavePolicySerializer(serializers.ModelSerializer):
         accrual_data = validated_data.pop("accrual_rule", None)
         for field, value in validated_data.items():
             setattr(instance, field, value)
-        instance.full_clean()
+        self._full_clean(instance)
         instance.save()
         if accrual_data is not None:
             self._save_accrual_rule(instance, accrual_data)
@@ -359,11 +372,38 @@ class LeaveRequestSerializer(serializers.ModelSerializer):
         except ValueError:
             return ""
 
+    def _request_for_attrs(self, attrs):
+        employee = attrs.get("employee") or getattr(self.instance, "employee", None)
+        leave_type = attrs.get("leave_type") or getattr(self.instance, "leave_type", None)
+        date_from = attrs.get("date_from") or getattr(self.instance, "date_from", None)
+        date_to = attrs.get("date_to") or getattr(self.instance, "date_to", None)
+        if not employee or not leave_type or not date_from or not date_to:
+            return None
+        leave_request = LeaveRequest(
+            employee=employee,
+            leave_type=leave_type,
+            date_from=date_from,
+            date_to=date_to,
+            amount=attrs.get("amount", getattr(self.instance, "amount", None)),
+            reason=attrs.get("reason", getattr(self.instance, "reason", "")),
+            status=attrs.get("status", getattr(self.instance, "status", LeaveRequest.Status.SUBMITTED)),
+        )
+        if self.instance:
+            leave_request.pk = self.instance.pk
+        return leave_request
+
     def validate(self, attrs):
         date_from = attrs.get("date_from") or getattr(self.instance, "date_from", None)
         date_to = attrs.get("date_to") or getattr(self.instance, "date_to", None)
         if date_from and date_to and date_to < date_from:
             raise serializers.ValidationError({"date_to": "Дата завершення не може бути раніше дати початку."})
+        leave_request = self._request_for_attrs(attrs)
+        if leave_request:
+            request = self.context.get("request")
+            try:
+                validate_leave_request_policy(leave_request, actor=getattr(request, "user", None))
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError(exc.message_dict if hasattr(exc, "message_dict") else exc.messages)
         return attrs
 
     def update(self, instance, validated_data):

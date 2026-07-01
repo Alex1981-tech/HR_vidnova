@@ -88,6 +88,26 @@ const DELAY_UNIT_OPTIONS = [
   { value: 'years', label: 'Роки' },
 ];
 
+const CARRYOVER_DAY_OPTIONS = Array.from({ length: 31 }, (_, index) => ({
+  value: String(index + 1),
+  label: String(index + 1),
+}));
+
+const MONTH_OPTIONS = [
+  'Січень',
+  'Лютий',
+  'Березень',
+  'Квітень',
+  'Травень',
+  'Червень',
+  'Липень',
+  'Серпень',
+  'Вересень',
+  'Жовтень',
+  'Листопад',
+  'Грудень',
+].map((label, index) => ({ value: String(index + 1), label }));
+
 function unitSubtitle(unit: string): string {
   return unit === 'hours' ? 'Відстеження у годинах' : 'Відстеження у днях';
 }
@@ -343,12 +363,300 @@ function numberOrNull(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+type ApprovalOptionKind =
+  | 'manager'
+  | 'manager_manager'
+  | 'manager_level_3'
+  | 'team_manager'
+  | 'person_reference'
+  | 'department_manager'
+  | 'specific_employee';
+
+type ApprovalStepDraft = {
+  uiId: string;
+  type: ApprovalOptionKind;
+  employeeId: number | null;
+  employeeName: string;
+};
+
+type SubstituteDraft = {
+  sourceType: ApprovalOptionKind;
+  targetType: string;
+  employeeId: number | null;
+};
+
+type SeniorityLevelDraft = {
+  uiId: string;
+  id: string;
+  seniorityYears: string;
+  periodAmount: string;
+  frequency: string;
+  accrualTiming: string;
+  maxBalance: string;
+  carryoverMode: string;
+  carryoverExpireMonths: string;
+};
+
+type SelectOption = {
+  value: string;
+  label: string;
+  group?: string;
+  subtitle?: string;
+};
+
+const APPROVER_OPTIONS: SelectOption[] = [
+  { value: 'manager', label: 'Менеджер', group: 'Особиста' },
+  { value: 'manager_manager', label: 'Менеджер менеджера', group: 'Особиста' },
+  { value: 'manager_level_3', label: 'Менеджер 3-го рівня', group: 'Особиста' },
+  { value: 'team_manager', label: 'Менеджер команди', group: 'Особиста' },
+  { value: 'person_reference', label: 'Посилання на особу', group: 'Особиста' },
+  { value: 'department_manager', label: 'Менеджер департаменту', group: 'Департамент' },
+  { value: 'specific_employee', label: 'Конкретна людина', group: 'Конкретна людина' },
+];
+
+const SUBSTITUTE_SOURCE_OPTIONS: SelectOption[] = [
+  { value: 'manager', label: 'Менеджер' },
+  { value: 'manager_manager', label: 'Менеджер менеджера' },
+  { value: 'manager_level_3', label: 'Менеджер 3-го рівня' },
+  { value: 'specific_employee', label: 'Конкретна людина' },
+  { value: 'person_reference', label: 'Посилання на особу' },
+];
+
+const SUBSTITUTE_TARGET_OPTIONS: SelectOption[] = [
+  { value: 'current_responsible', label: 'Відповідальний на момент відсутності' },
+  { value: 'hire_responsible', label: 'Відповідальний за найм нового співробітника' },
+  { value: 'extra_manager_zaporizhzhia', label: 'Додатковий керівник Запоріжжя' },
+  { value: 'extra_manager_lviv', label: 'Додатковий керівник Львів' },
+  { value: 'department_operations_director', label: 'Операційний директор відділення' },
+];
+
+function createApprovalStep(type: ApprovalOptionKind = 'manager'): ApprovalStepDraft {
+  return {
+    uiId: `approver-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    type,
+    employeeId: null,
+    employeeName: '',
+  };
+}
+
+function createSeniorityLevel(): SeniorityLevelDraft {
+  const id = `seniority-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return {
+    uiId: id,
+    id,
+    seniorityYears: '1',
+    periodAmount: '1',
+    frequency: 'monthly',
+    accrualTiming: 'period_start',
+    maxBalance: '',
+    carryoverMode: 'none',
+    carryoverExpireMonths: '0',
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeApprovalKind(value: unknown): ApprovalOptionKind {
+  const raw = typeof value === 'string' ? value : '';
+  if (APPROVER_OPTIONS.some((option) => option.value === raw)) return raw as ApprovalOptionKind;
+  if (['employee', 'person', 'specific_person', 'specific_user'].includes(raw)) return 'specific_employee';
+  if (raw === 'department') return 'department_manager';
+  return 'manager';
+}
+
+function optionLabel(options: SelectOption[], value: string): string {
+  return options.find((option) => option.value === value)?.label ?? 'Менеджер';
+}
+
+function normalizeApproverSteps(rawSteps: unknown): ApprovalStepDraft[] {
+  const raw = Array.isArray(rawSteps) ? rawSteps : [];
+  const steps = raw
+    .filter(isRecord)
+    .filter((item) => item.type !== '_substitute_config' && item.kind !== 'substitute_config')
+    .map((item, index) => {
+      const employeeIdRaw = item.employee_id ?? item.employee ?? null;
+      const employeeId = typeof employeeIdRaw === 'number' ? employeeIdRaw : Number.parseInt(String(employeeIdRaw ?? ''), 10);
+      return {
+        uiId: `approver-existing-${index}-${Math.random().toString(36).slice(2)}`,
+        type: normalizeApprovalKind(item.type ?? item.kind),
+        employeeId: Number.isFinite(employeeId) ? employeeId : null,
+        employeeName: typeof item.employee_name === 'string' ? item.employee_name : '',
+      };
+    });
+  return steps.length ? steps : [createApprovalStep()];
+}
+
+function normalizeSubstituteDraft(rawSteps: unknown): SubstituteDraft {
+  const raw = Array.isArray(rawSteps) ? rawSteps : [];
+  const config =
+    raw.filter(isRecord).find((item) => item.type === '_substitute_config' || item.kind === 'substitute_config') ??
+    raw.filter(isRecord).find((item) => isRecord(item.substitute_approver))?.substitute_approver;
+  if (!isRecord(config)) {
+    return { sourceType: 'person_reference', targetType: 'current_responsible', employeeId: null };
+  }
+  const employeeIdRaw = config.employee_id ?? config.employee ?? null;
+  const employeeId = typeof employeeIdRaw === 'number' ? employeeIdRaw : Number.parseInt(String(employeeIdRaw ?? ''), 10);
+  const targetType = typeof config.target_type === 'string' ? config.target_type : 'current_responsible';
+  return {
+    sourceType: normalizeApprovalKind(config.source_type ?? config.type),
+    targetType: SUBSTITUTE_TARGET_OPTIONS.some((option) => option.value === targetType) ? targetType : 'current_responsible',
+    employeeId: Number.isFinite(employeeId) ? employeeId : null,
+  };
+}
+
+function normalizeSeniorityLevels(rawLevels: unknown): SeniorityLevelDraft[] {
+  const raw = Array.isArray(rawLevels) ? rawLevels : [];
+  return raw.filter(isRecord).map((level, index) => {
+    const id = typeof level.id === 'string' && level.id ? level.id : `seniority-existing-${index}`;
+    return {
+      uiId: `${id}-${Math.random().toString(36).slice(2)}`,
+      id,
+      seniorityYears: String(level.seniority_years ?? level.years ?? '1'),
+      periodAmount: String(level.period_amount ?? level.bonus_amount ?? '1'),
+      frequency: typeof level.frequency === 'string' ? level.frequency : 'monthly',
+      accrualTiming: typeof level.accrual_timing === 'string' ? level.accrual_timing : 'period_start',
+      maxBalance: level.max_balance == null ? '' : String(level.max_balance),
+      carryoverMode: typeof level.carryover_mode === 'string' ? level.carryover_mode : 'none',
+      carryoverExpireMonths: String(level.carryover_expire_months ?? '0'),
+    };
+  });
+}
+
+function filterOptions(options: SelectOption[], query: string): SelectOption[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return options;
+  return options.filter((option) => `${option.label} ${option.subtitle ?? ''} ${option.group ?? ''}`.toLowerCase().includes(normalized));
+}
+
+function PolicySelectMenu({
+  value,
+  options,
+  disabled = false,
+  open,
+  searchable = false,
+  query = '',
+  placeholder = '-- Виберіть --',
+  onQueryChange,
+  onToggle,
+  onChange,
+}: {
+  value: string;
+  options: SelectOption[];
+  disabled?: boolean;
+  open: boolean;
+  searchable?: boolean;
+  query?: string;
+  placeholder?: string;
+  onQueryChange?: (query: string) => void;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+}) {
+  const selected = options.find((option) => option.value === value);
+  const visibleOptions = filterOptions(options, query);
+  let currentGroup = '';
+  return (
+    <div className="policy-select-menu">
+      <button type="button" className="policy-select-trigger" disabled={disabled} onClick={onToggle}>
+        <span>{selected?.label ?? placeholder}</span>
+        <ChevronDown size={17} />
+      </button>
+      {open && !disabled ? (
+        <div className="policy-select-popover" role="listbox">
+          {searchable ? (
+            <label className="policy-select-search">
+              <Search size={17} />
+              <input value={query} onChange={(event) => onQueryChange?.(event.target.value)} placeholder="Пошук..." autoFocus />
+            </label>
+          ) : null}
+          {visibleOptions.map((option) => {
+            const showGroup = option.group && option.group !== currentGroup;
+            if (option.group) currentGroup = option.group;
+            return (
+              <div key={option.value}>
+                {showGroup ? <div className="policy-select-group">{option.group}</div> : null}
+                <button type="button" className="policy-select-option" onClick={() => onChange(option.value)} role="option">
+                  <span>{option.label}</span>
+                  {option.subtitle ? <em>{option.subtitle}</em> : null}
+                </button>
+              </div>
+            );
+          })}
+          {!visibleOptions.length ? <div className="policy-select-empty">Нічого не знайдено</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PolicyEmployeePicker({
+  employees,
+  value,
+  disabled = false,
+  open,
+  query,
+  onQueryChange,
+  onToggle,
+  onChange,
+}: {
+  employees: EmployeeListItem[];
+  value: number | null;
+  disabled?: boolean;
+  open: boolean;
+  query: string;
+  onQueryChange: (query: string) => void;
+  onToggle: () => void;
+  onChange: (employeeId: number) => void;
+}) {
+  const selected = employees.find((employee) => employee.id === value);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleEmployees = employees
+    .filter((employee) => {
+      if (!normalizedQuery) return true;
+      return `${employee.full_name} ${employee.position_name ?? ''} ${employee.department_name ?? ''}`.toLowerCase().includes(normalizedQuery);
+    })
+    .slice(0, 30);
+
+  return (
+    <div className="policy-select-menu">
+      <button type="button" className="policy-select-trigger" disabled={disabled} onClick={onToggle}>
+        <span>{selected?.full_name ?? '-- Виберіть --'}</span>
+        <ChevronDown size={17} />
+      </button>
+      {open && !disabled ? (
+        <div className="policy-select-popover policy-employee-popover" role="listbox">
+          <label className="policy-select-search">
+            <Search size={17} />
+            <input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Пошук..." autoFocus />
+          </label>
+          {visibleEmployees.map((employee) => {
+            const avatarUrl = employeeAvatar(employee);
+            return (
+              <button type="button" className="policy-employee-option" key={employee.id} onClick={() => onChange(employee.id)} role="option">
+                {avatarUrl ? <img src={avatarUrl} alt="" /> : <em>{employeeInitials(employee.full_name)}</em>}
+                <span>
+                  <strong>{employee.full_name}</strong>
+                  <small>{employee.position_name || employee.department_name || 'Співробітник'}</small>
+                </span>
+              </button>
+            );
+          })}
+          {!visibleEmployees.length ? <div className="policy-select-empty">Нічого не знайдено</div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function LeavePolicyWizard({
   initial,
+  employees,
   onBack,
   onFinish,
 }: {
   initial: PolicyWizardRequest;
+  employees: EmployeeListItem[];
   onBack: () => void;
   onFinish: (payload: LeavePolicyPayload) => Promise<void>;
 }) {
@@ -362,6 +670,9 @@ function LeavePolicyWizard({
   const [countedAs, setCountedAs] = useState(policy?.counted_as ?? 'working_days');
   const [visibility, setVisibility] = useState(policy?.visibility ?? 'everyone');
   const [instructionsHtml, setInstructionsHtml] = useState(policy?.instructions_html ?? '');
+  const [deductNonWorkingHolidays, setDeductNonWorkingHolidays] = useState(policy?.deduct_non_working_holidays ?? false);
+  const [allowOnDemandAbsence, setAllowOnDemandAbsence] = useState(policy?.allow_on_demand_absence ?? false);
+  const [onDemandLimit, setOnDemandLimit] = useState(policy?.on_demand_limit ?? '');
   const [preventOverlapping, setPreventOverlapping] = useState(policy?.prevent_overlapping_requests ?? true);
   const [forbidProbation, setForbidProbation] = useState(policy?.forbid_probation_requests ?? false);
   const [forbidBreakdown, setForbidBreakdown] = useState(policy?.forbid_breakdown_edit ?? false);
@@ -373,8 +684,18 @@ function LeavePolicyWizard({
   const [minNoticeDays, setMinNoticeDays] = useState(policy?.min_notice_days == null ? '' : String(policy.min_notice_days));
   const [maxNoticeDays, setMaxNoticeDays] = useState(policy?.max_notice_days == null ? '' : String(policy.max_notice_days));
   const [approvalEnabled, setApprovalEnabled] = useState(policy?.approval_enabled ?? true);
+  const [approverSteps, setApproverSteps] = useState<ApprovalStepDraft[]>(() => normalizeApproverSteps(policy?.approver_steps));
   const [skipUnassigned, setSkipUnassigned] = useState(policy?.skip_unassigned_approvers ?? false);
   const [allowSubstitute, setAllowSubstitute] = useState(policy?.allow_substitute_approvers ?? false);
+  const [allowNegativeBalance, setAllowNegativeBalance] = useState(policy?.allow_negative_balance ?? true);
+  const [limitNegativeBalance, setLimitNegativeBalance] = useState(policy?.limit_negative_balance ?? false);
+  const [maxNegativeBalance, setMaxNegativeBalance] = useState(policy?.max_negative_balance ?? '');
+  const [substituteDraft, setSubstituteDraft] = useState<SubstituteDraft>(() => normalizeSubstituteDraft(policy?.approver_steps));
+  const [openApproverMenu, setOpenApproverMenu] = useState<string | null>(null);
+  const [openEmployeeMenu, setOpenEmployeeMenu] = useState<string | null>(null);
+  const [openSubstituteMenu, setOpenSubstituteMenu] = useState<string | null>(null);
+  const [employeeQuery, setEmployeeQuery] = useState('');
+  const [substituteQuery, setSubstituteQuery] = useState('');
   const [roundingMethod, setRoundingMethod] = useState(policy?.rounding_method ?? 'nearest');
   const [roundingPrecision, setRoundingPrecision] = useState(policy?.rounding_precision ?? 'two_decimals');
   const [allowWithdraw, setAllowWithdraw] = useState(policy?.allow_withdraw ?? true);
@@ -396,6 +717,7 @@ function LeavePolicyWizard({
   const [carryoverDay, setCarryoverDay] = useState(String(rule?.carryover_day ?? 1));
   const [carryoverMonth, setCarryoverMonth] = useState(String(rule?.carryover_month ?? 1));
   const [seniorityBonusEnabled, setSeniorityBonusEnabled] = useState(rule?.seniority_bonus_enabled ?? false);
+  const [seniorityLevels, setSeniorityLevels] = useState<SeniorityLevelDraft[]>(() => normalizeSeniorityLevels(rule?.seniority_bonus_levels));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -407,6 +729,87 @@ function LeavePolicyWizard({
   ] as const;
   const activeIndex = steps.findIndex((item) => item.key === step);
 
+  function stepEmployeeName(stepDraft: ApprovalStepDraft): string {
+    return employees.find((employee) => employee.id === stepDraft.employeeId)?.full_name ?? stepDraft.employeeName;
+  }
+
+  function serializedApproverSteps(): unknown[] {
+    const stepsPayload = approverSteps.map((item, index) => ({
+      type: item.type,
+      label: optionLabel(APPROVER_OPTIONS, item.type),
+      order: index + 1,
+      employee_id: item.type === 'specific_employee' ? item.employeeId : null,
+      employee_name: item.type === 'specific_employee' ? stepEmployeeName(item) : '',
+    }));
+    if (!allowSubstitute) return stepsPayload;
+    return [
+      ...stepsPayload,
+      {
+        type: '_substitute_config',
+        kind: 'substitute_config',
+        source_type: substituteDraft.sourceType,
+        source_label: optionLabel(SUBSTITUTE_SOURCE_OPTIONS, substituteDraft.sourceType),
+        target_type: substituteDraft.sourceType === 'specific_employee' ? 'specific_employee' : substituteDraft.targetType,
+        target_label:
+          substituteDraft.sourceType === 'specific_employee'
+            ? employees.find((employee) => employee.id === substituteDraft.employeeId)?.full_name ?? ''
+            : optionLabel(SUBSTITUTE_TARGET_OPTIONS, substituteDraft.targetType),
+        employee_id: substituteDraft.sourceType === 'specific_employee' ? substituteDraft.employeeId : null,
+      },
+    ];
+  }
+
+  function toggleApprovalEnabled(enabled: boolean) {
+    setApprovalEnabled(enabled);
+    if (enabled) {
+      setApproverSteps((current) => (current.length ? current : [createApprovalStep()]));
+    }
+  }
+
+  function updateApproverStep(uiId: string, patch: Partial<ApprovalStepDraft>) {
+    setApproverSteps((current) =>
+      current.map((item) =>
+        item.uiId === uiId
+          ? {
+              ...item,
+              ...patch,
+              employeeId: patch.type && patch.type !== 'specific_employee' ? null : patch.employeeId ?? item.employeeId,
+              employeeName: patch.type && patch.type !== 'specific_employee' ? '' : patch.employeeName ?? item.employeeName,
+            }
+          : item,
+      ),
+    );
+  }
+
+  function adjustLimit(value: string, setter: (next: string) => void, delta: number) {
+    const parsed = Number.parseFloat(value.replace(',', '.'));
+    const next = Math.max(0, (Number.isFinite(parsed) ? parsed : 0) + delta);
+    setter(Number.isInteger(next) ? String(next) : next.toFixed(2));
+  }
+
+  function updateSeniorityLevel(uiId: string, patch: Partial<SeniorityLevelDraft>) {
+    setSeniorityLevels((current) => current.map((level) => (level.uiId === uiId ? { ...level, ...patch } : level)));
+  }
+
+  function addSeniorityLevel() {
+    setSeniorityBonusEnabled(true);
+    setSeniorityLevels((current) => [...current, createSeniorityLevel()]);
+  }
+
+  function serializedSeniorityLevels() {
+    if (!seniorityBonusEnabled) return [];
+    return seniorityLevels.map((level) => ({
+      id: level.id,
+      seniority_years: Math.max(0, numberOrNull(level.seniorityYears) ?? 0),
+      period_amount: valueOrZero(level.periodAmount),
+      frequency: level.frequency,
+      accrual_timing: level.accrualTiming,
+      max_balance: valueOrNull(level.maxBalance),
+      carryover_mode: level.carryoverMode,
+      carryover_expire_months: Math.max(0, numberOrNull(level.carryoverExpireMonths) ?? 0),
+    }));
+  }
+
   function buildPayload(): LeavePolicyPayload {
     return {
       leave_type: initial.leaveType.id,
@@ -416,6 +819,9 @@ function LeavePolicyWizard({
       counted_as: countedAs,
       visibility,
       instructions_html: instructionsHtml,
+      deduct_non_working_holidays: deductNonWorkingHolidays,
+      allow_on_demand_absence: allowOnDemandAbsence,
+      on_demand_limit: allowOnDemandAbsence ? valueOrNull(onDemandLimit) : null,
       prevent_overlapping_requests: preventOverlapping,
       forbid_probation_requests: forbidProbation,
       forbid_breakdown_edit: forbidBreakdown,
@@ -429,7 +835,10 @@ function LeavePolicyWizard({
       approval_enabled: approvalEnabled,
       skip_unassigned_approvers: skipUnassigned,
       allow_substitute_approvers: allowSubstitute,
-      approver_steps: approvalEnabled ? [{ type: 'manager', order: 1 }] : [],
+      approver_steps: approvalEnabled ? serializedApproverSteps() : [],
+      allow_negative_balance: allowNegativeBalance,
+      limit_negative_balance: allowNegativeBalance ? limitNegativeBalance : false,
+      max_negative_balance: allowNegativeBalance && limitNegativeBalance ? valueOrNull(maxNegativeBalance) : null,
       rounding_method: roundingMethod,
       rounding_precision: roundingPrecision,
       allow_withdraw: allowWithdraw,
@@ -455,6 +864,7 @@ function LeavePolicyWizard({
         carryover_day: Math.min(31, Math.max(1, numberOrNull(carryoverDay) ?? 1)),
         carryover_month: Math.min(12, Math.max(1, numberOrNull(carryoverMonth) ?? 1)),
         seniority_bonus_enabled: seniorityBonusEnabled,
+        seniority_bonus_levels: serializedSeniorityLevels(),
       },
     };
   }
@@ -558,6 +968,17 @@ function LeavePolicyWizard({
               </select>
               <small>Визначає, рахувати тривалість за робочими чи календарними днями.</small>
             </label>
+            <label className="leave-policy-check">
+              <input
+                type="checkbox"
+                checked={deductNonWorkingHolidays}
+                onChange={(event) => setDeductNonWorkingHolidays(event.target.checked)}
+              />
+              <span>
+                <strong>Вираховувати неробочі святкові дні із залишку відпустки</strong>
+                <em>Якщо ввімкнено, неробочі святкові дні включатимуться до розбивки як використані дні та списуватимуться з балансу.</em>
+              </span>
+            </label>
             <label className="leave-policy-field">
               <span>Інструкції</span>
               <div className="leave-policy-editor">
@@ -565,9 +986,71 @@ function LeavePolicyWizard({
                 <textarea value={instructionsHtml} onChange={(event) => setInstructionsHtml(event.target.value)} />
               </div>
             </label>
+            <label className="leave-policy-check">
+              <input
+                type="checkbox"
+                checked={allowOnDemandAbsence}
+                onChange={(event) => setAllowOnDemandAbsence(event.target.checked)}
+              />
+              <span>
+                <strong>Увімкнути відсутність на вимогу</strong>
+                <em>Якщо ввімкнено, укажіть суму відсутності на вимогу, яку працівники можуть взяти в межах свого балансу.</em>
+              </span>
+            </label>
+            {allowOnDemandAbsence ? (
+              <label className="leave-policy-field leave-policy-number-control">
+                <span>Кількість відсутностей на вимогу</span>
+                <div>
+                  <input value={onDemandLimit} onChange={(event) => setOnDemandLimit(event.target.value)} placeholder="0,0" inputMode="decimal" />
+                  <button type="button" aria-label="Зменшити" onClick={() => adjustLimit(onDemandLimit, setOnDemandLimit, -1)}>
+                    <Minus size={15} />
+                  </button>
+                  <button type="button" aria-label="Збільшити" onClick={() => adjustLimit(onDemandLimit, setOnDemandLimit, 1)}>
+                    <Plus size={15} />
+                  </button>
+                  <em>днів</em>
+                </div>
+              </label>
+            ) : null}
           </div>
           <div className="leave-policy-section">
             <h2>Обмеження</h2>
+            <label className="leave-policy-check">
+              <input type="checkbox" checked={allowNegativeBalance} onChange={(event) => setAllowNegativeBalance(event.target.checked)} />
+              <span>
+                <strong>Дозволити запити з негативним балансом</strong>
+                <em>Якщо вимкнено, працівники не зможуть залишати запити, якщо це призведе до негативного балансу.</em>
+              </span>
+            </label>
+            {allowNegativeBalance ? (
+              <div className="leave-policy-nested">
+                <label className="leave-policy-check">
+                  <input
+                    type="checkbox"
+                    checked={limitNegativeBalance}
+                    onChange={(event) => setLimitNegativeBalance(event.target.checked)}
+                  />
+                  <span>
+                    <strong>Встановіть максимальний негативний баланс при якому можна запросити відсутність</strong>
+                  </span>
+                </label>
+                {limitNegativeBalance ? (
+                  <label className="leave-policy-field leave-policy-number-control">
+                    <span>Максимальний негативний баланс</span>
+                    <div>
+                      <input value={maxNegativeBalance} onChange={(event) => setMaxNegativeBalance(event.target.value)} placeholder="Макс" inputMode="decimal" />
+                      <button type="button" aria-label="Зменшити" onClick={() => adjustLimit(maxNegativeBalance, setMaxNegativeBalance, -1)}>
+                        <Minus size={15} />
+                      </button>
+                      <button type="button" aria-label="Збільшити" onClick={() => adjustLimit(maxNegativeBalance, setMaxNegativeBalance, 1)}>
+                        <Plus size={15} />
+                      </button>
+                      <em>днів</em>
+                    </div>
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
             <label className="leave-policy-check">
               <input type="checkbox" checked={preventOverlapping} onChange={(event) => setPreventOverlapping(event.target.checked)} />
               <span>
@@ -606,24 +1089,25 @@ function LeavePolicyWizard({
             <p className="leave-policy-note">Нижче ви можете налаштувати мінімальні та максимальні обмеження для запитів на відсутність.</p>
             <div className="leave-policy-limits">
               {[
-                ['Мінімальна щоденна сума', minDailyAmount, setMinDailyAmount, 'wide'],
-                ['Мінімальна загальна сума', minTotalAmount, setMinTotalAmount, ''],
-                ['Максимальна загальна сума', maxTotalAmount, setMaxTotalAmount, ''],
-                ['Мінімальний термін повідомлення', minNoticeDays, setMinNoticeDays, ''],
-                ['Максимальний термін повідомлення', maxNoticeDays, setMaxNoticeDays, ''],
-              ].map(([label, value, setter, className]) => (
-                <label className={className as string} key={label as string}>
-                  <span>{label as string}</span>
+                { label: 'Мінімальна щоденна сума', value: minDailyAmount, setter: setMinDailyAmount, wide: true },
+                { label: 'Мінімальна загальна сума', value: minTotalAmount, setter: setMinTotalAmount, wide: false },
+                { label: 'Максимальна загальна сума', value: maxTotalAmount, setter: setMaxTotalAmount, wide: false },
+                { label: 'Мінімальний термін повідомлення', value: minNoticeDays, setter: setMinNoticeDays, wide: false },
+                { label: 'Максимальний термін повідомлення', value: maxNoticeDays, setter: setMaxNoticeDays, wide: false },
+              ].map((field) => (
+                <label className={field.wide ? 'wide' : ''} key={field.label}>
+                  <span>{field.label}</span>
                   <div>
                     <input
-                      value={value as string}
-                      onChange={(event) => (setter as (next: string) => void)(event.target.value)}
-                      placeholder={(label as string).includes('Максим') ? 'Макс' : 'Мін'}
+                      value={field.value}
+                      onChange={(event) => field.setter(event.target.value)}
+                      placeholder={field.label.includes('Максим') ? 'Макс' : 'Мін'}
+                      inputMode="decimal"
                     />
-                    <button type="button" aria-label="Зменшити">
+                    <button type="button" aria-label="Зменшити" onClick={() => adjustLimit(field.value, field.setter, -1)}>
                       <Minus size={15} />
                     </button>
-                    <button type="button" aria-label="Збільшити">
+                    <button type="button" aria-label="Збільшити" onClick={() => adjustLimit(field.value, field.setter, 1)}>
                       <Plus size={15} />
                     </button>
                     <em>днях</em>
@@ -636,9 +1120,9 @@ function LeavePolicyWizard({
       ) : null}
 
       {step === 'accruals' ? (
-        <section className="leave-policy-card">
-          <div className="leave-policy-section">
-            <h2>Нарахування</h2>
+        <section className="leave-policy-card leave-policy-accrual-card">
+          <div className="leave-policy-section compact">
+            <h2>Нарахування та перенесення</h2>
             <label className="leave-policy-check inline">
               <input
                 type="checkbox"
@@ -647,13 +1131,11 @@ function LeavePolicyWizard({
               />
               <strong>Автоматично нараховувати баланс</strong>
             </label>
-            <fieldset className="leave-policy-accrual-grid" disabled={policyType !== 'accrual'}>
-              <label className="leave-policy-field">
+            <fieldset className="leave-policy-accrual-panel" disabled={policyType !== 'accrual'}>
+              <strong className="leave-policy-accrual-title">Нарахування</strong>
+              <div className="leave-policy-accrual-line start">
                 <span>Починається через</span>
-                <input value={startDelayAmount} onChange={(event) => setStartDelayAmount(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
-                <span>Період очікування</span>
+                <input value={startDelayAmount} onChange={(event) => setStartDelayAmount(event.target.value)} inputMode="numeric" />
                 <select value={startDelayUnit} onChange={(event) => setStartDelayUnit(event.target.value)}>
                   {DELAY_UNIT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -661,21 +1143,14 @@ function LeavePolicyWizard({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="leave-policy-field">
-                <span>Початковий залишок</span>
-                <input value={startBalance} onChange={(event) => setStartBalance(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
-                <span>Річний ліміт</span>
-                <input value={annualAllowance} onChange={(event) => setAnnualAllowance(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
+                <span>після дати прийому, з початковим залишком</span>
+                <input value={startBalance} onChange={(event) => setStartBalance(event.target.value)} inputMode="decimal" />
+                <span>днів</span>
+              </div>
+              <div className="leave-policy-accrual-line earn">
                 <span>Нарахування</span>
-                <input value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
-                <span>Частота</span>
+                <input value={periodAmount} onChange={(event) => setPeriodAmount(event.target.value)} inputMode="decimal" />
+                <span>днів</span>
                 <select value={frequency} onChange={(event) => setFrequency(event.target.value)}>
                   {ACCRUAL_FREQUENCY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -683,9 +1158,7 @@ function LeavePolicyWizard({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="leave-policy-field">
-                <span>Коли нараховувати</span>
+                <span>на</span>
                 <select value={accrualTiming} onChange={(event) => setAccrualTiming(event.target.value)}>
                   {ACCRUAL_TIMING_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -693,17 +1166,22 @@ function LeavePolicyWizard({
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="leave-policy-field">
+              </div>
+              <label className="leave-policy-accrual-stack">
                 <span>Максимальний баланс</span>
-                <input value={maxBalance} onChange={(event) => setMaxBalance(event.target.value)} />
+                <div className="leave-policy-number-control compact">
+                  <input value={maxBalance} onChange={(event) => setMaxBalance(event.target.value)} inputMode="decimal" />
+                  <button type="button" aria-label="Зменшити" onClick={() => adjustLimit(maxBalance, setMaxBalance, -1)}>
+                    <Minus size={15} />
+                  </button>
+                  <button type="button" aria-label="Збільшити" onClick={() => adjustLimit(maxBalance, setMaxBalance, 1)}>
+                    <Plus size={15} />
+                  </button>
+                  <em>днів</em>
+                </div>
+                <small>Максимальна кількість днів, яку можна нарахувати.</small>
               </label>
-            </fieldset>
-          </div>
-          <div className="leave-policy-section">
-            <h2>Перенесення</h2>
-            <fieldset className="leave-policy-accrual-grid" disabled={policyType !== 'accrual'}>
-              <label className="leave-policy-field">
+              <div className="leave-policy-accrual-line carry">
                 <span>Сума перенесення</span>
                 <select value={carryoverMode} onChange={(event) => setCarryoverMode(event.target.value)}>
                   {CARRYOVER_MODE_OPTIONS.map((option) => (
@@ -712,40 +1190,154 @@ function LeavePolicyWizard({
                     </option>
                   ))}
                 </select>
+                <span>Використайте нараховані дні або втратите у дату перенесення</span>
+                <input value={carryoverExpireMonths} onChange={(event) => setCarryoverExpireMonths(event.target.value)} inputMode="numeric" />
+                <span>місяці</span>
+              </div>
+              {carryoverMode === 'limited' ? (
+                <label className="leave-policy-accrual-stack compact-limit">
+                  <span>Ліміт перенесення</span>
+                  <input value={carryoverLimit} onChange={(event) => setCarryoverLimit(event.target.value)} inputMode="decimal" />
+                </label>
+              ) : null}
+              <label className="leave-policy-check">
+                <input
+                  type="checkbox"
+                  checked={seniorityBonusEnabled}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    setSeniorityBonusEnabled(enabled);
+                    if (enabled && !seniorityLevels.length) {
+                      setSeniorityLevels([createSeniorityLevel()]);
+                    }
+                  }}
+                  disabled={policyType !== 'accrual'}
+                />
+                <span>
+                  <strong>Надати додаткову відпустку з урахуванням загального досвіду роботи</strong>
+                </span>
+              </label>
+              {seniorityBonusEnabled ? (
+                <div className="leave-policy-seniority-levels">
+                  {seniorityLevels.map((level, index) => (
+                    <div className="leave-policy-seniority-level" key={level.uiId}>
+                      <div className="leave-policy-seniority-head">
+                        <strong>Рівень {index + 1}</strong>
+                        <button
+                          type="button"
+                          className="secondary-action"
+                          onClick={() => setSeniorityLevels((current) => current.filter((item) => item.uiId !== level.uiId))}
+                        >
+                          <Trash2 size={15} />
+                          Видалити рівень
+                        </button>
+                      </div>
+                      <div className="leave-policy-seniority-grid">
+                        <label className="leave-policy-field">
+                          <span>Загальний досвід роботи</span>
+                          <div className="leave-policy-unit-input">
+                            <input
+                              value={level.seniorityYears}
+                              onChange={(event) => updateSeniorityLevel(level.uiId, { seniorityYears: event.target.value })}
+                              inputMode="numeric"
+                            />
+                            <em>роки</em>
+                          </div>
+                        </label>
+                        <label className="leave-policy-field">
+                          <span>Нарахування додаткової відпустки</span>
+                          <div className="leave-policy-unit-input">
+                            <input
+                              value={level.periodAmount}
+                              onChange={(event) => updateSeniorityLevel(level.uiId, { periodAmount: event.target.value })}
+                              inputMode="decimal"
+                            />
+                            <em>днів</em>
+                          </div>
+                        </label>
+                        <label className="leave-policy-field">
+                          <span>Частота</span>
+                          <select value={level.frequency} onChange={(event) => updateSeniorityLevel(level.uiId, { frequency: event.target.value })}>
+                            {ACCRUAL_FREQUENCY_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="leave-policy-field">
+                          <span>Коли нараховувати</span>
+                          <select value={level.accrualTiming} onChange={(event) => updateSeniorityLevel(level.uiId, { accrualTiming: event.target.value })}>
+                            {ACCRUAL_TIMING_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="leave-policy-field">
+                          <span>Максимальний баланс</span>
+                          <input
+                            value={level.maxBalance}
+                            onChange={(event) => updateSeniorityLevel(level.uiId, { maxBalance: event.target.value })}
+                            inputMode="decimal"
+                          />
+                        </label>
+                        <label className="leave-policy-field">
+                          <span>Сума перенесення</span>
+                          <select value={level.carryoverMode} onChange={(event) => updateSeniorityLevel(level.uiId, { carryoverMode: event.target.value })}>
+                            {CARRYOVER_MODE_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </fieldset>
+            <button type="button" className="secondary-action leave-policy-add-level" disabled={policyType !== 'accrual'} onClick={addSeniorityLevel}>
+              <Plus size={15} />
+              Додати рівень
+            </button>
+          </div>
+          <div className="leave-policy-section compact">
+            <h2>Перенесення</h2>
+            <fieldset className="leave-policy-carryover-date" disabled={policyType !== 'accrual'}>
+              <label className="leave-policy-field">
+                <span>Дата перенесення</span>
+                <select value="specific" disabled>
+                  <option value="specific">Конкретна дата</option>
+                </select>
               </label>
               <label className="leave-policy-field">
-                <span>Ліміт перенесення</span>
-                <input value={carryoverLimit} onChange={(event) => setCarryoverLimit(event.target.value)} />
+                <span>День</span>
+                <select value={carryoverDay} onChange={(event) => setCarryoverDay(event.target.value)}>
+                  {CARRYOVER_DAY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="leave-policy-field">
-                <span>Використати або втратити через</span>
-                <input value={carryoverExpireMonths} onChange={(event) => setCarryoverExpireMonths(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
-                <span>Місяці</span>
-                <input value={carryoverMonth} onChange={(event) => setCarryoverMonth(event.target.value)} />
-              </label>
-              <label className="leave-policy-field">
-                <span>День перенесення</span>
-                <input value={carryoverDay} onChange={(event) => setCarryoverDay(event.target.value)} />
+                <span>Місяць</span>
+                <select value={carryoverMonth} onChange={(event) => setCarryoverMonth(event.target.value)}>
+                  {MONTH_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
             </fieldset>
-            <label className="leave-policy-check">
-              <input
-                type="checkbox"
-                checked={seniorityBonusEnabled}
-                onChange={(event) => setSeniorityBonusEnabled(event.target.checked)}
-                disabled={policyType !== 'accrual'}
-              />
-              <span>
-                <strong>Надати додаткову відпустку з урахуванням загального досвіду роботи</strong>
-                <em>Поле зберігається в політиці; детальні рівні стажу можна додати наступним етапом.</em>
-              </span>
-            </label>
           </div>
-          <div className="leave-policy-section">
+          <div className="leave-policy-section compact">
             <h2>Налаштування нарахувань</h2>
-            <fieldset className="leave-policy-two-cols" disabled={policyType !== 'accrual'}>
+            <fieldset className="leave-policy-two-cols compact" disabled={policyType !== 'accrual'}>
               <label className="leave-policy-field">
                 <span>Перше нарахування</span>
                 <select value={firstAccrual} onChange={(event) => setFirstAccrual(event.target.value)}>
@@ -766,6 +1358,10 @@ function LeavePolicyWizard({
                   ))}
                 </select>
               </label>
+              <label className="leave-policy-field">
+                <span>Річний ліміт</span>
+                <input value={annualAllowance} onChange={(event) => setAnnualAllowance(event.target.value)} inputMode="decimal" />
+              </label>
             </fieldset>
           </div>
         </section>
@@ -776,19 +1372,66 @@ function LeavePolicyWizard({
           <div className="leave-policy-section">
             <h2>Схвалення</h2>
             <label className="leave-policy-check inline">
-              <input type="checkbox" checked={approvalEnabled} onChange={(event) => setApprovalEnabled(event.target.checked)} />
+              <input type="checkbox" checked={approvalEnabled} onChange={(event) => toggleApprovalEnabled(event.target.checked)} />
               <strong>Увімкнути схвалення</strong>
             </label>
-            <div className="leave-policy-approver-row">
-              <select disabled={!approvalEnabled}>
-                <option>Менеджер</option>
-                <option>HR</option>
-              </select>
-              <button type="button" className="icon-button" aria-label="Видалити схвалювача">
-                <X size={18} />
-              </button>
+            <div className="leave-policy-approver-list">
+              {approverSteps.map((item) => (
+                <div className={`leave-policy-approver-row ${item.type === 'specific_employee' ? '' : 'single'}`} key={item.uiId}>
+                  <PolicySelectMenu
+                    value={item.type}
+                    options={APPROVER_OPTIONS}
+                    disabled={!approvalEnabled}
+                    open={openApproverMenu === item.uiId}
+                    onToggle={() => {
+                      setEmployeeQuery('');
+                      setOpenEmployeeMenu(null);
+                      setOpenApproverMenu((current) => (current === item.uiId ? null : item.uiId));
+                    }}
+                    onChange={(value) => {
+                      updateApproverStep(item.uiId, { type: value as ApprovalOptionKind });
+                      setOpenApproverMenu(null);
+                    }}
+                  />
+                  {item.type === 'specific_employee' ? (
+                    <PolicyEmployeePicker
+                      employees={employees}
+                      value={item.employeeId}
+                      disabled={!approvalEnabled}
+                      open={openEmployeeMenu === item.uiId}
+                      query={employeeQuery}
+                      onQueryChange={setEmployeeQuery}
+                      onToggle={() => {
+                        setEmployeeQuery('');
+                        setOpenApproverMenu(null);
+                        setOpenEmployeeMenu((current) => (current === item.uiId ? null : item.uiId));
+                      }}
+                      onChange={(employeeId) => {
+                        updateApproverStep(item.uiId, { employeeId, employeeName: employees.find((employee) => employee.id === employeeId)?.full_name ?? '' });
+                        setOpenEmployeeMenu(null);
+                      }}
+                    />
+                  ) : (
+                    <span aria-hidden="true" />
+                  )}
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Видалити схвалювача"
+                    disabled={!approvalEnabled}
+                    onClick={() => setApproverSteps((current) => current.filter((stepItem) => stepItem.uiId !== item.uiId))}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              ))}
             </div>
-            <button type="button" className="secondary-action leave-policy-add-approver" disabled={!approvalEnabled}>
+            <button
+              type="button"
+              className="secondary-action leave-policy-add-approver"
+              disabled={!approvalEnabled}
+              onClick={() => setApproverSteps((current) => [...current, createApprovalStep()])}
+            >
               <Plus size={15} />
               Додати схвалювача
             </button>
@@ -806,6 +1449,60 @@ function LeavePolicyWizard({
                 <em>Запити будуть перенаправлені вибраному заступнику, якщо схвалювач недоступний.</em>
               </span>
             </label>
+            {allowSubstitute ? (
+              <div className="leave-policy-substitute-row">
+                <PolicySelectMenu
+                  value={substituteDraft.sourceType}
+                  options={SUBSTITUTE_SOURCE_OPTIONS}
+                  disabled={!approvalEnabled}
+                  open={openSubstituteMenu === 'source'}
+                  onToggle={() => {
+                    setSubstituteQuery('');
+                    setOpenSubstituteMenu((current) => (current === 'source' ? null : 'source'));
+                  }}
+                  onChange={(value) => {
+                    setSubstituteDraft((current) => ({ ...current, sourceType: value as ApprovalOptionKind }));
+                    setOpenSubstituteMenu(null);
+                  }}
+                />
+                {substituteDraft.sourceType === 'specific_employee' ? (
+                  <PolicyEmployeePicker
+                    employees={employees}
+                    value={substituteDraft.employeeId}
+                    disabled={!approvalEnabled}
+                    open={openSubstituteMenu === 'employee'}
+                    query={substituteQuery}
+                    onQueryChange={setSubstituteQuery}
+                    onToggle={() => {
+                      setSubstituteQuery('');
+                      setOpenSubstituteMenu((current) => (current === 'employee' ? null : 'employee'));
+                    }}
+                    onChange={(employeeId) => {
+                      setSubstituteDraft((current) => ({ ...current, employeeId }));
+                      setOpenSubstituteMenu(null);
+                    }}
+                  />
+                ) : (
+                  <PolicySelectMenu
+                    value={substituteDraft.targetType}
+                    options={SUBSTITUTE_TARGET_OPTIONS}
+                    disabled={!approvalEnabled}
+                    searchable
+                    query={substituteQuery}
+                    onQueryChange={setSubstituteQuery}
+                    open={openSubstituteMenu === 'target'}
+                    onToggle={() => {
+                      setSubstituteQuery('');
+                      setOpenSubstituteMenu((current) => (current === 'target' ? null : 'target'));
+                    }}
+                    onChange={(value) => {
+                      setSubstituteDraft((current) => ({ ...current, targetType: value }));
+                      setOpenSubstituteMenu(null);
+                    }}
+                  />
+                )}
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -1088,12 +1785,8 @@ function LeaveAssignmentsView({
       setError('Виберіть політику відсутності.');
       return;
     }
-    if (action === 'assign' && !selectedEmployees.length) {
+    if (action !== 'recalculate' && !selectedEmployees.length) {
       setError('Виберіть хоча б одного співробітника.');
-      return;
-    }
-    if (action === 'remove') {
-      setError('Зняття політики буде додано окремим endpoint, щоб не втрачати ledger без аудиту.');
       return;
     }
     setSaving(true);
@@ -1101,6 +1794,12 @@ function LeaveAssignmentsView({
     try {
       if (action === 'recalculate') {
         await api.recalculateLeavePolicy(selectedPolicy);
+      } else if (action === 'remove') {
+        await api.bulkRemoveLeavePolicy({
+          policy: selectedPolicy,
+          employee_ids: selectedEmployees.map((employee) => employee.id),
+          effective_on: effectiveOn,
+        });
       } else {
         await api.bulkAssignLeavePolicy({
           policy: selectedPolicy,
@@ -1219,7 +1918,7 @@ function LeaveAssignmentsView({
             <Trash2 size={18} />
             <span>
               <strong>Прибрати політику відсутності</strong>
-              <em>Скасувати призначення поточної політики й очистити накопичені баланси</em>
+              <em>Архівувати активні призначення без очищення історії балансу</em>
             </span>
           </button>
         </div>
@@ -1261,7 +1960,7 @@ function LeaveAssignmentsView({
         <button
           type="button"
           className="primary-action"
-          disabled={saving || !policyId || (action === 'assign' && !selectedEmployees.length)}
+          disabled={saving || !policyId || (action !== 'recalculate' && !selectedEmployees.length)}
           onClick={() => void submitAction()}
         >
           {saving ? 'Застосування…' : 'Далі'}
@@ -1409,6 +2108,7 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
     return (
       <LeavePolicyWizard
         initial={policyWizard}
+        employees={employees}
         onBack={() => setPolicyWizard(null)}
         onFinish={async (payload) => {
           const saved = policyWizard.policy
@@ -1649,8 +2349,8 @@ export function SettingsLeaveTypesView({ onBack }: { onBack: () => void }) {
             </div>
             <div className="people-data-modal-body">
               <p>
-                Видалити «{confirmDelete.name}»? Якщо є пов’язані запити/баланси — видалення може бути заблоковане
-                бекендом.
+                Видалити «{confirmDelete.name}»? Якщо є пов’язані запити/баланси, тип буде архівовано разом з активними
+                політиками й призначеннями.
               </p>
             </div>
             <div className="people-data-modal-foot">

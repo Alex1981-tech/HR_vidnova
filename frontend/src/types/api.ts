@@ -649,6 +649,7 @@ export type LeavePolicyAccrualRule = {
   carryover_day: number;
   carryover_month: number;
   seniority_bonus_enabled: boolean;
+  seniority_bonus_levels: unknown[];
 };
 
 export type LeavePolicy = {
@@ -663,6 +664,9 @@ export type LeavePolicy = {
   counted_as: string;
   visibility: string;
   instructions_html: string;
+  deduct_non_working_holidays: boolean;
+  allow_on_demand_absence: boolean;
+  on_demand_limit: string | null;
   prevent_overlapping_requests: boolean;
   forbid_probation_requests: boolean;
   forbid_breakdown_edit: boolean;
@@ -677,6 +681,9 @@ export type LeavePolicy = {
   skip_unassigned_approvers: boolean;
   allow_substitute_approvers: boolean;
   approver_steps: unknown[];
+  allow_negative_balance: boolean;
+  limit_negative_balance: boolean;
+  max_negative_balance: string | null;
   rounding_method: string;
   rounding_precision: string;
   allow_withdraw: boolean;
@@ -765,6 +772,25 @@ export type LeaveBalance = {
   policy_name: string;
   policy_activity_type: string;
   policy_counted_as: string;
+};
+
+export type LeaveLedgerEntry = {
+  id: number;
+  employee: number;
+  employee_name: string;
+  leave_type: number;
+  leave_type_name: string;
+  policy: number | null;
+  policy_name: string;
+  assignment: number | null;
+  kind: string;
+  occurred_on: string;
+  amount: string;
+  balance_after: string;
+  description: string;
+  source_model: string;
+  source_id: string;
+  created_at: string;
 };
 
 export type SelfLeave = {

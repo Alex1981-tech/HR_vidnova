@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -80,6 +82,9 @@ class LeavePolicy(TimestampedModel):
     counted_as = models.CharField(max_length=24, choices=CountedAs.choices, default=CountedAs.WORKING_DAYS)
     visibility = models.CharField(max_length=24, choices=Visibility.choices, default=Visibility.EVERYONE)
     instructions_html = models.TextField(blank=True)
+    deduct_non_working_holidays = models.BooleanField(default=False)
+    allow_on_demand_absence = models.BooleanField(default=False)
+    on_demand_limit = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     prevent_overlapping_requests = models.BooleanField(default=True)
     forbid_probation_requests = models.BooleanField(default=False)
     forbid_breakdown_edit = models.BooleanField(default=False)
@@ -94,6 +99,9 @@ class LeavePolicy(TimestampedModel):
     skip_unassigned_approvers = models.BooleanField(default=False)
     allow_substitute_approvers = models.BooleanField(default=False)
     approver_steps = models.JSONField(default=list, blank=True)
+    allow_negative_balance = models.BooleanField(default=True)
+    limit_negative_balance = models.BooleanField(default=False)
+    max_negative_balance = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     rounding_method = models.CharField(max_length=24, choices=RoundingMethod.choices, default=RoundingMethod.NEAREST)
     rounding_precision = models.CharField(
         max_length=24,
@@ -129,6 +137,39 @@ class LeavePolicy(TimestampedModel):
     @property
     def is_accrual(self) -> bool:
         return self.policy_type == self.PolicyType.ACCRUAL
+
+    def clean(self):
+        errors = {}
+        for field in (
+            "on_demand_limit",
+            "max_negative_balance",
+            "min_daily_amount",
+            "min_total_amount",
+            "max_total_amount",
+        ):
+            value = getattr(self, field)
+            if value is not None and value < 0:
+                errors[field] = "Значення не може бути від'ємним."
+
+        if self.allow_on_demand_absence:
+            if self.on_demand_limit is None or self.on_demand_limit <= 0:
+                errors["on_demand_limit"] = "Вкажіть кількість відсутностей на вимогу більше 0."
+
+        if not self.allow_negative_balance:
+            if self.limit_negative_balance:
+                errors["limit_negative_balance"] = "Ліміт негативного балансу можна вмикати тільки якщо негативний баланс дозволено."
+            if self.max_negative_balance is not None:
+                errors["max_negative_balance"] = "Максимальний негативний баланс не використовується, коли негативний баланс заборонено."
+        elif self.limit_negative_balance and (self.max_negative_balance is None or self.max_negative_balance <= 0):
+            errors["max_negative_balance"] = "Вкажіть максимальний негативний баланс більше 0."
+
+        if self.min_total_amount is not None and self.max_total_amount is not None and self.min_total_amount > self.max_total_amount:
+            errors["min_total_amount"] = "Мінімальна загальна сума не може бути більшою за максимальну."
+        if self.min_notice_days is not None and self.max_notice_days is not None and self.min_notice_days > self.max_notice_days:
+            errors["min_notice_days"] = "Мінімальний термін повідомлення не може бути більшим за максимальний."
+
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self) -> str:
         return f"{self.leave_type}: {self.name}"
@@ -177,6 +218,7 @@ class LeavePolicyAccrualRule(TimestampedModel):
     carryover_day = models.PositiveSmallIntegerField(default=1)
     carryover_month = models.PositiveSmallIntegerField(default=1)
     seniority_bonus_enabled = models.BooleanField(default=False)
+    seniority_bonus_levels = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["policy__leave_type__order", "policy__name"]
@@ -188,6 +230,21 @@ class LeavePolicyAccrualRule(TimestampedModel):
             raise ValidationError({"carryover_day": "День перенесення має бути від 1 до 31."})
         if self.carryover_month < 1 or self.carryover_month > 12:
             raise ValidationError({"carryover_month": "Місяць перенесення має бути від 1 до 12."})
+        if self.seniority_bonus_levels and not isinstance(self.seniority_bonus_levels, list):
+            raise ValidationError({"seniority_bonus_levels": "Рівні стажу мають бути списком."})
+        for index, level in enumerate(self.seniority_bonus_levels or [], start=1):
+            if not isinstance(level, dict):
+                raise ValidationError({"seniority_bonus_levels": f"Рівень {index} має бути об'єктом."})
+            for field in ("seniority_years", "period_amount", "max_balance"):
+                value = level.get(field)
+                if value in (None, ""):
+                    continue
+                try:
+                    parsed = Decimal(str(value).replace(",", "."))
+                except (InvalidOperation, ValueError):
+                    raise ValidationError({"seniority_bonus_levels": f"Рівень {index}: некоректне числове значення."})
+                if parsed < 0:
+                    raise ValidationError({"seniority_bonus_levels": f"Рівень {index}: значення не може бути від'ємним."})
 
     def __str__(self) -> str:
         return f"Нарахування: {self.policy}"

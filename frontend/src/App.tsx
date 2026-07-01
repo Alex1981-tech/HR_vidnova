@@ -133,6 +133,7 @@ import type {
   EmployeeProfile,
   EmployeeDocument,
   EmployeeDocumentFolder,
+  EmployeeLeavePolicyAssignment,
   EmergencyContact,
   Dependent,
   EmployeeEducation,
@@ -148,6 +149,8 @@ import type {
   KnowledgeCategory,
   KnowledgeDocument,
   LeaveBalance,
+  LeaveLedgerEntry,
+  LeavePolicy,
   LeaveRequest,
   LeaveType,
   PositionOption,
@@ -6427,46 +6430,663 @@ function leaveStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     draft: 'Чернетка',
     submitted: 'Подано',
-    approved: 'Затверджено',
+    approved: 'Схвалено',
     rejected: 'Відхилено',
     cancelled: 'Скасовано',
   };
   return labels[status] ?? status;
 }
 
-function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
-  const [types, setTypes] = useState<LeaveType[]>([]);
-  const [balances, setBalances] = useState<LeaveBalance[]>([]);
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [state, setState] = useState<LoadState>('idle');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [historyType, setHistoryType] = useState<number | null>(null);
-  const [historyYear, setHistoryYear] = useState('');
+function leaveStatusTone(status: string): 'ok' | 'bad' | 'warn' {
+  if (status === 'approved') return 'ok';
+  if (status === 'rejected' || status === 'cancelled') return 'bad';
+  return 'warn';
+}
+
+function leaveLedgerKindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    opening_balance: 'Перенесення',
+    accrual: 'Пропорційне нарахування',
+    request: 'Запит на відсутність',
+    adjustment: 'Коригування',
+    carryover: 'Перенесення',
+    expiration: 'Списання',
+    import: 'Імпорт',
+  };
+  return labels[kind] ?? kind;
+}
+
+function leaveLedgerDescription(entry: LeaveLedgerEntry): string {
+  return entry.description || leaveLedgerKindLabel(entry.kind);
+}
+
+function leaveAmountNumber(value: string | number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function leaveCardMetricLabel(type: LeaveType, balance?: LeaveBalance): string {
+  const activity = (balance?.policy_activity_type || '').toLowerCase();
+  const name = type.name.toLowerCase();
+  if (activity.includes('unpaid') || name.includes('власний рахунок')) return 'Використано';
+  return 'Доступно';
+}
+
+function leaveTypeBalanceHint(type: LeaveType, balance?: LeaveBalance): string {
+  const amount = leaveAmountNumber(balance?.balance ?? 0).toFixed(1);
+  if (leaveCardMetricLabel(type, balance) === 'Використано') return `${amount} баланс у днях`;
+  return type.unit === 'hours' ? `${amount} доступні години` : `${amount} доступні дні`;
+}
+
+function formatAbsenceShortDate(value: string): string {
+  const date = isoToLocalDate(value);
+  if (!date) return value;
+  const months = ['Січ.', 'Лют.', 'Бер.', 'Квіт.', 'Трав.', 'Черв.', 'Лип.', 'Серп.', 'Вер.', 'Жовт.', 'Лист.', 'Груд.'];
+  return `${String(date.getDate()).padStart(2, '0')} ${months[date.getMonth()]} ${String(date.getFullYear()).slice(-2)}`;
+}
+
+function formatAbsencePeriod(start: string, end: string): string {
+  return `${formatAbsenceShortDate(start)} - ${formatAbsenceShortDate(end)}`;
+}
+
+function localDateToIso(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function isoToLocalDate(value: string): Date | null {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function absenceDateRange(start: string, end: string): string[] {
+  const startDate = isoToLocalDate(start);
+  const endDate = isoToLocalDate(end);
+  if (!startDate || !endDate) return [];
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return [];
+  const days: string[] = [];
+  const cursor = new Date(startDate);
+  while (cursor <= endDate && days.length < 62) {
+    days.push(localDateToIso(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function absenceWeekday(value: string): string {
+  const date = isoToLocalDate(value) ?? new Date();
+  return new Intl.DateTimeFormat('uk-UA', { weekday: 'short' }).format(date).replace('.', '');
+}
+
+function absenceRangeDisplay(start: string, end: string): string {
+  if (!start && !end) return 'ДД.ММ.РРРР - ДД.ММ.РРРР';
+  if (start && !end) return `${formatDate(start)} - ДД.ММ.РРРР`;
+  return `${formatDate(start)} - ${formatDate(end)}`;
+}
+
+function AbsenceRequestModal({
+  employeeId,
+  type,
+  balance,
+  options,
+  onClose,
+  onCreated,
+}: {
+  employeeId: number;
+  type: LeaveType;
+  balance?: LeaveBalance;
+  options: Array<{ type: LeaveType; balance?: LeaveBalance }>;
+  onClose: () => void;
+  onCreated: () => Promise<void>;
+}) {
+  const [selectedTypeId, setSelectedTypeId] = useState(type.id);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [reason, setReason] = useState('');
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => isoToLocalDate(todayIsoDate()) ?? new Date());
+  const [rangePicking, setRangePicking] = useState(false);
+  const [hoverDay, setHoverDay] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const selectedOption = options.find((option) => option.type.id === selectedTypeId) ?? { type, balance };
+  const selectedType = selectedOption.type;
+  const selectedBalance = selectedOption.balance;
+  const days = absenceDateRange(dateFrom, dateTo);
+  const requested = days.length;
+  const available = leaveAmountNumber(selectedBalance?.balance ?? 0);
+  const forecast = available - requested;
+  const calendarTitle = new Intl.DateTimeFormat('uk-UA', { month: 'short', year: 'numeric' })
+    .format(calendarMonth)
+    .replace('.', '');
+  const calendarDays = useMemo(() => {
+    const firstOfMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const mondayOffset = (firstOfMonth.getDay() + 6) % 7;
+    const firstCell = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1 - mondayOffset);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(firstCell);
+      date.setDate(firstCell.getDate() + index);
+      return {
+        date,
+        iso: localDateToIso(date),
+        inMonth: date.getMonth() === calendarMonth.getMonth(),
+      };
+    });
+  }, [calendarMonth]);
+
+  function pickRangeDay(day: string) {
+    setError('');
+    if (!dateFrom || !rangePicking) {
+      setDateFrom(day);
+      setDateTo(day);
+      setRangePicking(true);
+      setHoverDay(day);
+      return;
+    }
+    if (day < dateFrom) {
+      setDateTo(dateFrom);
+      setDateFrom(day);
+    } else {
+      setDateTo(day);
+    }
+    setRangePicking(false);
+    setHoverDay('');
+    setCalendarOpen(false);
+  }
+
+  async function submit() {
+    if (!dateFrom || !dateTo || !requested) {
+      setError('Виберіть коректний проміжок часу.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.createEmployeeLeaveRequest({
+        employee: employeeId,
+        leave_type: selectedType.id,
+        date_from: dateFrom,
+        date_to: dateTo,
+        reason,
+        tracking_time_in: selectedType.unit || 'days',
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+      });
+      await onCreated();
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не вдалося створити запит.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="absence-modal-layer" role="dialog" aria-modal="true" aria-label="Запит на відсутність">
+      <button type="button" className="absence-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className={`absence-request-modal${calendarOpen ? ' calendar-open' : ''}`}>
+        <header>
+          <h2>Запит на відсутність</h2>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={28} />
+          </button>
+        </header>
+        <div className="absence-request-body">
+          <div className="absence-request-left">
+            <section>
+              <h3>Деталі про відсутність</h3>
+              <label className="absence-form-field">
+                <span>Тип відсутності</span>
+                <div className="absence-type-picker">
+                  <button type="button" className="absence-type-select" onClick={() => setTypeMenuOpen((open) => !open)}>
+                    <span className="absence-card-icon">
+                      <LeaveTypeIcon iconKey={selectedType.icon} size={20} />
+                    </span>
+                    <strong>{selectedType.name}</strong>
+                    <ChevronDown size={18} />
+                  </button>
+                  {typeMenuOpen ? (
+                    <div className="absence-type-menu">
+                      {options.map((option) => (
+                        <button
+                          type="button"
+                          key={option.type.id}
+                          className={option.type.id === selectedType.id ? 'active' : ''}
+                          onClick={() => {
+                            setSelectedTypeId(option.type.id);
+                            setTypeMenuOpen(false);
+                            setError('');
+                          }}
+                        >
+                          <span className="absence-card-icon">
+                            <LeaveTypeIcon iconKey={option.type.icon} size={20} />
+                          </span>
+                          <span>
+                            <strong>{option.type.name}</strong>
+                            <em>{leaveTypeBalanceHint(option.type, option.balance)}</em>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+            </section>
+            <section>
+              <label className="absence-form-field">
+                <span>Проміжок часу</span>
+                <div className="absence-range-picker">
+                  <button type="button" className="absence-range-trigger" onClick={() => setCalendarOpen((open) => !open)}>
+                    <span>{absenceRangeDisplay(dateFrom, dateTo)}</span>
+                    <Calendar size={18} />
+                  </button>
+                  {calendarOpen ? (
+                    <div className="absence-calendar-popover">
+                      <div className="absence-calendar-head">
+                        <button
+                          type="button"
+                          aria-label="Попередній місяць"
+                          onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <strong>{calendarTitle}</strong>
+                        <button
+                          type="button"
+                          aria-label="Наступний місяць"
+                          onClick={() => setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                      <div className="absence-calendar-weekdays">
+                        {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'нд'].map((weekday) => (
+                          <span key={weekday}>{weekday}</span>
+                        ))}
+                      </div>
+                      <div className="absence-calendar-grid">
+                        {calendarDays.map((day) => {
+                          const selected = day.iso === dateFrom || day.iso === dateTo;
+                          const previewEnd = rangePicking && dateFrom && hoverDay ? hoverDay : dateTo;
+                          const rangeStart = dateFrom && previewEnd && previewEnd < dateFrom ? previewEnd : dateFrom;
+                          const rangeEnd = dateFrom && previewEnd && previewEnd < dateFrom ? dateFrom : previewEnd;
+                          const inRange = Boolean(rangeStart && rangeEnd && day.iso >= rangeStart && day.iso <= rangeEnd);
+                          const isToday = day.iso === todayIsoDate();
+                          return (
+                            <button
+                              type="button"
+                              key={day.iso}
+                              className={[
+                                day.inMonth ? '' : 'outside',
+                                selected ? 'selected' : '',
+                                inRange ? 'in-range' : '',
+                                isToday ? 'today' : '',
+                              ].filter(Boolean).join(' ')}
+                              aria-pressed={selected}
+                              onMouseEnter={() => setHoverDay(day.iso)}
+                              onClick={() => pickRangeDay(day.iso)}
+                            >
+                              {day.date.getDate()}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+              <label className="absence-form-field">
+                <span>Примітка</span>
+                <textarea
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  rows={4}
+                  placeholder="Вкажіть причину відсутності"
+                />
+              </label>
+            </section>
+          </div>
+          <aside className="absence-request-right">
+            <h3>Поденно</h3>
+            <div className="absence-daily-list">
+              {days.length ? (
+                days.map((day, index) => {
+                  const date = isoToLocalDate(day) ?? new Date();
+                  return (
+                    <div className="absence-daily-row" key={day}>
+                      <span>
+                        <strong>{date.getDate()}</strong>
+                        <em>{new Intl.DateTimeFormat('uk-UA', { month: 'short' }).format(date).replace('.', '')}</em>
+                      </span>
+                      <b>{absenceWeekday(day)}</b>
+                      <i />
+                      <input value="1,0" readOnly aria-label={`День ${index + 1}`} />
+                    </div>
+                  );
+                })
+              ) : null}
+            </div>
+            <div className="absence-request-summary">
+              <span>
+                Доступно
+                <strong>{available.toFixed(1)}д</strong>
+              </span>
+              {requested ? (
+                <>
+                  <span>
+                    Запитано
+                    <strong>{requested}д</strong>
+                  </span>
+                  <span>
+                    Залишок (прогноз)
+                    <strong>{forecast.toFixed(1)}д</strong>
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </aside>
+        </div>
+        <footer>
+          {error ? <p className="absence-modal-error">{error}</p> : null}
+          <button type="button" className="primary-action" onClick={() => void submit()} disabled={saving || !requested}>
+            {saving ? 'Створення…' : 'Запит'}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ForecastBalanceDrawer({
+  type,
+  balance,
+  ledger,
+  onClose,
+}: {
+  type: LeaveType;
+  balance?: LeaveBalance;
+  ledger: LeaveLedgerEntry[];
+  onClose: () => void;
+}) {
+  const [period, setPeriod] = useState<'current' | 'next'>('current');
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const available = leaveAmountNumber(balance?.balance ?? 0);
+  const accrualAmounts = ledger
+    .filter((entry) => entry.leave_type === type.id && entry.kind === 'accrual' && leaveAmountNumber(entry.amount) > 0)
+    .map((entry) => leaveAmountNumber(entry.amount));
+  const periodAmount = accrualAmounts[0] || (type.name.toLowerCase().includes('відпуст') ? 2 : 0);
+  const nextYear = currentYear + 1;
+  const isNext = period === 'next';
+  const periodYear = isNext ? nextYear : currentYear;
+  const startMonth = isNext ? 0 : currentMonth;
+  const monthCount = 12 - startMonth;
+  const openingBalance = isNext ? 0 : available;
+  const rows = Array.from({ length: monthCount + (isNext ? 1 : 0) }, (_, index) => {
+    if (isNext && index === 0) {
+      return {
+        date: localDateToIso(new Date(periodYear, 0, 1)),
+        description: 'Перенесення',
+        accrued: -available,
+        balance: 0,
+      };
+    }
+    const monthIndex = isNext ? index - 1 : index;
+    const month = startMonth + monthIndex;
+    const date = new Date(periodYear, month, 1);
+    const isOpening = !isNext && index === 0;
+    const accrued = isOpening ? 0 : periodAmount;
+    return {
+      date: localDateToIso(date),
+      description: isOpening ? 'Доступний баланс' : 'З нарахуванням',
+      accrued,
+      balance: openingBalance + periodAmount * (isNext ? index : index),
+    };
+  });
+  const totalAccrued = rows.reduce((sum, row) => sum + Math.max(0, row.accrued), 0);
+  const periodStart = isNext ? `01 Січ., ${periodYear}` : `01 Лип., ${periodYear}`;
+  const balanceLabel = isNext ? 'Очікуваний початковий баланс' : 'Доступний баланс';
+
+  return (
+    <aside className="absence-forecast-drawer" aria-label={`Прогнозований баланс: ${type.name}`}>
+      <header>
+        <strong>Прогнозований баланс: {type.name}</strong>
+        <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+          <X size={22} />
+        </button>
+      </header>
+      <div className="absence-forecast-tabs">
+        <button type="button" className={period === 'current' ? 'active' : ''} onClick={() => setPeriod('current')}>
+          Поточний період нарахування
+        </button>
+        <button type="button" className={period === 'next' ? 'active' : ''} onClick={() => setPeriod('next')}>
+          Наступний період нарахування
+        </button>
+      </div>
+      <h2>Прогнозований баланс ({periodStart} - 31 Груд., {periodYear})</h2>
+      <div className="absence-forecast-summary">
+        <span>
+          {balanceLabel}
+          <strong>{openingBalance.toFixed(1)}д</strong>
+        </span>
+        <span>
+          Нараховано
+          <strong>+{totalAccrued.toFixed(1)}д</strong>
+        </span>
+      </div>
+      <p>Відображено 1 - {rows.length} з {rows.length}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Оновлення нарахування</th>
+            <th>Опис</th>
+            <th>Нараховано</th>
+            <th>Баланс</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.date}>
+              <td>{formatDate(row.date)}</td>
+              <td>{row.description}</td>
+              <td>{row.accrued ? `${row.accrued > 0 ? '+' : ''}${row.accrued.toFixed(1)}` : '-'}</td>
+              <td>{row.balance.toFixed(1)}д</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </aside>
+  );
+}
+
+function PolicyAssignmentModal({
+  employeeId,
+  type,
+  assignment,
+  onClose,
+  onSaved,
+}: {
+  employeeId: number;
+  type: LeaveType;
+  assignment?: EmployeeLeavePolicyAssignment | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
+  const [policyId, setPolicyId] = useState(assignment ? String(assignment.policy) : '');
+  const [mode, setMode] = useState<'hire' | 'specific'>('specific');
+  const [effectiveOn, setEffectiveOn] = useState(assignment?.effective_on ?? todayIsoDate());
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let alive = true;
-    setState('loading');
-    Promise.all([
-      api.leaveTypes({ page_size: 100 }),
-      api.leaveBalances({ employee: employeeId, page_size: 500 }),
-      api.leaveRequests({ employee: employeeId, page_size: 200 }),
-    ])
-      .then(([t, b, r]) => {
+    setLoadState('loading');
+    api.leavePolicies({ leave_type: type.id, is_active: true, page_size: 100 })
+      .then((result) => {
         if (!alive) return;
-        setTypes(t.items);
-        setBalances(b.items);
-        setRequests(r.items);
-        setState('ok');
+        setPolicies(result.items);
+        if (!policyId && result.items[0]) setPolicyId(String(result.items[0].id));
+        setLoadState('ok');
       })
       .catch(() => {
-        if (alive) setState('error');
+        if (alive) setLoadState('error');
       });
     return () => {
       alive = false;
     };
+  }, [policyId, type.id]);
+
+  async function submit() {
+    const selected = Number(policyId);
+    if (!selected) {
+      setError('Виберіть політику відсутності.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.createLeavePolicyAssignment({
+        employee: employeeId,
+        policy: selected,
+        effective_on: mode === 'hire' ? (assignment?.effective_on ?? effectiveOn) : effectiveOn,
+        initial_balance: '0.00',
+      });
+      await onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не вдалося призначити політику.');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="absence-modal-layer" role="dialog" aria-modal="true" aria-label="Редагувати політику відсутності">
+      <button type="button" className="absence-modal-backdrop" aria-label="Закрити" onClick={onClose} />
+      <section className="absence-policy-modal">
+        <header>
+          <h2>Редагувати політику відсутності</h2>
+          <button type="button" className="modal-close" aria-label="Закрити" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </header>
+        <div className="absence-policy-body">
+          <label className="absence-form-field">
+            <span>Політика відсутностей</span>
+            <select value={policyId} onChange={(event) => setPolicyId(event.target.value)} disabled={loadState === 'loading'}>
+              {policies.map((policy) => (
+                <option key={policy.id} value={policy.id}>
+                  {policy.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>Діє з</span>
+          <div className="absence-policy-options">
+            <button type="button" className={mode === 'hire' ? 'active' : ''} onClick={() => setMode('hire')}>
+              <i />
+              <strong>Дата прийому на роботу</strong>
+              <small>Нарахування буде перераховано з цієї дати й надалі.</small>
+            </button>
+            <button type="button" className={mode === 'specific' ? 'active' : ''} onClick={() => setMode('specific')}>
+              <i />
+              <strong>Конкретна дата</strong>
+              <small>Застосовує політику, починаючи з вибраної дати.</small>
+            </button>
+          </div>
+          <label className="absence-form-field">
+            <input type="date" value={effectiveOn} onChange={(event) => setEffectiveOn(event.target.value)} />
+          </label>
+          <div className="absence-policy-timeline" aria-hidden>
+            <span>Минула дата</span>
+            <span>Сьогодні</span>
+            <b />
+            <em>Перезаписано</em>
+          </div>
+          <p>
+            Застосування заднім числом застосує нові правила з вибраної минулої дати до сьогодні. Нарахування буде
+            перераховано, а баланси можуть змінитися.
+          </p>
+          {error ? <p className="absence-modal-error">{error}</p> : null}
+        </div>
+        <footer>
+          <button type="button" className="secondary-action" onClick={onClose} disabled={saving}>
+            <X size={15} />
+            Cancel
+          </button>
+          <button type="button" className="primary-action" onClick={() => void submit()} disabled={saving || loadState !== 'ok'}>
+            {saving ? 'Призначення…' : 'Призначити'}
+            <Check size={15} />
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
+  const [types, setTypes] = useState<LeaveType[]>([]);
+  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [ledger, setLedger] = useState<LeaveLedgerEntry[]>([]);
+  const [assignments, setAssignments] = useState<EmployeeLeavePolicyAssignment[]>([]);
+  const [state, setState] = useState<LoadState>('idle');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [historyType, setHistoryType] = useState<number | null>(null);
+  const [historyYear, setHistoryYear] = useState(String(new Date().getFullYear()));
+  const [requestModal, setRequestModal] = useState<{ type: LeaveType; balance?: LeaveBalance } | null>(null);
+  const [forecastFor, setForecastFor] = useState<{ type: LeaveType; balance?: LeaveBalance } | null>(null);
+  const [policyModal, setPolicyModal] = useState<{
+    type: LeaveType;
+    assignment?: EmployeeLeavePolicyAssignment | null;
+  } | null>(null);
+  const [cardMenuFor, setCardMenuFor] = useState<number | null>(null);
+  const [requestMenuFor, setRequestMenuFor] = useState<number | null>(null);
+  const [deleteRequestTarget, setDeleteRequestTarget] = useState<LeaveRequest | null>(null);
+  const [deleteRequestBusy, setDeleteRequestBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  const loadAbsence = useCallback(async (alive?: { current: boolean }) => {
+    setState('loading');
+    const [t, b, r, l, a] = await Promise.all([
+      api.leaveTypes({ page_size: 100 }),
+      api.leaveBalances({ employee: employeeId, page_size: 500 }),
+      api.leaveRequests({ employee: employeeId, page_size: 200 }),
+      api.leaveLedger({ employee: employeeId, page_size: 1000 }),
+      api.leavePolicyAssignments({ employee: employeeId, is_active: true, page_size: 200 }),
+    ]);
+    if (alive && !alive.current) return;
+    setTypes(t.items);
+    setBalances(b.items);
+    setRequests(r.items);
+    setLedger(l.items);
+    setAssignments(a.items);
+    setState('ok');
   }, [employeeId]);
 
+  useEffect(() => {
+    const alive = { current: true };
+    loadAbsence(alive).catch(() => {
+      if (alive.current) setState('error');
+    });
+    return () => {
+      alive.current = false;
+    };
+  }, [loadAbsence]);
+
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const activeAssignmentByType = useMemo(() => {
+    const map = new Map<number, EmployeeLeavePolicyAssignment>();
+    for (const assignment of assignments) {
+      const current = map.get(assignment.leave_type);
+      if (!current || assignment.effective_on > current.effective_on) map.set(assignment.leave_type, assignment);
+    }
+    return map;
+  }, [assignments]);
   const latestByType = useMemo(() => {
     const map = new Map<number, LeaveBalance>();
     for (const bal of balances) {
@@ -6475,28 +7095,50 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
     }
     return map;
   }, [balances]);
-  const cards = useMemo(
-    () => types.filter((t) => latestByType.has(t.id)).map((t) => ({ type: t, balance: latestByType.get(t.id)! })),
-    [types, latestByType],
-  );
+  const cards = useMemo(() => {
+    const assignedCards = assignments
+      .map((assignment) => {
+        const type = typeById.get(assignment.leave_type);
+        if (!type) return null;
+        return { type, balance: latestByType.get(type.id), assignment };
+      })
+      .filter(Boolean) as Array<{
+      type: LeaveType;
+      balance?: LeaveBalance;
+      assignment?: EmployeeLeavePolicyAssignment;
+    }>;
+    const assignedTypeIds = new Set(assignedCards.map((card) => card.type.id));
+    const balanceCards = types
+      .filter((type) => latestByType.has(type.id) && !assignedTypeIds.has(type.id))
+      .map((type) => ({ type, balance: latestByType.get(type.id), assignment: activeAssignmentByType.get(type.id) }));
+    return [...assignedCards, ...balanceCards];
+  }, [activeAssignmentByType, assignments, latestByType, typeById, types]);
   const years = useMemo(
     () =>
-      Array.from(new Set(balances.map((b) => (b.effective_on ?? '').slice(0, 4)).filter(Boolean)))
+      Array.from(new Set(ledger.map((entry) => entry.occurred_on.slice(0, 4)).filter(Boolean)))
         .sort()
         .reverse(),
-    [balances],
+    [ledger],
   );
   const effectiveHistoryType = historyType ?? cards[0]?.type.id ?? null;
   const historyRows = useMemo(
     () =>
-      balances
-        .filter((b) => b.leave_type === effectiveHistoryType)
-        .filter((b) => !historyYear || (b.effective_on ?? '').startsWith(historyYear))
+      ledger
+        .filter((entry) => entry.leave_type === effectiveHistoryType)
+        .filter((entry) => !historyYear || entry.occurred_on.startsWith(historyYear))
         .slice()
-        .sort((a, b) => (a.effective_on ?? '').localeCompare(b.effective_on ?? '')),
-    [balances, effectiveHistoryType, historyYear],
+        .sort((a, b) => b.occurred_on.localeCompare(a.occurred_on) || b.id - a.id),
+    [ledger, effectiveHistoryType, historyYear],
   );
   const filteredRequests = statusFilter ? requests.filter((r) => r.status === statusFilter) : requests;
+  const usedTotal = useMemo(
+    () => historyRows.reduce((total, entry) => total + Math.max(0, -leaveAmountNumber(entry.amount)), 0),
+    [historyRows],
+  );
+  const adjustmentCount = useMemo(
+    () => historyRows.filter((entry) => entry.kind === 'adjustment').length,
+    [historyRows],
+  );
 
   function unitSuffix(type?: LeaveType): string {
     return type?.unit === 'hours' ? ' год' : ' дн';
@@ -6504,6 +7146,56 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
   function fmtAmount(value: string | number): string {
     const n = Number(value);
     return Number.isFinite(n) ? n.toFixed(1) : String(value);
+  }
+  function fmtSignedAmount(value: string | number): string {
+    const n = leaveAmountNumber(value);
+    if (!n) return '';
+    return `${n > 0 ? '+' : '-'}${Math.abs(n).toFixed(1)}`;
+  }
+  function requestAmount(request: LeaveRequest): number {
+    const explicit = leaveAmountNumber(request.amount ?? 0);
+    if (explicit) return explicit;
+    return absenceDateRange(request.date_from, request.date_to).length || 1;
+  }
+  function changeHistoryYear(direction: -1 | 1) {
+    const base = Number(historyYear || years[0] || new Date().getFullYear());
+    setHistoryYear(String(base + direction));
+  }
+  async function refreshAbsence() {
+    await loadAbsence();
+  }
+  async function removePolicy(assignment?: EmployeeLeavePolicyAssignment | null) {
+    if (!assignment) {
+      setActionError('Для цієї картки немає активного призначення політики.');
+      return;
+    }
+    setActionError('');
+    setCardMenuFor(null);
+    try {
+      await api.bulkRemoveLeavePolicy({
+        policy: assignment.policy,
+        employee_ids: [employeeId],
+        effective_on: todayIsoDate(),
+      });
+      await refreshAbsence();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Не вдалося видалити політику.');
+    }
+  }
+  async function confirmDeleteLeaveRequest() {
+    if (!deleteRequestTarget) return;
+    setDeleteRequestBusy(true);
+    setActionError('');
+    try {
+      await api.deleteLeaveRequest(deleteRequestTarget.id);
+      setDeleteRequestTarget(null);
+      await refreshAbsence();
+    } catch (err) {
+      setDeleteRequestTarget(null);
+      setActionError(err instanceof ApiError ? err.message : 'Не вдалося видалити запит.');
+    } finally {
+      setDeleteRequestBusy(false);
+    }
   }
 
   if (state === 'loading' || state === 'idle') {
@@ -6529,22 +7221,49 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
     <div className="absence-tab">
       <div className="absence-cards">
         {cards.length ? (
-          cards.map(({ type, balance }) => (
+          cards.map(({ type, balance, assignment }) => (
             <div className="absence-card" key={type.id}>
               <div className="absence-card-head">
-                <span className="absence-card-icon" style={type.color ? { color: type.color } : undefined}>
+                <span className="absence-card-icon">
                   <LeaveTypeIcon iconKey={type.icon} size={18} />
                 </span>
                 <strong>{type.name}</strong>
               </div>
-              <span className="absence-card-label">Доступно:</span>
-              <div className="absence-card-value" style={type.color ? { color: type.color } : undefined}>
-                {fmtAmount(balance.balance)}
+              <span className="absence-card-label">{leaveCardMetricLabel(type, balance)}</span>
+              <div className="absence-card-value">
+                {fmtAmount(balance?.balance ?? 0)}
                 <small>{unitSuffix(type)}</small>
               </div>
-              <button type="button" className="secondary-action" disabled title="Скоро">
-                Створити запит
-              </button>
+              <div className="absence-card-actions">
+                <button type="button" className="secondary-action" onClick={() => setRequestModal({ type, balance })}>
+                  Створити запит
+                </button>
+                <button type="button" className="icon-button" aria-label="Прогнозований баланс" onClick={() => setForecastFor({ type, balance })}>
+                  <CalendarCheck size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Дії"
+                  aria-expanded={cardMenuFor === type.id}
+                  onClick={() => setCardMenuFor((current) => (current === type.id ? null : type.id))}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+                {cardMenuFor === type.id ? (
+                  <div className="absence-card-menu">
+                    <button type="button" onClick={() => { setPolicyModal({ type, assignment }); setCardMenuFor(null); }}>
+                      Змінити
+                    </button>
+                    <button type="button" onClick={() => { setPolicyModal({ type, assignment }); setCardMenuFor(null); }}>
+                      Редагування політики
+                    </button>
+                    <button type="button" className="danger" onClick={() => void removePolicy(assignment)}>
+                      Видалити політику
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ))
         ) : (
@@ -6553,39 +7272,98 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
           </section>
         )}
       </div>
+      {actionError ? <p className="absence-action-error">{actionError}</p> : null}
 
       <section className="panel absence-block">
         <div className="absence-block-head">
           <h3>Запити</h3>
-          <select className="people-data-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="">Усі</option>
-            <option value="submitted">Подані</option>
-            <option value="approved">Затверджені</option>
-            <option value="rejected">Відхилені</option>
-            <option value="cancelled">Скасовані</option>
-          </select>
+          <div className="absence-block-controls">
+            <select className="people-data-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="">Усі</option>
+              <option value="submitted">Подані</option>
+              <option value="approved">Затверджені</option>
+              <option value="rejected">Відхилені</option>
+              <option value="cancelled">Скасовані</option>
+            </select>
+            <button type="button" className="toolbar-icon" aria-label="Експорт заявок" disabled>
+              <Download size={17} />
+            </button>
+          </div>
         </div>
         {filteredRequests.length ? (
-          <table className="absence-table">
+          <>
+          <div className="absence-history-count">
+            Відображено 1 - {filteredRequests.length} з {filteredRequests.length}
+          </div>
+          <div className="absence-table-scroll">
+          <table className="absence-table absence-requests-table">
             <thead>
               <tr>
-                <th>Тип</th>
-                <th>Період</th>
-                <th>Статус</th>
+                <th>Тип відсутності</th>
+                <th>Кількість</th>
+                <th aria-label="Дії" />
               </tr>
             </thead>
             <tbody>
-              {filteredRequests.map((r) => (
+              {filteredRequests.map((r) => {
+                const type = typeById.get(r.leave_type);
+                const amount = requestAmount(r);
+                return (
                 <tr key={r.id}>
-                  <td>{r.leave_type_name}</td>
-                  <td>
-                    {formatDate(r.date_from)} – {formatDate(r.date_to)}
+                  <td data-label="Тип відсутності">
+                    <div className="absence-request-type-cell">
+                      <span className="absence-card-icon">
+                        <LeaveTypeIcon iconKey={type?.icon || 'plane'} size={18} />
+                      </span>
+                      <span>
+                        <strong>{r.leave_type_name}</strong>
+                        <small>{formatAbsencePeriod(r.date_from, r.date_to)}</small>
+                      </span>
+                    </div>
                   </td>
-                  <td>{leaveStatusLabel(r.status)}</td>
+                  <td data-label="Кількість">
+                    <div className="absence-request-meta">
+                      <strong>{amount.toFixed(1)} днях</strong>
+                      <span className={`absence-status-pill ${leaveStatusTone(r.status)}`}>{leaveStatusLabel(r.status)}</span>
+                      <span className="absence-request-checks" aria-label="Схвалення">
+                        <Check size={13} />
+                        <Check size={13} />
+                      </span>
+                    </div>
+                  </td>
+                  <td data-label="Дії" className="absence-row-action-cell">
+                    <button
+                      type="button"
+                      className="absence-row-action"
+                      aria-label="Дії заявки"
+                      aria-expanded={requestMenuFor === r.id}
+                      onClick={() => setRequestMenuFor((current) => (current === r.id ? null : r.id))}
+                    >
+                      <MoreHorizontal size={17} />
+                    </button>
+                    {requestMenuFor === r.id ? (
+                      <div className="absence-row-menu" role="menu">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="danger"
+                          onClick={() => {
+                            setRequestMenuFor(null);
+                            setDeleteRequestTarget(r);
+                          }}
+                        >
+                          Видалити
+                        </button>
+                      </div>
+                    ) : null}
+                  </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          </div>
+          </>
         ) : (
           <div className="profile-tab-placeholder">
             <EmptyState title="Нічого не знайдено" />
@@ -6597,14 +7375,15 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
         <div className="absence-block-head">
           <h3>Історія</h3>
           <div className="absence-block-controls">
-            <select className="people-data-input" value={historyYear} onChange={(e) => setHistoryYear(e.target.value)}>
-              <option value="">Усі роки</option>
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+            <div className="absence-year-control">
+              <button type="button" aria-label="Попередній рік" onClick={() => changeHistoryYear(-1)}>
+                <ChevronLeft size={16} />
+              </button>
+              <span>{historyYear || 'Усі'}</span>
+              <button type="button" aria-label="Наступний рік" onClick={() => changeHistoryYear(1)}>
+                <ChevronRight size={16} />
+              </button>
+            </div>
             <select
               className="people-data-input"
               value={effectiveHistoryType ?? ''}
@@ -6616,36 +7395,103 @@ function EmployeeAbsenceTabView({ employeeId }: { employeeId: number }) {
                 </option>
               ))}
             </select>
+            <button type="button" className="toolbar-icon" aria-label="Експорт історії" disabled>
+              <Download size={17} />
+            </button>
           </div>
         </div>
+        <div className="absence-history-summary">
+          <span>
+            <strong>{fmtAmount(usedTotal)}</strong>
+            <em>{unitSuffix(typeById.get(effectiveHistoryType ?? 0)).trim() || 'днях'}</em>
+            <small>Всього використано</small>
+          </span>
+          <span>
+            <strong>{adjustmentCount}</strong>
+            <small>Загалом коригувань</small>
+          </span>
+        </div>
         {historyRows.length ? (
-          <table className="absence-table">
+          <>
+          <div className="absence-history-count">
+            Відображено 1 - {historyRows.length} з {historyRows.length}
+          </div>
+          <div className="absence-table-scroll">
+          <table className="absence-table absence-history-table">
             <thead>
               <tr>
                 <th>Дата</th>
                 <th>Опис</th>
+                <th>Використано</th>
+                <th>Нараховано</th>
                 <th>Баланс</th>
+                <th aria-label="Дії" />
               </tr>
             </thead>
             <tbody>
-              {historyRows.map((b) => (
-                <tr key={b.id}>
-                  <td>{b.effective_on ? formatDate(b.effective_on) : '-'}</td>
-                  <td>{b.policy_name || b.policy_activity_type || '-'}</td>
-                  <td>
-                    {fmtAmount(b.balance)}
-                    {unitSuffix(typeById.get(b.leave_type))}
+              {historyRows.map((entry) => {
+                const amount = leaveAmountNumber(entry.amount);
+                const type = typeById.get(entry.leave_type);
+                return (
+                <tr key={entry.id}>
+                  <td data-label="Дата">{formatDate(entry.occurred_on)}</td>
+                  <td data-label="Опис">{leaveLedgerDescription(entry)}</td>
+                  <td data-label="Використано">{amount < 0 ? fmtSignedAmount(amount) : ''}</td>
+                  <td data-label="Нараховано">{amount > 0 ? fmtSignedAmount(amount) : ''}</td>
+                  <td data-label="Баланс">
+                    {fmtAmount(entry.balance_after)}
+                    {unitSuffix(type)}
                   </td>
+                  <td data-label="Дії" />
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          </div>
+          </>
         ) : (
           <div className="profile-tab-placeholder">
             <EmptyState title="Нічого не знайдено" />
           </div>
         )}
       </section>
+      {requestModal ? (
+        <AbsenceRequestModal
+          employeeId={employeeId}
+          type={requestModal.type}
+          balance={requestModal.balance}
+          options={cards.map((card) => ({ type: card.type, balance: card.balance }))}
+          onClose={() => setRequestModal(null)}
+          onCreated={refreshAbsence}
+        />
+      ) : null}
+      {forecastFor ? (
+        <ForecastBalanceDrawer
+          type={forecastFor.type}
+          balance={forecastFor.balance}
+          ledger={ledger}
+          onClose={() => setForecastFor(null)}
+        />
+      ) : null}
+      {policyModal ? (
+        <PolicyAssignmentModal
+          employeeId={employeeId}
+          type={policyModal.type}
+          assignment={policyModal.assignment}
+          onClose={() => setPolicyModal(null)}
+          onSaved={refreshAbsence}
+        />
+      ) : null}
+      {deleteRequestTarget ? (
+        <ProfileListDeleteModal
+          title="Видалити запит?"
+          message={`Запит «${deleteRequestTarget.leave_type_name}» за ${formatAbsencePeriod(deleteRequestTarget.date_from, deleteRequestTarget.date_to)} буде видалено. Цю дію не можна скасувати.`}
+          busy={deleteRequestBusy}
+          onCancel={() => setDeleteRequestTarget(null)}
+          onConfirm={() => void confirmDeleteLeaveRequest()}
+        />
+      ) : null}
     </div>
   );
 }

@@ -33,14 +33,24 @@ def rbac_enforced() -> bool:
 
 
 class HasRBACPermission(BasePermission):
-    """Проверяет rbac.has_perm по коду из view (rbac_read_perm/rbac_write_perm)."""
+    """Проверяет rbac.has_perm по коду из view.
+
+    По умолчанию используется rbac_read_perm/rbac_write_perm. Для отдельных DRF
+    actions view может задать rbac_action_perms = {"destroy": "module.action"}.
+    """
 
     message = "Недостатньо прав."
 
     def has_permission(self, request, view):
-        read_code = getattr(view, "rbac_read_perm", None)
-        write_code = getattr(view, "rbac_write_perm", None)
-        code = read_code if request.method in SAFE_METHODS else (write_code or read_code)
+        action = getattr(view, "action", None)
+        action_perms = getattr(view, "rbac_action_perms", None) or {}
+        if action and action in action_perms:
+            code = action_perms[action]
+        else:
+            method_perms = getattr(view, "rbac_method_perms", None) or {}
+            code = method_perms.get(request.method)
+        if not code:
+            code = self._default_perm_code(request, view)
         if not code:
             return True
         if rbac.has_perm(request.user, code):
@@ -52,6 +62,13 @@ class HasRBACPermission(BasePermission):
             code, request.method, request.path, getattr(request.user, "id", None),
         )
         return True
+
+    @staticmethod
+    def _default_perm_code(request, view):
+        read_code = getattr(view, "rbac_read_perm", None)
+        write_code = getattr(view, "rbac_write_perm", None)
+        code = read_code if request.method in SAFE_METHODS else (write_code or read_code)
+        return code
 
 
 def apply_rbac_scope(view, queryset):

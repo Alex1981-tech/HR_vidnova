@@ -6305,9 +6305,13 @@ textarea.profile-field-input {
 }
 .leave-policy-section {
   display: grid;
-  gap: 13px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
   border-bottom: 1px solid #d8e6f2;
+}
+.leave-policy-section.compact {
+  gap: 10px;
+  padding: 14px;
 }
 .leave-policy-section:last-child {
   border-bottom: 0;
@@ -6315,18 +6319,18 @@ textarea.profile-field-input {
 .leave-policy-section h2 {
   margin: 0;
   color: var(--text);
-  font-size: 16px;
-  line-height: 20px;
+  font-size: 15px;
+  line-height: 19px;
 }
 .leave-policy-section p {
   margin: -8px 0 0;
   color: #385b80;
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 16px;
 }
 .leave-policy-field {
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 .leave-policy-field span,
 .leave-policy-limits > label > span {
@@ -6336,20 +6340,39 @@ textarea.profile-field-input {
 }
 .leave-policy-field input,
 .leave-policy-field select,
-.leave-policy-approver-row select {
+.leave-policy-approver-row select,
+.policy-select-trigger {
   width: 100%;
-  height: 38px;
+  height: 34px;
   border: 1px solid #d7e4ef;
   border-radius: 5px;
   background: #f8fbfe;
   color: var(--text);
-  font-size: 14px;
-  padding: 0 11px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+.policy-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.policy-select-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.policy-select-trigger:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 .leave-policy-field small {
   color: #385b80;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 15px;
 }
 .leave-policy-editor {
   border: 1px solid #d7e4ef;
@@ -6369,7 +6392,7 @@ textarea.profile-field-input {
 }
 .leave-policy-editor textarea {
   width: 100%;
-  min-height: 48px;
+  min-height: 40px;
   resize: vertical;
   border: 0;
   outline: 0;
@@ -6381,18 +6404,18 @@ textarea.profile-field-input {
 .leave-policy-radio {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 7px;
   color: var(--text);
-  font-size: 13px;
-  line-height: 17px;
+  font-size: 12px;
+  line-height: 16px;
 }
 .leave-policy-check.inline {
   align-items: center;
 }
 .leave-policy-check input,
 .leave-policy-radio input {
-  width: 19px;
-  height: 19px;
+  width: 17px;
+  height: 17px;
   margin: 0;
   accent-color: var(--primary);
   flex: 0 0 auto;
@@ -6403,19 +6426,19 @@ textarea.profile-field-input {
 }
 .leave-policy-check strong {
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
 }
 .leave-policy-check em {
   color: #385b80;
-  font-size: 12px;
+  font-size: 11px;
   font-style: normal;
-  line-height: 16px;
+  line-height: 15px;
 }
 .leave-policy-note {
   margin-top: 2px !important;
-  font-size: 14px !important;
-  line-height: 19px !important;
+  font-size: 12px !important;
+  line-height: 16px !important;
 }
 .leave-policy-limits {
   display: grid;
@@ -6429,8 +6452,9 @@ textarea.profile-field-input {
 .leave-policy-limits > label.wide {
   grid-column: 1 / -1;
 }
-.leave-policy-limits > label > div {
-  height: 38px;
+.leave-policy-limits > label > div,
+.leave-policy-number-control > div {
+  height: 34px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 36px 36px auto;
   align-items: center;
@@ -6439,7 +6463,8 @@ textarea.profile-field-input {
   border-radius: 5px;
   background: #f8fbfe;
 }
-.leave-policy-limits input {
+.leave-policy-limits input,
+.leave-policy-number-control input {
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -6448,8 +6473,9 @@ textarea.profile-field-input {
   color: var(--text);
   padding: 0 12px;
 }
-.leave-policy-limits button {
-  height: 24px;
+.leave-policy-limits button,
+.leave-policy-number-control button {
+  height: 22px;
   margin: 0 1px;
   display: inline-flex;
   align-items: center;
@@ -6459,20 +6485,202 @@ textarea.profile-field-input {
   background: #eaf2f8;
   color: #2e5a88;
 }
-.leave-policy-limits em {
+.leave-policy-limits em,
+.leave-policy-number-control em {
   padding: 0 10px;
   color: #385b80;
-  font-size: 13px;
+  font-size: 12px;
   font-style: normal;
+}
+.leave-policy-accrual-card {
+  width: min(860px, calc(100% - 48px));
+}
+.leave-policy-accrual-panel,
+.leave-policy-carryover-date {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #e1ebf4;
+  border-radius: 6px;
+  background: #fbfdff;
+}
+.leave-policy-accrual-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.leave-policy-accrual-panel:disabled,
+.leave-policy-carryover-date:disabled,
+.leave-policy-two-cols:disabled {
+  opacity: 0.58;
+}
+.leave-policy-accrual-title {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+}
+.leave-policy-accrual-line {
+  display: grid;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+}
+.leave-policy-accrual-line span {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+}
+.leave-policy-accrual-line input,
+.leave-policy-accrual-line select,
+.leave-policy-accrual-stack input,
+.leave-policy-unit-input input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid #d7e4ef;
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 10px;
+}
+.leave-policy-accrual-line.start {
+  grid-template-columns: max-content minmax(86px, 130px) minmax(102px, 124px) minmax(220px, 1fr);
+}
+.leave-policy-accrual-line.start > :nth-child(5) {
+  grid-column: 1 / 3;
+  max-width: 146px;
+}
+.leave-policy-accrual-line.start > :nth-child(6) {
+  grid-column: 3;
+}
+.leave-policy-accrual-line.earn {
+  grid-template-columns: max-content minmax(92px, 140px) max-content minmax(142px, 190px) max-content minmax(172px, 230px);
+}
+.leave-policy-accrual-line.carry {
+  grid-template-columns: max-content minmax(142px, 190px) minmax(240px, 1fr) minmax(92px, 120px) max-content;
+}
+.leave-policy-accrual-stack {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.leave-policy-accrual-stack > span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.leave-policy-accrual-stack small {
+  color: #385b80;
+  font-size: 11px;
+  line-height: 15px;
+}
+.leave-policy-accrual-stack.compact-limit {
+  max-width: 220px;
+}
+.leave-policy-number-control.compact {
+  height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px 36px auto;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #d7e4ef;
+  border-radius: 5px;
+  background: var(--panel);
+}
+.leave-policy-carryover-date {
+  display: grid;
+  grid-template-columns: minmax(0, 240px) minmax(0, 150px) minmax(0, 210px);
+  gap: 10px 12px;
+  padding: 12px;
+}
+.leave-policy-add-level {
+  width: max-content;
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 13px;
+}
+.leave-policy-seniority-levels {
+  display: grid;
+  gap: 10px;
+}
+.leave-policy-seniority-level {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e1ebf4;
+  border-radius: 6px;
+  background: var(--panel);
+}
+.leave-policy-seniority-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.leave-policy-seniority-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.leave-policy-seniority-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+.leave-policy-unit-input {
+  height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #d7e4ef;
+  border-radius: 5px;
+  background: var(--panel);
+}
+.leave-policy-unit-input input {
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+.leave-policy-unit-input em {
+  padding: 0 10px;
+  color: #385b80;
+  font-size: 12px;
+  font-style: normal;
+}
+.leave-policy-two-cols.compact {
+  grid-template-columns: repeat(2, minmax(0, 240px));
+  gap: 10px 12px;
+}
+.leave-policy-nested {
+  display: grid;
+  gap: 8px;
+  margin-left: 28px;
 }
 .leave-policy-approval-card {
   width: min(684px, calc(100% - 48px));
 }
+.leave-policy-approver-list {
+  display: grid;
+  gap: 6px;
+}
 .leave-policy-approver-row {
   display: grid;
-  grid-template-columns: minmax(0, 308px) 32px;
+  grid-template-columns: minmax(0, 308px) minmax(0, 308px) 32px;
   align-items: center;
+  gap: 8px;
+}
+.leave-policy-approver-row.single {
+  grid-template-columns: minmax(0, 308px) minmax(0, 1fr) 32px;
+}
+.leave-policy-approver-row > .icon-button {
+  justify-self: end;
+}
+.leave-policy-substitute-row {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 300px);
   gap: 12px;
+  margin-top: -2px;
 }
 .leave-policy-add-approver {
   width: max-content;
@@ -6482,6 +6690,136 @@ textarea.profile-field-input {
   background: #e7eff7;
   color: #001a3c;
   font-size: 13px;
+}
+.policy-select-menu {
+  position: relative;
+  min-width: 0;
+}
+.policy-select-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  min-width: 220px;
+  max-height: 318px;
+  overflow: auto;
+  border: 1px solid #d1dfed;
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(15, 35, 58, 0.14);
+}
+.policy-select-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #e2ebf4;
+  color: #8aa0b6;
+}
+.policy-select-search input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #2e90ff;
+  border-radius: 4px;
+  background: #f8fbfe;
+  color: var(--text);
+  padding: 0 8px;
+  outline: 0;
+}
+.policy-select-group {
+  padding: 8px 12px 4px;
+  color: #8aa0b6;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.policy-select-option,
+.policy-employee-option {
+  width: 100%;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid #edf3f8;
+  background: var(--panel);
+  color: #385b80;
+  text-align: left;
+  cursor: pointer;
+}
+.policy-select-option {
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: 15px;
+}
+.policy-select-option:hover,
+.policy-employee-option:hover {
+  background: #f3f7fb;
+}
+.policy-select-option span,
+.policy-select-option em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.policy-select-option em {
+  color: #7891aa;
+  font-size: 12px;
+  font-style: normal;
+}
+.policy-select-empty {
+  padding: 14px 12px;
+  color: #7891aa;
+  font-size: 13px;
+}
+.policy-employee-popover {
+  width: 330px;
+}
+.policy-employee-option {
+  padding: 8px 10px;
+}
+.policy-employee-option img,
+.policy-employee-option > em {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.policy-employee-option img {
+  object-fit: cover;
+}
+.policy-employee-option > em {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eaf2f8;
+  color: #385b80;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+.policy-employee-option span {
+  display: grid;
+  min-width: 0;
+}
+.policy-employee-option strong,
+.policy-employee-option small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.policy-employee-option strong {
+  color: #385b80;
+  font-size: 14px;
+  font-weight: 500;
+}
+.policy-employee-option small {
+  color: #7891aa;
+  font-size: 12px;
 }
 .leave-policy-two-cols {
   display: grid;
@@ -6500,10 +6838,6 @@ textarea.profile-field-input {
   margin: 0;
   padding: 0;
   border: 0;
-}
-.leave-policy-accrual-grid:disabled,
-.leave-policy-two-cols:disabled {
-  opacity: 0.58;
 }
 .leave-policy-radio {
   align-items: center;
@@ -7108,14 +7442,35 @@ textarea.profile-field-input {
   }
   .leave-policy-two-cols,
   .leave-policy-accrual-grid,
-  .leave-policy-limits {
+  .leave-policy-limits,
+  .leave-policy-carryover-date,
+  .leave-policy-seniority-grid,
+  .leave-policy-two-cols.compact {
     grid-template-columns: 1fr;
+  }
+  .leave-policy-accrual-line.start,
+  .leave-policy-accrual-line.earn,
+  .leave-policy-accrual-line.carry {
+    grid-template-columns: 1fr;
+  }
+  .leave-policy-accrual-line.start > :nth-child(5),
+  .leave-policy-accrual-line.start > :nth-child(6) {
+    grid-column: auto;
+    max-width: none;
   }
   .leave-policy-limits > label.wide {
     grid-column: auto;
   }
-  .leave-policy-approver-row {
-    grid-template-columns: minmax(0, 1fr) 32px;
+  .leave-policy-approver-row,
+  .leave-policy-approver-row.single,
+  .leave-policy-substitute-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .leave-policy-approver-row > .icon-button {
+    justify-self: start;
+  }
+  .policy-employee-popover {
+    width: 100%;
   }
   .leave-assignments-page .report-back,
   .leave-assignments-page > h1,
@@ -7148,26 +7503,31 @@ textarea.profile-field-input {
 /* Профіль: вкладка «Відсутності» (image copy 6) */
 .absence-tab {
   display: grid;
-  gap: 16px;
+  gap: 10px;
+  width: min(1040px, 100%);
+  margin: 0 auto;
 }
 .absence-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 .absence-card {
+  position: relative;
+  min-height: 122px;
   display: grid;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
+  grid-template-rows: auto auto auto;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid #dfe8f2;
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: var(--shadow);
+  box-shadow: 0 2px 8px rgba(22, 42, 63, 0.07);
 }
 .absence-card-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 .absence-card-head strong {
   font-size: var(--font-sm);
@@ -7178,33 +7538,104 @@ textarea.profile-field-input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--panel-soft);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #f0f5fb;
+  color: var(--primary);
 }
 .absence-card-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--muted);
 }
 .absence-card-value {
-  font-size: var(--font-display);
+  font-size: 25px;
   font-weight: 600;
   line-height: 1.1;
+  color: var(--primary);
 }
 .absence-card-value small {
   font-size: 13px;
   font-weight: 500;
   margin-left: 2px;
+  color: var(--text);
 }
-.absence-card .secondary-action {
-  margin-top: 6px;
+.absence-card-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 0;
+}
+.absence-card-actions .secondary-action {
+  flex: 0 1 auto;
   justify-content: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.absence-card-actions .icon-button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 5px;
+}
+.absence-card-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: 188px;
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 16px 36px rgba(20, 40, 63, 0.16);
+}
+.absence-card-menu button {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: #41617f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.absence-card-menu button:hover {
+  background: #f3f7fb;
+}
+.absence-card-menu .danger {
+  color: #f15d42;
+}
+.absence-action-error,
+.absence-modal-error {
+  margin: 0;
+  color: #d04b3a;
+  font-size: 13px;
 }
 .absence-cards-empty {
   grid-column: 1 / -1;
 }
 .absence-block {
+  padding: 0;
+  border: 1px solid #dfe8f2;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(22, 42, 63, 0.07);
+  overflow: hidden;
+}
+.absence-block .profile-tab-placeholder {
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+}
+.absence-block .empty-state {
+  min-height: 0;
   padding: 0;
 }
 .absence-block-head {
@@ -7212,37 +7643,972 @@ textarea.profile-field-input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  min-height: 50px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--line);
 }
 .absence-block-head h3 {
   margin: 0;
-  font-size: var(--font-h3);
+  font-size: 16px;
   font-weight: 600;
 }
 .absence-block-controls {
   display: inline-flex;
+  align-items: center;
   gap: 8px;
+}
+.absence-block-controls .people-data-input {
+  width: 162px;
+  min-height: 34px;
+  border-radius: 6px;
+  background: var(--panel);
+}
+.absence-year-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.absence-year-control button {
+  width: 38px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.absence-year-control button:hover {
+  background: var(--panel-soft);
+}
+.absence-year-control span {
+  min-width: 58px;
+  padding: 0 10px;
+  border-inline: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 600;
+  text-align: center;
+}
+.absence-history-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+}
+.absence-history-summary span {
+  display: block;
+}
+.absence-history-summary strong {
+  color: #111c35;
+  font-size: 22px;
+  line-height: 1;
+}
+.absence-history-summary em,
+.absence-history-summary small {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+}
+.absence-history-summary em {
+  margin-left: 4px;
+}
+.absence-history-summary small {
+  display: block;
+  margin-top: 4px;
+}
+.absence-history-count {
+  padding: 0 14px 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.absence-table-scroll {
+  width: 100%;
+  overflow-x: auto;
 }
 .absence-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: var(--font-sm);
+}
+.absence-history-table th:nth-last-child(-n + 4),
+.absence-history-table td:nth-last-child(-n + 4) {
+  text-align: right;
 }
 .absence-table th {
   text-align: left;
   font-weight: 500;
   color: var(--muted);
-  padding: 10px 16px;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--line);
+  background: #f8fbfe;
 }
 .absence-table td {
-  padding: 10px 16px;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--line);
   color: var(--text);
 }
 .absence-table tr:last-child td {
   border-bottom: 0;
+}
+.absence-requests-table {
+  min-width: 700px;
+}
+.absence-requests-table th {
+  padding: 5px 10px;
+}
+.absence-requests-table td {
+  padding: 5px 10px;
+}
+.absence-requests-table th:first-child,
+.absence-requests-table td:first-child {
+  width: 38%;
+}
+.absence-requests-table th:last-child,
+.absence-requests-table td:last-child,
+.absence-history-table th:last-child,
+.absence-history-table td:last-child {
+  width: 42px;
+  text-align: center;
+  border-left: 1px solid var(--line);
+}
+.absence-request-type-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.absence-requests-table .absence-card-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+}
+.absence-request-type-cell > span:last-child {
+  display: grid;
+  gap: 1px;
+}
+.absence-request-type-cell strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.absence-request-type-cell small {
+  color: #41617f;
+  font-size: 12px;
+  line-height: 15px;
+}
+.absence-request-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 100%;
+}
+.absence-request-meta > strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.absence-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.absence-status-pill.ok {
+  background: #c6f6dc;
+  color: #157244;
+}
+.absence-status-pill.warn {
+  background: #fff3d8;
+  color: #8b5a00;
+}
+.absence-status-pill.bad {
+  background: #ffe9e9;
+  color: #c43f3f;
+}
+.absence-request-checks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #22c55e;
+}
+.absence-request-checks svg {
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+}
+.absence-row-action {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #41617f;
+}
+.absence-row-action:hover {
+  background: var(--panel-soft);
+}
+.absence-row-action-cell {
+  position: relative;
+}
+.absence-row-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 8px;
+  z-index: 25;
+  width: 138px;
+  padding: 6px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(20, 40, 63, 0.14);
+}
+.absence-row-menu button {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: #41617f;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.absence-row-menu button:hover {
+  background: #f3f7fb;
+}
+.absence-row-menu .danger {
+  color: #f15d42;
+}
+
+.absence-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 58px 32px 32px;
+  overflow-y: auto;
+}
+.absence-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(29, 45, 59, 0.46);
+  cursor: default;
+}
+.absence-request-modal,
+.absence-policy-modal {
+  position: relative;
+  z-index: 1;
+  width: min(780px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #cfdbe8;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 22px 70px rgba(14, 26, 40, 0.28);
+  overflow: hidden;
+}
+.absence-policy-modal {
+  width: min(980px, calc(100vw - 64px));
+}
+.absence-request-modal > header,
+.absence-policy-modal > header {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--line);
+}
+.absence-request-modal h2,
+.absence-policy-modal h2 {
+  margin: 0;
+  color: #071634;
+  font-size: 21px;
+  letter-spacing: 0;
+}
+.absence-request-modal h3,
+.absence-policy-modal h3 {
+  margin: 0 0 16px;
+  color: #071634;
+  font-size: 16px;
+}
+.absence-request-body {
+  min-height: 430px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.95fr);
+  overflow: visible;
+}
+.absence-request-modal.calendar-open .absence-request-body {
+  min-height: 540px;
+}
+.absence-request-left {
+  border-right: 1px solid #cfdbe8;
+}
+.absence-request-left > section {
+  padding: 22px 22px;
+  border-bottom: 1px solid #cfdbe8;
+}
+.absence-request-left > section:last-child {
+  border-bottom: 0;
+}
+.absence-form-field {
+  display: grid;
+  gap: 8px;
+  color: #071634;
+  font-size: 13px;
+}
+.absence-form-field + .absence-form-field {
+  margin-top: 14px;
+}
+.absence-form-field span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.absence-form-field em {
+  color: var(--muted);
+  font-style: normal;
+}
+.absence-type-select,
+.absence-range-trigger,
+.absence-range-inputs,
+.absence-form-field input,
+.absence-form-field select,
+.absence-form-field textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f7fafc;
+  color: #071634;
+  font: inherit;
+}
+.absence-type-select {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 4px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.absence-type-select strong {
+  font-weight: 600;
+}
+.absence-type-picker {
+  position: relative;
+}
+.absence-type-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 35;
+  border: 1px solid #cfdbe8;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 42px rgba(20, 40, 63, 0.18);
+  overflow: hidden;
+}
+.absence-type-menu button {
+  width: 100%;
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  color: #41617f;
+  text-align: left;
+}
+.absence-type-menu button:last-child {
+  border-bottom: 0;
+}
+.absence-type-menu button:hover,
+.absence-type-menu button.active {
+  background: #f7fafc;
+}
+.absence-type-menu button > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.absence-type-menu strong {
+  color: #41617f;
+  font-size: 18px;
+  font-weight: 500;
+}
+.absence-type-menu em {
+  color: #41617f;
+  font-size: 14px;
+  font-style: normal;
+}
+.absence-range-picker {
+  position: relative;
+}
+.absence-range-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  color: #41617f;
+  text-align: left;
+  cursor: pointer;
+}
+.absence-range-trigger span {
+  display: block;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.absence-calendar-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: min(300px, calc(100vw - 96px));
+  padding: 14px;
+  border: 1px solid #cfdbe8;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 18px 42px rgba(20, 40, 63, 0.18);
+}
+.absence-calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.absence-calendar-head button {
+  width: 30px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+.absence-calendar-head strong {
+  color: #071634;
+  font-size: 16px;
+  font-weight: 600;
+}
+.absence-calendar-weekdays,
+.absence-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.absence-calendar-weekdays {
+  margin-bottom: 5px;
+}
+.absence-calendar-weekdays span {
+  color: #6e86a0;
+  font-size: 12px;
+  text-align: center;
+}
+.absence-calendar-grid button {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #071634;
+  font: inherit;
+  cursor: pointer;
+}
+.absence-calendar-grid button:hover {
+  background: #edf4fb;
+}
+.absence-calendar-grid .outside {
+  color: #a8b7c6;
+}
+.absence-calendar-grid .today {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.absence-calendar-grid .in-range {
+  background: color-mix(in srgb, var(--primary) 18%, #ffffff);
+}
+.absence-calendar-grid .selected {
+  background: var(--primary);
+  color: var(--panel);
+}
+.absence-range-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+}
+.absence-range-inputs input,
+.absence-form-field input,
+.absence-form-field select {
+  border: 0;
+  background: transparent;
+}
+.absence-form-field textarea {
+  min-height: 96px;
+  padding: 12px;
+  resize: vertical;
+}
+.absence-request-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 22px 22px 0;
+}
+.absence-daily-list {
+  display: grid;
+  gap: 8px;
+}
+.absence-daily-row {
+  display: grid;
+  grid-template-columns: 48px 36px 1fr 92px;
+  align-items: center;
+  gap: 10px;
+}
+.absence-daily-row span {
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #eef4fa;
+  color: #071634;
+}
+.absence-daily-row span strong {
+  line-height: 1;
+}
+.absence-daily-row span em {
+  color: #41617f;
+  font-size: 12px;
+  font-style: normal;
+}
+.absence-daily-row b {
+  font-weight: 500;
+}
+.absence-daily-row i {
+  height: 1px;
+  border-top: 1px dashed #cfdbe8;
+}
+.absence-daily-row input {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f7fafc;
+  color: var(--muted);
+  font: inherit;
+  text-align: center;
+}
+.absence-daily-empty {
+  color: var(--muted);
+}
+.absence-request-summary {
+  display: grid;
+  gap: 8px;
+  margin: auto -22px 0;
+  padding: 16px 22px;
+  border-top: 1px solid #cfdbe8;
+  background: #f4f8fb;
+}
+.absence-request-summary span {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #41617f;
+  font-size: 14px;
+}
+.absence-request-summary strong {
+  color: #071634;
+  font-weight: 500;
+}
+.absence-request-modal > footer,
+.absence-policy-modal > footer {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  padding: 18px 28px;
+  border-top: 1px solid var(--line);
+  background: #fbfcfe;
+}
+.absence-request-modal > footer .absence-modal-error,
+.absence-policy-modal > footer .absence-modal-error {
+  margin-right: auto;
+}
+.absence-forecast-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1210;
+  width: min(760px, 48vw);
+  height: 100vh;
+  padding: 22px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: -16px 0 50px rgba(20, 40, 63, 0.16);
+  overflow: auto;
+}
+.absence-forecast-drawer header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+  color: #41617f;
+}
+.absence-forecast-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.absence-forecast-tabs button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.absence-forecast-tabs .active {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(22, 42, 63, 0.08);
+}
+.absence-forecast-drawer h2 {
+  margin: 0 0 18px;
+  color: #071634;
+  font-size: 18px;
+}
+.absence-forecast-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-inline: -22px;
+  border-block: 1px solid var(--line);
+}
+.absence-forecast-summary span {
+  display: grid;
+  gap: 3px;
+  padding: 16px 22px;
+  color: var(--muted);
+  text-align: center;
+}
+.absence-forecast-summary span + span {
+  border-left: 1px solid var(--line);
+}
+.absence-forecast-summary strong {
+  color: #071634;
+}
+.absence-forecast-drawer p {
+  color: var(--muted);
+  font-size: 13px;
+}
+.absence-forecast-drawer table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.absence-forecast-drawer th,
+.absence-forecast-drawer td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.absence-forecast-drawer th {
+  color: var(--muted);
+  background: #f8fbfe;
+  font-weight: 600;
+}
+.absence-forecast-drawer th:nth-last-child(-n + 2),
+.absence-forecast-drawer td:nth-last-child(-n + 2) {
+  text-align: right;
+}
+.absence-policy-body {
+  padding: 26px 28px 36px;
+  overflow: auto;
+}
+.absence-policy-body > span {
+  display: block;
+  margin: 18px 0 8px;
+  color: #071634;
+}
+.absence-policy-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.absence-policy-options button {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: #071634;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.absence-policy-options button.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.absence-policy-options i {
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #9aaec0;
+  border-radius: 50%;
+}
+.absence-policy-options .active i {
+  border: 5px solid var(--primary);
+}
+.absence-policy-options small {
+  color: #66809a;
+  font-size: 12px;
+}
+.absence-policy-timeline {
+  position: relative;
+  width: min(520px, 100%);
+  height: 150px;
+  margin: 28px auto 22px;
+}
+.absence-policy-timeline::before {
+  content: "";
+  position: absolute;
+  top: 74px;
+  left: 40px;
+  right: 44px;
+  height: 8px;
+  background: linear-gradient(90deg, #edf4fb, #2f95ea);
+}
+.absence-policy-timeline::after {
+  content: "";
+  position: absolute;
+  top: 58px;
+  right: 24px;
+  border: 20px solid transparent;
+  border-left-color: #2f95ea;
+}
+.absence-policy-timeline span {
+  position: absolute;
+  top: 22px;
+  padding: 8px 14px;
+  border-radius: 5px;
+  background: #3e5d7a;
+  color: var(--panel);
+}
+.absence-policy-timeline span:nth-child(2) {
+  left: 58%;
+  background: #2f95ea;
+}
+.absence-policy-timeline span:first-child {
+  left: 24%;
+}
+.absence-policy-timeline b,
+.absence-policy-timeline em {
+  position: absolute;
+  left: 30%;
+  right: 31%;
+  bottom: 20px;
+  height: 44px;
+  border: 3px solid #3e5d7a;
+  border-top: 0;
+}
+.absence-policy-timeline em {
+  display: grid;
+  place-items: center;
+  bottom: 46px;
+  height: 36px;
+  border: 0;
+  border-radius: 5px;
+  background: #3e5d7a;
+  color: var(--panel);
+  font-style: normal;
+}
+.absence-policy-body > p {
+  width: min(620px, 100%);
+  margin: 0 auto;
+  color: #334967;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1020px) {
+  .absence-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .absence-request-body {
+    grid-template-columns: 1fr;
+  }
+  .absence-request-left {
+    border-right: 0;
+  }
+  .absence-forecast-drawer {
+    width: min(720px, 78vw);
+  }
+}
+
+@media (max-width: 720px) {
+  .absence-cards,
+  .absence-history-summary {
+    grid-template-columns: 1fr;
+  }
+  .absence-block-head,
+  .absence-block-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .absence-block-controls .people-data-input {
+    width: 100%;
+  }
+  .absence-year-control {
+    width: 100%;
+  }
+  .absence-year-control span {
+    flex: 1;
+  }
+  .absence-table-scroll {
+    overflow-x: visible;
+  }
+  .absence-table {
+    min-width: 0;
+  }
+  .absence-table thead {
+    display: none;
+  }
+  .absence-table,
+  .absence-table tbody,
+  .absence-table tr,
+  .absence-table td {
+    display: block;
+    width: 100%;
+  }
+  .absence-table tr {
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+  }
+  .absence-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 5px 0;
+    border: 0;
+    text-align: right;
+  }
+  .absence-table td::before {
+    content: attr(data-label);
+    flex: 0 0 112px;
+    color: var(--muted);
+    text-align: left;
+  }
+  .absence-requests-table th:last-child,
+  .absence-requests-table td:last-child,
+  .absence-history-table th:last-child,
+  .absence-history-table td:last-child {
+    width: 100%;
+    border-left: 0;
+  }
+  .absence-request-type-cell,
+  .absence-request-meta {
+    flex: 1;
+  }
+  .absence-request-meta {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .absence-modal-layer {
+    padding: 18px 12px 12px;
+  }
+  .absence-request-modal,
+  .absence-policy-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+  .absence-request-modal > header,
+  .absence-policy-modal > header {
+    min-height: 66px;
+    padding: 0 16px;
+  }
+  .absence-request-modal h2,
+  .absence-policy-modal h2 {
+    font-size: 22px;
+  }
+  .absence-request-left > section,
+  .absence-request-right,
+  .absence-policy-body {
+    padding: 20px 16px;
+  }
+  .absence-range-inputs,
+  .absence-daily-row,
+  .absence-policy-options {
+    grid-template-columns: 1fr;
+  }
+  .absence-daily-row i {
+    display: none;
+  }
+  .absence-request-summary {
+    margin: 20px -16px 0;
+    padding: 18px 16px;
+  }
+  .absence-request-modal > footer,
+  .absence-policy-modal > footer {
+    min-height: 76px;
+    padding: 14px 16px;
+  }
+  .absence-forecast-drawer {
+    width: 100vw;
+  }
+  .absence-forecast-summary {
+    grid-template-columns: 1fr;
+  }
+  .absence-forecast-summary span + span {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .absence-forecast-drawer table {
+    font-size: 12px;
+  }
+  .absence-policy-timeline {
+    transform: scale(0.82);
+    transform-origin: center;
+  }
 }
 
 /* Документи — settings + профіль (image copy 8/9/10/18/20) */

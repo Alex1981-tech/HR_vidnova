@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Count, Prefetch, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -6,6 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.access.drf import HasRBACPermission
 from config.permissions import ConfiguredReadOnlyOrAuthenticated
 
 from apps.employees.models import Employee
@@ -38,6 +42,31 @@ class LeaveModelViewSet(viewsets.ModelViewSet):
 class LeaveTypeViewSet(LeaveModelViewSet):
     queryset = LeaveType.objects.all()
     serializer_class = LeaveTypeSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        active = self.request.query_params.get("is_active", "true")
+        if active in {"true", "1"}:
+            qs = qs.filter(is_active=True)
+        elif active in {"false", "0"}:
+            qs = qs.filter(is_active=False)
+        return qs
+
+    def perform_destroy(self, instance):
+        if (
+            instance.policies.exists()
+            or instance.policy_assignments.exists()
+            or instance.ledger_entries.exists()
+            or instance.requests.exists()
+            or instance.balances.exists()
+        ):
+            with transaction.atomic():
+                instance.is_active = False
+                instance.save(update_fields=["is_active", "updated_at"])
+                instance.policies.update(is_active=False, updated_at=timezone.now())
+                instance.policy_assignments.update(is_active=False, updated_at=timezone.now())
+            return
+        instance.delete()
 
     @action(detail=False, methods=["post"], url_path="reorder")
     def reorder(self, request):
@@ -96,6 +125,15 @@ class LeavePolicyViewSet(LeaveModelViewSet):
         if active in {"false", "0"}:
             qs = qs.filter(is_active=False)
         return qs
+
+    def perform_destroy(self, instance):
+        if instance.assignments.exists() or instance.ledger_entries.exists():
+            with transaction.atomic():
+                instance.is_active = False
+                instance.save(update_fields=["is_active", "updated_at"])
+                instance.assignments.update(is_active=False, updated_at=timezone.now())
+            return
+        instance.delete()
 
     @action(detail=True, methods=["post"], url_path="copy")
     def copy(self, request, pk=None):
@@ -221,6 +259,56 @@ class EmployeeLeavePolicyAssignmentViewSet(LeaveModelViewSet):
         code = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_201_CREATED
         return Response({"assignments": serializer.data, "errors": errors}, status=code)
 
+    @action(detail=False, methods=["post"], url_path="bulk-remove")
+    def bulk_remove(self, request):
+        policy_id = request.data.get("policy")
+        employee_ids = request.data.get("employee_ids")
+        effective_on = parse_date(request.data.get("effective_on") or "") or timezone.localdate()
+        if not policy_id:
+            return Response({"detail": "policy is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(employee_ids, list) or not employee_ids:
+            return Response({"detail": "employee_ids must be a non-empty list."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            policy = LeavePolicy.objects.get(pk=policy_id)
+        except LeavePolicy.DoesNotExist:
+            return Response({"detail": "Policy not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        errors = []
+        normalized_ids = []
+        for raw_id in employee_ids:
+            try:
+                normalized_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                errors.append({"employee": raw_id, "detail": "Invalid employee id."})
+
+        updated = []
+        with transaction.atomic():
+            assignments = (
+                EmployeeLeavePolicyAssignment.objects.select_for_update()
+                .filter(policy=policy, employee_id__in=normalized_ids, is_active=True)
+                .select_related("employee")
+            )
+            assignments_by_employee = {assignment.employee_id: assignment for assignment in assignments}
+            now = timezone.now()
+            for employee_id in normalized_ids:
+                assignment = assignments_by_employee.get(employee_id)
+                if not assignment:
+                    errors.append({"employee": employee_id, "detail": "Active assignment not found."})
+                    continue
+                if assignment.effective_on < effective_on:
+                    assignment.ends_on = effective_on - timedelta(days=1)
+                else:
+                    assignment.ends_on = assignment.effective_on
+                assignment.is_active = False
+                assignment.updated_at = now
+                assignment.full_clean()
+                assignment.save(update_fields=["ends_on", "is_active", "updated_at"])
+                updated.append(assignment)
+
+        serializer = self.get_serializer(updated, many=True)
+        code = status.HTTP_207_MULTI_STATUS if errors else status.HTTP_200_OK
+        return Response({"assignments": serializer.data, "updated_assignments": len(updated), "errors": errors}, status=code)
+
     @action(detail=True, methods=["post"], url_path="recalculate")
     def recalculate(self, request, pk=None):
         assignment = self.get_object()
@@ -253,6 +341,10 @@ class LeaveLedgerEntryViewSet(viewsets.ReadOnlyModelViewSet):
 
 class LeaveRequestViewSet(LeaveModelViewSet):
     serializer_class = LeaveRequestSerializer
+    permission_classes = [ConfiguredReadOnlyOrAuthenticated, HasRBACPermission]
+    rbac_action_perms = {
+        "destroy": "leave.delete_requests",
+    }
 
     def get_queryset(self):
         qs = LeaveRequest.objects.select_related("employee", "employee__position", "leave_type", "decided_by").prefetch_related("approval_steps").all()
@@ -300,6 +392,22 @@ class LeaveRequestViewSet(LeaveModelViewSet):
 
 class LeaveBalanceViewSet(LeaveModelViewSet):
     serializer_class = LeaveBalanceSerializer
+
+    def _sync_employee_balance_cache(self):
+        employee = self.request.query_params.get("employee")
+        if not employee:
+            return
+        assignments = EmployeeLeavePolicyAssignment.objects.filter(employee_id=employee, is_active=True)
+        leave_type = self.request.query_params.get("leave_type")
+        if leave_type:
+            assignments = assignments.filter(leave_type_id=leave_type)
+        assignments = assignments.select_related("employee", "leave_type", "policy")
+        for assignment in assignments.iterator():
+            sync_assignment_balance(assignment)
+
+    def list(self, request, *args, **kwargs):
+        self._sync_employee_balance_cache()
+        return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = LeaveBalance.objects.select_related("employee", "leave_type").all()
