@@ -322,6 +322,31 @@ class LeaveLedgerEntryViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LeaveLedgerEntrySerializer
     permission_classes = [ConfiguredReadOnlyOrAuthenticated]
 
+    def _sync_employee_ledger(self):
+        employee = self.request.query_params.get("employee")
+        assignment = self.request.query_params.get("assignment")
+        if assignment:
+            assignments = EmployeeLeavePolicyAssignment.objects.filter(pk=assignment, is_active=True)
+        elif employee:
+            assignments = EmployeeLeavePolicyAssignment.objects.filter(employee_id=employee, is_active=True)
+        else:
+            return
+
+        leave_type = self.request.query_params.get("leave_type")
+        if leave_type:
+            assignments = assignments.filter(leave_type_id=leave_type)
+        policy = self.request.query_params.get("policy")
+        if policy:
+            assignments = assignments.filter(policy_id=policy)
+
+        assignments = assignments.select_related("employee", "leave_type", "policy")
+        for assignment_obj in assignments.iterator():
+            sync_assignment_balance(assignment_obj)
+
+    def list(self, request, *args, **kwargs):
+        self._sync_employee_ledger()
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         qs = LeaveLedgerEntry.objects.select_related("employee", "leave_type", "policy", "assignment").all()
         employee = self.request.query_params.get("employee")

@@ -455,6 +455,53 @@ class LeavePolicyAccrualTests(APITestCase):
         balance = LeaveBalance.objects.get(employee=self.employee, leave_type=self.leave_type)
         self.assertEqual(balance.balance, Decimal("9.00"))
 
+    def test_employee_ledger_endpoint_syncs_due_accruals_before_returning(self):
+        policy = LeavePolicy.objects.create(
+            leave_type=self.leave_type,
+            name="Імпортована відпустка",
+            policy_type=LeavePolicy.PolicyType.ACCRUAL,
+            activity_type=LeavePolicy.ActivityType.NOT_WORKING_PAID,
+            counted_as=LeavePolicy.CountedAs.CALENDAR_DAYS,
+        )
+        LeavePolicyAccrualRule.objects.create(
+            policy=policy,
+            enabled=True,
+            annual_allowance=Decimal("24.00"),
+            period_amount=Decimal("2.00"),
+            frequency=LeavePolicyAccrualRule.Frequency.MONTHLY,
+            accrual_timing=LeavePolicyAccrualRule.AccrualTiming.PERIOD_START,
+        )
+        assignment = EmployeeLeavePolicyAssignment.objects.create(
+            employee=self.employee,
+            leave_type=self.leave_type,
+            policy=policy,
+            effective_on=date(2026, 6, 29),
+            legacy_peopleforce_id="legacy-balance:ledger",
+        )
+        LeaveLedgerEntry.objects.create(
+            employee=self.employee,
+            leave_type=self.leave_type,
+            policy=policy,
+            assignment=assignment,
+            kind=LeaveLedgerEntry.EntryKind.OPENING,
+            occurred_on=date(2026, 6, 29),
+            amount=Decimal("7.00"),
+            balance_after=Decimal("7.00"),
+            description="Поточний баланс з PeopleForce на дату імпорту",
+            idempotency_key="legacy-balance:ledger:opening",
+        )
+
+        with patch("apps.leave.services.timezone.localdate", return_value=date(2026, 7, 1)):
+            resp = self.client.get(f"/api/leave/ledger/?employee={self.employee.id}&page_size=1000")
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        items = resp.data.get("results") if hasattr(resp.data, "get") else resp.data
+        accruals = [item for item in items if item["kind"] == LeaveLedgerEntry.EntryKind.ACCRUAL]
+        self.assertEqual(len(accruals), 1)
+        self.assertEqual(accruals[0]["occurred_on"], "2026-07-01")
+        self.assertEqual(accruals[0]["amount"], "2.00")
+        self.assertEqual(accruals[0]["balance_after"], "9.00")
+
 
 class LeaveRequestLedgerLifecycleTests(APITestCase):
     def setUp(self):
