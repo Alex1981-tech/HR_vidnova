@@ -9538,6 +9538,25 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
   const [mode, setMode] = useState<EmployeeAssetsMode>('mine');
   const [items, setItems] = useState<CmmsAsset[]>([]);
   const [state, setState] = useState<LoadState>('idle');
+  // Вкладка «На обслуговуванні» лише для інженерів (є ≥1 актив, де співробітник — інженер).
+  const [isEngineer, setIsEngineer] = useState<boolean>(false);
+
+  useEffect(() => {
+    let alive = true;
+    setIsEngineer(false);
+    setMode('mine');
+    api
+      .assets({ hr_engineer_id: employeeId, page_size: 1 })
+      .then((res) => {
+        if (alive) setIsEngineer(res.total > 0);
+      })
+      .catch(() => {
+        if (alive) setIsEngineer(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [employeeId]);
 
   useEffect(() => {
     let alive = true;
@@ -9566,14 +9585,16 @@ function EmployeeAssetsTab({ employeeId }: { employeeId: number }) {
 
   return (
     <MoreSubPanel title="Активи">
-      <nav className="asset-tabs employee-asset-tabs">
-        <button type="button" className={`asset-tab${mode === 'mine' ? ' active' : ''}`} onClick={() => setMode('mine')}>
-          Мої
-        </button>
-        <button type="button" className={`asset-tab${mode === 'service' ? ' active' : ''}`} onClick={() => setMode('service')}>
-          На обслуговуванні
-        </button>
-      </nav>
+      {isEngineer ? (
+        <nav className="asset-tabs employee-asset-tabs">
+          <button type="button" className={`asset-tab${mode === 'mine' ? ' active' : ''}`} onClick={() => setMode('mine')}>
+            Мої
+          </button>
+          <button type="button" className={`asset-tab${mode === 'service' ? ' active' : ''}`} onClick={() => setMode('service')}>
+            На обслуговуванні
+          </button>
+        </nav>
+      ) : null}
 
       {state === 'loading' ? (
         <div className="profile-tab-placeholder">
